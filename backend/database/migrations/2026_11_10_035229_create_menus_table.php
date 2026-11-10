@@ -13,11 +13,11 @@ return new class extends Migration
             $table->unsignedInteger('id_tenant');
             $table->unsignedInteger('id_kategori');
             $table->string('nama_menu', 100);
-            $table->text('deskripsi');
-            $table->string('gambar', 255);
+            $table->text('deskripsi')->nullable();
+            $table->string('gambar', 255)->nullable();
             $table->integer('harga');
-            $table->integer('estimasi_menit');
-            $table->boolean('status_tersedia');
+            $table->integer('estimasi_menit')->default(5);
+            $table->boolean('status_tersedia')->default(true);
 
             $table->foreign('id_tenant')
                 ->references('id_tenant')

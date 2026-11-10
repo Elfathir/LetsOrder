@@ -12,9 +12,9 @@ return new class extends Migration
             $table->increments('id_tenant');
             $table->unsignedInteger('id_user');
             $table->string('nama_tenant', 100);
-            $table->text('deskripsi');
-            $table->string('logo', 255);
-            $table->boolean('status_buka');
+            $table->text('deskripsi')->nullable();
+            $table->string('logo', 255)->nullable();
+            $table->boolean('status_buka')->default(true);
 
             $table->foreign('id_user')
                 ->references('id_user')

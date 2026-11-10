@@ -15,7 +15,7 @@ return new class extends Migration
             $table->string('nomor_antrean', 30);
             $table->string('status_pesanan', 30);
             $table->integer('total_harga');
-            $table->text('catatan');
+            $table->text('catatan')->nullable();
             $table->dateTime('waktu_pesan');
 
             $table->foreign('id_user')

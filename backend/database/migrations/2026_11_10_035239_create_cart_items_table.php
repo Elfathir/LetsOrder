@@ -13,7 +13,7 @@ return new class extends Migration
             $table->unsignedInteger('id_keranjang');
             $table->unsignedInteger('id_menu');
             $table->integer('jumlah');
-            $table->text('catatan');
+            $table->text('catatan')->nullable();
 
             $table->foreign('id_keranjang')
                 ->references('id_keranjang')

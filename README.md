@@ -72,14 +72,23 @@ composer install
 php artisan key:generate
 ```
 
-Atur koneksi MySQL pada `backend/.env`, kemudian jalankan migrasi hanya setelah file migration proyek tersedia dan telah diperiksa:
+Atur koneksi MySQL pada `backend/.env`, kemudian jalankan migrasi dan seeder untuk mengisi data awal kategori, akun contoh, tenant, dan menu:
 
 ```bash
-php artisan migrate
+php artisan migrate --seed
 php artisan serve
 ```
 
-Backend secara default dapat diakses melalui `http://127.0.0.1:8000`. Endpoint pemeriksaan awal tersedia pada `/api/health`.
+Backend secara default dapat diakses melalui `http://127.0.0.1:8000` (mendukung prefix `/api/*` maupun `/api/v1/*`). Endpoint pemeriksaan awal tersedia pada `/api/health`.
+
+### Akun Awal Seeder (`password123`)
+
+| Peran | Username | Email |
+|---|---|---|
+| Administrator | `admin` | `admin@upnvj.ac.id` |
+| Vendor (Kantin Sejahtera) | `vendor01` | `sejahtera@upnvj.ac.id` |
+| Vendor (Warung Nusantara) | `vendor02` | `nusantara@upnvj.ac.id` |
+| Customer | `customer01` | `customer@upnvj.ac.id` |
 
 ## Konfigurasi Frontend dan Backend
 
@@ -88,9 +97,17 @@ Backend secara default dapat diakses melalui `http://127.0.0.1:8000`. Endpoint p
 - Jangan commit file `.env` yang berisi kredensial atau rahasia.
 - Variabel frontend dengan awalan `VITE_` dapat terlihat oleh browser. Jangan menyimpan password, API secret, atau kredensial privat di dalamnya.
 
-## Status Implementasi
+## Modul API yang Tersedia
 
-Repository ini merupakan kerangka awal dokumentasi dan aplikasi. Keberadaan konfigurasi proyek tidak berarti seluruh fitur telah selesai diimplementasikan. Endpoint bisnis, autentikasi, model, migration, controller, validasi, dan pengujian harus diselesaikan serta diverifikasi sebelum aplikasi dinyatakan siap digunakan.
+1. **Authentication API**: `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`
+2. **Category API**: `GET /api/categories`, `GET /api/categories/{id}`
+3. **Tenant API**: `GET /api/tenants`, `GET /api/tenants/{id}`, `GET /api/tenants/{id}/menus`, `GET /api/vendor/tenant`, `PATCH /api/vendor/tenant`
+4. **Menu API**: `GET /api/menus`, `GET /api/menus/{id}`, `GET /api/vendor/menus`, `POST /api/vendor/menus`, `PUT /api/vendor/menus/{id}`, `PATCH /api/vendor/menus/{id}/availability`, `DELETE /api/vendor/menus/{id}`
+5. **Cart API (Customer)**: `GET /api/cart`, `POST /api/cart/items`, `PUT /api/cart/items/{id}`, `DELETE /api/cart/items/{id}`, `DELETE /api/cart`
+6. **Order & Order Status API**: `POST /api/orders`, `GET /api/orders`, `GET /api/orders/{id}`, `GET /api/orders/{id}/status`, `GET /api/orders/{id}/status-history`, `GET /api/vendor/orders`, `PATCH /api/vendor/orders/{id}/status`
+7. **Payment Simulation API**: `POST /api/orders/{id}/payment`, `GET /api/orders/{id}/payment`, `PATCH /api/payments/{id}/verification`
+8. **Notification API**: `GET /api/notifications`, `PATCH /api/notifications/{id}/read`, `PATCH /api/notifications/read-all`
+9. **Administrator API**: `GET /api/admin/users`, `PUT /api/admin/users/{id}`, `GET /api/admin/tenants`, `POST /api/admin/tenants`, `PUT /api/admin/tenants/{id}`, `DELETE /api/admin/tenants/{id}`
 
 ## Dokumentasi
 

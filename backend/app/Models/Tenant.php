@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Tenant extends Model
 {
@@ -44,6 +45,30 @@ class Tenant extends Model
             User::class,
             'id_user',
             'id_user'
+        );
+    }
+
+    /**
+     * Relasi tenant dengan daftar menu.
+     */
+    public function menus(): HasMany
+    {
+        return $this->hasMany(
+            Menu::class,
+            'id_tenant',
+            'id_tenant'
+        );
+    }
+
+    /**
+     * Relasi tenant dengan daftar pesanan.
+     */
+    public function orders(): HasMany
+    {
+        return $this->hasMany(
+            Order::class,
+            'id_tenant',
+            'id_tenant'
         );
     }
 }
