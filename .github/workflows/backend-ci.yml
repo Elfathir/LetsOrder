@@ -1,0 +1,57 @@
+# Backend Continuous Integration (CI)
+#
+# Workflow ini menjalankan pemeriksaan dependensi,
+# validasi konfigurasi Composer, dan pemeriksaan sintaks PHP
+# pada backend Laravel LetsOrder.com.
+
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-check:
+    name: Backend Validation
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, openssl, pdo_mysql, tokenizer, xml, ctype, fileinfo
+          coverage: none
+
+      - name: Validate Composer Configuration
+        run: composer validate --no-check-publish --no-check-lock
+
+      - name: Install Composer Dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
+
+      - name: Check PHP Syntax
+        run: |
+          find . -type f -name "*.php" -print0 | xargs -0 -r -n1 php -l
