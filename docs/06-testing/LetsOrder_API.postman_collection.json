@@ -1,0 +1,654 @@
+{
+  "info": {
+    "_postman_id": "c71a39f0-e41b-4bfa-a83d-3b8e762c5b9f",
+    "name": "LetsOrder.com API Collection",
+    "description": "Koleksi lengkap Postman API LetsOrder.com untuk pengujian seluruh alur Customer, Vendor, dan Administrator sesuai ERD final dan spesifikasi REST API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000/api", "type": "string" },
+    { "key": "token_customer", "value": "", "type": "string" },
+    { "key": "token_vendor", "value": "", "type": "string" },
+    { "key": "token_admin", "value": "", "type": "string" },
+    { "key": "order_id", "value": "1", "type": "string" },
+    { "key": "payment_id", "value": "1", "type": "string" },
+    { "key": "menu_id", "value": "1", "type": "string" },
+    { "key": "tenant_id", "value": "1", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Health Check",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Accept", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] }
+      }
+    },
+    {
+      "name": "2. Authentication",
+      "item": [
+        {
+          "name": "Register Customer Baru",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"mhs_baru\",\n  \"nama\": \"Mahasiswa UPNVJ Baru\",\n  \"email\": \"mhs_baru@upnvj.ac.id\",\n  \"password\": \"password123\",\n  \"password_confirmation\": \"password123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"] }
+          }
+        },
+        {
+          "name": "Login Customer (Auto-Set Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && (jsonData.data.access_token || jsonData.data.token)) {",
+                  "    pm.collectionVariables.set('token_customer', jsonData.data.access_token || jsonData.data.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"login\": \"customer01\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Login Vendor (Auto-Set Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && (jsonData.data.access_token || jsonData.data.token)) {",
+                  "    pm.collectionVariables.set('token_vendor', jsonData.data.access_token || jsonData.data.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"login\": \"vendor01\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Login Administrator (Auto-Set Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && (jsonData.data.access_token || jsonData.data.token)) {",
+                  "    pm.collectionVariables.set('token_admin', jsonData.data.access_token || jsonData.data.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"login\": \"admin\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Profil Pengguna (/auth/me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Kategori & Tenant (Katalog Publik)",
+      "item": [
+        {
+          "name": "Daftar Kategori",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/categories", "host": ["{{base_url}}"], "path": ["categories"] }
+          }
+        },
+        {
+          "name": "Detail Kategori beserta Menu",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/categories/1", "host": ["{{base_url}}"], "path": ["categories", "1"] }
+          }
+        },
+        {
+          "name": "Daftar Tenant",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/tenants", "host": ["{{base_url}}"], "path": ["tenants"] }
+          }
+        },
+        {
+          "name": "Detail Tenant",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/tenants/1", "host": ["{{base_url}}"], "path": ["tenants", "1"] }
+          }
+        },
+        {
+          "name": "Daftar Menu berdasarkan Tenant",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/tenants/1/menus", "host": ["{{base_url}}"], "path": ["tenants", "1", "menus"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Menu API (Katalog & Detail)",
+      "item": [
+        {
+          "name": "Katalog Menu Tersedia (Filter Kategori & Tenant)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/menus?status_tersedia=1",
+              "host": ["{{base_url}}"],
+              "path": ["menus"],
+              "query": [{ "key": "status_tersedia", "value": "1" }]
+            }
+          }
+        },
+        {
+          "name": "Detail Menu",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/menus/1", "host": ["{{base_url}}"], "path": ["menus", "1"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Keranjang Belanja (Customer)",
+      "item": [
+        {
+          "name": "Lihat Isi Keranjang",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "url": { "raw": "{{base_url}}/cart", "host": ["{{base_url}}"], "path": ["cart"] }
+          }
+        },
+        {
+          "name": "Tambah Item ke Keranjang",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_menu\": 1,\n  \"jumlah\": 2,\n  \"catatan\": \"Sambal bawang pedas pisah\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/cart/items", "host": ["{{base_url}}"], "path": ["cart", "items"] }
+          }
+        },
+        {
+          "name": "Ubah Jumlah / Catatan Item Keranjang",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jumlah\": 3,\n  \"catatan\": \"Sambal bawang sedikit saja\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/cart/items/1", "host": ["{{base_url}}"], "path": ["cart", "items", "1"] }
+          }
+        },
+        {
+          "name": "Hapus Item dari Keranjang",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "url": { "raw": "{{base_url}}/cart/items/1", "host": ["{{base_url}}"], "path": ["cart", "items", "1"] }
+          }
+        },
+        {
+          "name": "Kosongkan Keranjang",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "url": { "raw": "{{base_url}}/cart", "host": ["{{base_url}}"], "path": ["cart"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Pemesanan & Pelacakan Self-Pickup",
+      "item": [
+        {
+          "name": "Buat Pesanan dari Keranjang",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.id_pesanan) {",
+                  "    pm.collectionVariables.set('order_id', jsonData.data.id_pesanan);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"catatan\": \"Diambil jam 12:15 WIB\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/orders", "host": ["{{base_url}}"], "path": ["orders"] }
+          }
+        },
+        {
+          "name": "Daftar Riwayat Pesanan Customer",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "url": { "raw": "{{base_url}}/orders", "host": ["{{base_url}}"], "path": ["orders"] }
+          }
+        },
+        {
+          "name": "Detail Pesanan",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "url": { "raw": "{{base_url}}/orders/{{order_id}}", "host": ["{{base_url}}"], "path": ["orders", "{{order_id}}"] }
+          }
+        },
+        {
+          "name": "Lihat Status Terkini Pesanan (Order Tracking)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "url": { "raw": "{{base_url}}/orders/{{order_id}}/status", "host": ["{{base_url}}"], "path": ["orders", "{{order_id}}", "status"] }
+          }
+        },
+        {
+          "name": "Lihat Riwayat Perubahan Status Pesanan",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "url": { "raw": "{{base_url}}/orders/{{order_id}}/status-history", "host": ["{{base_url}}"], "path": ["orders", "{{order_id}}", "status-history"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Simulasi Pembayaran (QRIS & Dompet Digital)",
+      "item": [
+        {
+          "name": "Buat Pembayaran Simulasi (QRIS)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.id_pembayaran) {",
+                  "    pm.collectionVariables.set('payment_id', jsonData.data.id_pembayaran);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"metode_pembayaran\": \"QRIS\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/orders/{{order_id}}/payment", "host": ["{{base_url}}"], "path": ["orders", "{{order_id}}", "payment"] }
+          }
+        },
+        {
+          "name": "Informasi Pembayaran Pesanan",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "url": { "raw": "{{base_url}}/orders/{{order_id}}/payment", "host": ["{{base_url}}"], "path": ["orders", "{{order_id}}", "payment"] }
+          }
+        },
+        {
+          "name": "Verifikasi Pembayaran Simulasi (Status -> Sedang Diproses)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status_verifikasi\": \"Terverifikasi\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/payments/{{payment_id}}/verification", "host": ["{{base_url}}"], "path": ["payments", "{{payment_id}}", "verification"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Notifikasi",
+      "item": [
+        {
+          "name": "Daftar Notifikasi Pengguna",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "url": { "raw": "{{base_url}}/notifications", "host": ["{{base_url}}"], "path": ["notifications"] }
+          }
+        },
+        {
+          "name": "Tandai Satu Notifikasi Sudah Dibaca",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "url": { "raw": "{{base_url}}/notifications/1/read", "host": ["{{base_url}}"], "path": ["notifications", "1", "read"] }
+          }
+        },
+        {
+          "name": "Tandai Semua Notifikasi Sudah Dibaca",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_customer}}" }
+            ],
+            "url": { "raw": "{{base_url}}/notifications/read-all", "host": ["{{base_url}}"], "path": ["notifications", "read-all"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Portal Vendor (Pengelolaan Tenant & Menu)",
+      "item": [
+        {
+          "name": "Informasi Tenant Milik Vendor",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_vendor}}" }
+            ],
+            "url": { "raw": "{{base_url}}/vendor/tenant", "host": ["{{base_url}}"], "path": ["vendor", "tenant"] }
+          }
+        },
+        {
+          "name": "Perbarui Status Buka Tenant",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_vendor}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status_buka\": true\n}"
+            },
+            "url": { "raw": "{{base_url}}/vendor/tenant", "host": ["{{base_url}}"], "path": ["vendor", "tenant"] }
+          }
+        },
+        {
+          "name": "Daftar Menu Milik Tenant Vendor",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_vendor}}" }
+            ],
+            "url": { "raw": "{{base_url}}/vendor/menus", "host": ["{{base_url}}"], "path": ["vendor", "menus"] }
+          }
+        },
+        {
+          "name": "Tambah Menu Baru oleh Vendor",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_vendor}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_kategori\": 1,\n  \"nama_menu\": \"Ayam Bakar Madu Spesial\",\n  \"deskripsi\": \"Ayam bakar bumbu madu legit dengan sambal terasi\",\n  \"gambar\": \"menu/ayam-bakar.png\",\n  \"harga\": 20000,\n  \"estimasi_menit\": 10,\n  \"status_tersedia\": true\n}"
+            },
+            "url": { "raw": "{{base_url}}/vendor/menus", "host": ["{{base_url}}"], "path": ["vendor", "menus"] }
+          }
+        },
+        {
+          "name": "Ubah Ketersediaan Menu (Stok Habis / Ada)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_vendor}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status_tersedia\": false\n}"
+            },
+            "url": { "raw": "{{base_url}}/vendor/menus/1/availability", "host": ["{{base_url}}"], "path": ["vendor", "menus", "1", "availability"] }
+          }
+        },
+        {
+          "name": "Daftar Pesanan Masuk Tenant",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_vendor}}" }
+            ],
+            "url": { "raw": "{{base_url}}/vendor/orders", "host": ["{{base_url}}"], "path": ["vendor", "orders"] }
+          }
+        },
+        {
+          "name": "Perbarui Status Pesanan Menjadi Siap Diambil",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_vendor}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status_pesanan\": \"Siap Diambil\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/vendor/orders/{{order_id}}/status", "host": ["{{base_url}}"], "path": ["vendor", "orders", "{{order_id}}", "status"] }
+          }
+        },
+        {
+          "name": "Selesaikan Pesanan (Sudah Diambil Pelanggan)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_vendor}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status_pesanan\": \"Selesai\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/vendor/orders/{{order_id}}/status", "host": ["{{base_url}}"], "path": ["vendor", "orders", "{{order_id}}", "status"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Administrator API",
+      "item": [
+        {
+          "name": "Daftar Pengguna",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_admin}}" }
+            ],
+            "url": { "raw": "{{base_url}}/admin/users", "host": ["{{base_url}}"], "path": ["admin", "users"] }
+          }
+        },
+        {
+          "name": "Ubah Peran / Data Pengguna",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_admin}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"peran\": \"Vendor\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/admin/users/4", "host": ["{{base_url}}"], "path": ["admin", "users", "4"] }
+          }
+        },
+        {
+          "name": "Daftar Tenant (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_admin}}" }
+            ],
+            "url": { "raw": "{{base_url}}/admin/tenants", "host": ["{{base_url}}"], "path": ["admin", "tenants"] }
+          }
+        },
+        {
+          "name": "Buat Tenant Baru (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_admin}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_user\": 3,\n  \"nama_tenant\": \"Kantin Pojok Baru\",\n  \"deskripsi\": \"Menyediakan aneka jus buah segar\",\n  \"logo\": \"tenant/default.png\",\n  \"status_buka\": true\n}"
+            },
+            "url": { "raw": "{{base_url}}/admin/tenants", "host": ["{{base_url}}"], "path": ["admin", "tenants"] }
+          }
+        }
+      ]
+    }
+  ]
+}

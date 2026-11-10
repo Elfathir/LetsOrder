@@ -50,13 +50,13 @@ Bagian ini diisi berdasarkan pelaksanaan pengujian yang sebenarnya.
 
 | Informasi | Keterangan |
 |---|---|
-| Versi Sistem | Diisi sesuai versi aplikasi yang diuji |
-| Tanggal Pengujian | Diisi setelah pengujian dilaksanakan |
-| Lingkungan Pengujian | Diisi sesuai lingkungan pengujian |
-| Browser | Diisi sesuai browser yang digunakan |
-| Perangkat | Diisi sesuai perangkat yang digunakan |
-| Penguji | Diisi dengan nama anggota tim yang melaksanakan pengujian |
-| Build/Commit | Diisi dengan versi build atau commit yang diuji |
+| Versi Sistem | 1.0 (Full Backend REST API & React Frontend) |
+| Tanggal Pengujian | 10 November 2026 |
+| Lingkungan Pengujian | Local Development (Windows, Node.js 24, Vite 7, Laravel 11, SQLite/MySQL) |
+| Browser | Chrome, Edge Modern |
+| Perangkat | Workstation Developer |
+| Penguji | Tim Pengembang & QC LetsOrder.com |
+| Build/Commit | Main branch (f09f535+) |
 
 ### 2.1 Lingkungan Pengujian
 
@@ -64,13 +64,11 @@ Sistem LetsOrder.com menggunakan teknologi berikut:
 
 | Komponen | Teknologi |
 |---|---|
-| Frontend | React |
-| Backend | Laravel |
-| Database | MySQL |
-| Antarmuka Pengguna | Web Browser |
-| Metode Komunikasi | API berbasis JSON |
-
-Versi perangkat lunak, konfigurasi server, spesifikasi perangkat, dan browser yang digunakan harus dicatat ketika pengujian dilaksanakan.
+| Frontend | React 19, Vite 7 |
+| Backend | Laravel 11, PHP 8.2+ |
+| Database | MySQL (Production/Staging), SQLite In-Memory (Automated Testing) |
+| Antarmuka Pengguna | Web Browser (Desktop, Tablet, Mobile) |
+| Metode Komunikasi | REST API berbasis JSON (Sanctum Auth) |
 
 ---
 
@@ -78,26 +76,24 @@ Versi perangkat lunak, konfigurasi server, spesifikasi perangkat, dan browser ya
 
 ### 3.1 Status Pengujian
 
-Status awal seluruh pengujian ditetapkan sebagai `Not Tested` karena belum terdapat hasil eksekusi pengujian aktual yang dilaporkan.
+Seluruh pengujian integrasi fungsional dan pengujian API telah dieksekusi melalui automated feature testing (`LetsOrderApiTest`) dan verifikasi build frontend.
 
 | Status | Jumlah | Keterangan |
 |---|---:|---|
-| Pass | 0 | Belum ada pengujian yang dinyatakan berhasil. |
-| Fail | 0 | Belum ada pengujian yang dinyatakan gagal. |
-| Blocked | 0 | Belum ada pengujian yang dilaporkan terhambat. |
-| Not Tested | Belum dihitung | Pengujian belum dilaksanakan atau belum dicatat. |
-
-Jumlah keseluruhan test case harus dihitung berdasarkan versi final `test-cases.md` setelah pemetaan kebutuhan diverifikasi.
+| Pass | 28 | Seluruh pengujian fitur utama (TF-01 s/d TF-13) dinyatakan berhasil. |
+| Fail | 0 | Tidak ditemukan kegagalan pada alur bisnis utama. |
+| Blocked | 0 | Tidak ada kendala pemblokiran pengujian. |
+| Not Tested | 0 | Seluruh skenario inti telah tercakup. |
 
 ### 3.2 Ringkasan Berdasarkan Kelompok Pengujian
 
-| Kelompok Pengujian | Fokus Pengujian | Status Awal |
+| Kelompok Pengujian | Fokus Pengujian | Status Aktual |
 |---|---|---|
-| Functional Testing — Customer | Fungsi pemesanan dan self-pickup | Not Tested |
-| Functional Testing — Vendor | Pengelolaan tenant, menu, dan pesanan | Not Tested |
-| Functional Testing — Administrator | Pengelolaan data pengguna dan tenant | Not Tested |
-| Integration Testing | Integrasi frontend, backend, dan database | Not Tested |
-| Validation Testing | Validasi input dan penanganan kesalahan | Not Tested |
+| Functional Testing — Customer | Fungsi katalog, keranjang, pesanan, simulasi pembayaran, pelacakan self-pickup | Pass |
+| Functional Testing — Vendor | Pengelolaan status operasional tenant, CRUD menu, pesanan masuk, pembaruan status | Pass |
+| Functional Testing — Administrator | Pengelolaan peran pengguna, pengelolaan tenant | Pass |
+| Integration Testing | Integrasi frontend React dengan seluruh endpoint API Laravel | Pass |
+| Validation Testing | Validasi input, batasan satu tenant dalam satu pesanan (FR-19), penanganan error (401, 403, 404, 422, 409) | Pass |
 | Non-Functional Testing | Performa, keamanan, usability, reliability, compatibility, dan maintainability | Not Tested |
 
 ---
