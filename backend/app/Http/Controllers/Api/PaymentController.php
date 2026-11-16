@@ -7,6 +7,7 @@ use App\Models\Notification;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\StatusHistory;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -84,33 +85,48 @@ class PaymentController extends Controller
             ->sortByDesc('id_pembayaran')
             ->first();
 
-        if ($existingPending) {
-            $existingPending->update([
-                'metode_pembayaran' => $method,
-                'kode_qris' => $kodeSimulasi,
-                'total_bayar' => (int) $order->total_harga,
-                'status_verifikasi' => 'Menunggu',
-                'batas_waktu' => $batasWaktu,
-                'waktu_bayar' => null,
-            ]);
-            $payment = $existingPending->refresh();
-        } else {
-            $payment = Payment::create([
-                'id_pesanan' => $order->id_pesanan,
-                'metode_pembayaran' => $method,
-                'kode_qris' => $kodeSimulasi,
-                'total_bayar' => (int) $order->total_harga,
-                'status_verifikasi' => 'Menunggu',
-                'batas_waktu' => $batasWaktu,
-                'waktu_bayar' => null,
-            ]);
-        }
+        $payload = [
+            'id_pesanan' => $order->id_pesanan,
+            'metode_pembayaran' => $method,
+            'kode_qris' => $kodeSimulasi,
+            'total_bayar' => (int) $order->total_harga,
+            'status_verifikasi' => 'Menunggu',
+            'batas_waktu' => $batasWaktu,
+            'waktu_bayar' => null,
+        ];
+
+        $payment = $this->savePendingPaymentWithFallback($existingPending, $payload);
 
         return response()->json([
             'success' => true,
             'message' => 'Pembayaran simulasi berhasil dibuat.',
             'data' => $this->formatPaymentResponse($payment),
         ], 201);
+    }
+
+    /**
+     * Simpan/perbarui row pembayaran pending dengan fallback jika schema MySQL lama
+     * masih mendefinisikan kolom waktu_bayar sebagai NOT NULL.
+     */
+    private function savePendingPaymentWithFallback(?Payment $existingPending, array $payload): Payment
+    {
+        $persist = function (array $attrs) use ($existingPending): Payment {
+            if ($existingPending) {
+                $existingPending->update($attrs);
+                return $existingPending->refresh();
+            }
+            return Payment::create($attrs);
+        };
+
+        try {
+            return $persist($payload);
+        } catch (QueryException $e) {
+            if (str_contains(strtolower($e->getMessage()), 'waktu_bayar')) {
+                $payload['waktu_bayar'] = now();
+                return $persist($payload);
+            }
+            throw $e;
+        }
     }
 
     /**

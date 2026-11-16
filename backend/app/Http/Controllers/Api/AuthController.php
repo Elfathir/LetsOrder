@@ -48,7 +48,7 @@ class AuthController extends Controller
                 'id_user' => $user->id_user,
                 'nama_tenant' => $request->input('nama_tenant') ?: $nama,
                 'deskripsi' => 'Tenant Kantin Kampus UPNVJ',
-                'logo' => 'tenant/default.png',
+                'logo' => '',
                 'status_buka' => true,
             ]);
             $user->setRelation('tenant', $tenant);

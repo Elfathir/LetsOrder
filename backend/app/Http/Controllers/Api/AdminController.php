@@ -146,7 +146,7 @@ class AdminController extends Controller
             'id_user' => 'required|integer|exists:users,id_user',
             'nama_tenant' => 'required|string|max:100',
             'deskripsi' => 'nullable|string',
-            'logo' => 'nullable|string|max:255',
+            'logo' => 'nullable|string',
             'status_buka' => 'sometimes|boolean',
         ]);
 
@@ -154,7 +154,7 @@ class AdminController extends Controller
             'id_user' => $validated['id_user'],
             'nama_tenant' => $validated['nama_tenant'],
             'deskripsi' => $validated['deskripsi'] ?? '',
-            'logo' => $validated['logo'] ?? 'tenant/default.png',
+            'logo' => $validated['logo'] ?? '',
             'status_buka' => $validated['status_buka'] ?? true,
         ]);
 
@@ -206,7 +206,7 @@ class AdminController extends Controller
             'id_user' => 'sometimes|required|integer|exists:users,id_user',
             'nama_tenant' => 'sometimes|required|string|max:100',
             'deskripsi' => 'nullable|string',
-            'logo' => 'nullable|string|max:255',
+            'logo' => 'nullable|string',
             'status_buka' => 'sometimes|boolean',
         ]);
 
@@ -215,7 +215,7 @@ class AdminController extends Controller
         }
 
         if (array_key_exists('logo', $validated) && $validated['logo'] === null) {
-            $validated['logo'] = $tenant->logo ?? 'tenant/default.png';
+            $validated['logo'] = $tenant->logo ?? '';
         }
 
         $tenant->update($validated);

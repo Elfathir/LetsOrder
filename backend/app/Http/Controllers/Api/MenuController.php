@@ -172,7 +172,7 @@ class MenuController extends Controller
             'id_kategori' => $categoryId,
             'nama_menu' => $validated['nama_menu'],
             'deskripsi' => $validated['deskripsi'] ?? '',
-            'gambar' => $validated['gambar'] ?? 'menu/default.png',
+            'gambar' => $validated['gambar'] ?? '',
             'harga' => $validated['harga'],
             'estimasi_menit' => $validated['estimasi_menit'],
             'status_tersedia' => $validated['status_tersedia'] ?? true,
@@ -224,7 +224,7 @@ class MenuController extends Controller
         }
 
         if (array_key_exists('gambar', $validated) && $validated['gambar'] === null) {
-            $validated['gambar'] = $menu->gambar ?? 'menu/default.png';
+            $validated['gambar'] = $menu->gambar ?? '';
         }
 
         $menu->update($validated);

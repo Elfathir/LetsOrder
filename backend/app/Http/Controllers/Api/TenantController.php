@@ -189,7 +189,7 @@ class TenantController extends Controller
         $validated = $request->validate([
             'nama_tenant' => 'sometimes|required|string|max:100',
             'deskripsi' => 'nullable|string',
-            'logo' => 'nullable|string|max:255',
+            'logo' => 'nullable|string',
             'status_buka' => 'sometimes|boolean',
         ]);
 
@@ -198,7 +198,7 @@ class TenantController extends Controller
         }
 
         if (array_key_exists('logo', $validated) && $validated['logo'] === null) {
-            $validated['logo'] = $tenant->logo ?? 'tenant/default.png';
+            $validated['logo'] = $tenant->logo ?? '';
         }
 
         $tenant->update($validated);

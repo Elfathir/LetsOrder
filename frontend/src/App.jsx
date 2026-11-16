@@ -396,7 +396,9 @@ function getInitials(name) {
 
 function SafeImage({ src, alt, className = "", style = {}, fallbackType = "food", iconSize = 28 }) {
   const [failed, setFailed] = useState(false);
-  const cleanSrc = typeof src === "string" ? src.trim() : "";
+  const rawSrc = typeof src === "string" ? src.trim() : "";
+  const cleanSrc =
+    rawSrc === "menu/default.png" || rawSrc === "tenant/default.png" ? "" : rawSrc;
 
   useEffect(() => {
     setFailed(false);
@@ -1386,6 +1388,23 @@ export default function App() {
         });
         createdOrder = created?.data;
         oid = createdOrder?.id_pesanan;
+
+        if (oid) {
+          // Record the newly created order immediately so retrying a failed payment
+          // resumes this order instead of submitting duplicate orders.
+          setActiveOrderId(oid);
+          setActiveOrder({
+            ...createdOrder,
+            id_pesanan: oid,
+            nomor_antrean: createdOrder.nomor_antrean || `A-${oid}`,
+            items_summary: summarySnapshot,
+            tenant_name: createdOrder.tenant?.nama_tenant || tenantSnapshot,
+            booth: createdOrder.tenant?.booth || "",
+            total_harga: Number(createdOrder.total_harga ?? totalSnapshot),
+          });
+          setActiveQueueCode(createdOrder.nomor_antrean || `A-${oid}`);
+          setCartItems([]);
+        }
       }
 
       if (!oid) {
