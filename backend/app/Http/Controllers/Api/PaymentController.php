@@ -128,7 +128,7 @@ class PaymentController extends Controller
             ], 404);
         }
 
-        if (!$this->canAccessOrderPayment($user, $order)) {
+        if (!$this->canAccessOrderPayment($user, $order, false)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda tidak memiliki hak akses untuk melihat informasi pembayaran ini.',
@@ -204,7 +204,7 @@ class PaymentController extends Controller
         $user = $request->user();
         $order = $payment->order;
 
-        if (!$this->canAccessOrderPayment($user, $order)) {
+        if (!$this->canAccessOrderPayment($user, $order, true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda tidak memiliki hak akses untuk memverifikasi pembayaran ini.',
@@ -289,7 +289,7 @@ class PaymentController extends Controller
     /**
      * Memeriksa kewenangan akses pembayaran (Customer pemilik, Vendor tenant terkait, atau Administrator).
      */
-    private function canAccessOrderPayment($user, Order $order): bool
+    private function canAccessOrderPayment($user, Order $order, bool $forVerification = false): bool
     {
         if (!$user) {
             return false;
@@ -299,12 +299,16 @@ class PaymentController extends Controller
             return true;
         }
 
-        if ((int) $order->id_user === (int) $user->id_user) {
+        if ($order->tenant && (int) $order->tenant->id_user === (int) $user->id_user) {
             return true;
         }
 
-        if ($order->tenant && (int) $order->tenant->id_user === (int) $user->id_user) {
-            return true;
+        if ((int) $order->id_user === (int) $user->id_user) {
+            if (!$forVerification) {
+                return true;
+            }
+            return app()->environment(['local', 'testing'])
+                || filter_var(env('PAYMENT_SIMULATION_ENABLED', false), FILTER_VALIDATE_BOOL);
         }
 
         return false;

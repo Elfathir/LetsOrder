@@ -67,6 +67,7 @@ class OrderController extends Controller
 
         $validated = $request->validate([
             'catatan' => 'nullable|string|max:500',
+            'promo_code' => 'nullable|string|max:32',
         ]);
 
         $cart = Cart::with(['cartItems.menu.tenant'])
@@ -125,7 +126,7 @@ class OrderController extends Controller
             ], 422);
         }
 
-        // Hitung total harga berdasarkan detail item keranjang
+        // Hitung total harga & diskon promo secara server-side
         $totalHarga = 0;
         $itemNotes = [];
         foreach ($cartItems as $item) {
@@ -134,6 +135,21 @@ class OrderController extends Controller
             if (!empty($item->catatan)) {
                 $itemNotes[] = "{$item->menu->nama_menu}: {$item->catatan}";
             }
+        }
+
+        $promoCode = strtoupper(trim((string) ($validated['promo_code'] ?? '')));
+        $promoRules = [
+            'COMBO3K' => ['type' => 'fixed', 'discount' => 3000, 'minSpend' => 20000],
+            'STUDENT10' => ['type' => 'percentage', 'discount' => 0.1, 'minSpend' => 25000],
+            'HEMAT5K' => ['type' => 'fixed', 'discount' => 5000, 'minSpend' => 30000],
+            'EARLYBIRD' => ['type' => 'percentage', 'discount' => 0.15, 'minSpend' => 15000],
+        ];
+        if (isset($promoRules[$promoCode]) && $totalHarga >= $promoRules[$promoCode]['minSpend']) {
+            $rule = $promoRules[$promoCode];
+            $discount = $rule['type'] === 'percentage'
+                ? (int) round($totalHarga * $rule['discount'])
+                : (int) $rule['discount'];
+            $totalHarga = max(0, $totalHarga - min($totalHarga, $discount));
         }
 
         $orderNote = $validated['catatan'] ?? '';

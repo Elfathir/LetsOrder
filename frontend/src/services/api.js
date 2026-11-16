@@ -87,10 +87,8 @@ function buildQuery(params = {}) {
 }
 
 export const api = {
-  // Health
   checkHealth: () => request("/health"),
 
-  // Auth
   register: (data) =>
     request("/auth/register", {
       method: "POST",
@@ -101,27 +99,60 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  googleLogin: (data) =>
+    request("/auth/google", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  exchangeGoogleCode: (code) =>
+    request("/auth/google/exchange", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+  getGoogleConfig: () => request("/auth/google/config"),
+  getGoogleRedirectUrl: (peran = "Customer", clientId = "") =>
+    `${API_BASE_URL}/auth/google/redirect${buildQuery({
+      peran,
+      origin: typeof window !== "undefined" ? window.location.origin : "http://localhost:5173",
+      client_id: clientId || import.meta.env.VITE_GOOGLE_CLIENT_ID || undefined,
+    })}`,
+  forgotPassword: (data) =>
+    request("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  resetPassword: (data) =>
+    request("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updatePassword: (data) =>
+    request("/auth/password", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  updateProfile: (data) =>
+    request("/auth/profile", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
   me: () => request("/auth/me"),
   logout: () =>
     request("/auth/logout", {
       method: "POST",
     }),
 
-  // Categories
   getCategories: () => request("/categories"),
   getCategory: (id) => request(`/categories/${id}`),
 
-  // Tenants
   getTenants: (params) => request(`/tenants${buildQuery(params)}`),
   getTenant: (id, params) => request(`/tenants/${id}${buildQuery(params)}`),
   getTenantMenus: (id, params) =>
     request(`/tenants/${id}/menus${buildQuery(params)}`),
 
-  // Menus
   getMenus: (params) => request(`/menus${buildQuery(params)}`),
   getMenu: (id) => request(`/menus/${id}`),
 
-  // Customer Cart
   getCart: () => request("/cart"),
   clearCart: () =>
     request("/cart", {
@@ -142,7 +173,6 @@ export const api = {
       method: "DELETE",
     }),
 
-  // Customer Orders & Tracking
   createOrder: (data) =>
     request("/orders", {
       method: "POST",
@@ -153,7 +183,6 @@ export const api = {
   getOrderStatus: (id) => request(`/orders/${id}/status`),
   getOrderStatusHistory: (id) => request(`/orders/${id}/status-history`),
 
-  // Payment Simulation
   createPayment: (orderId, data) =>
     request(`/orders/${orderId}/payment`, {
       method: "POST",
@@ -171,7 +200,6 @@ export const api = {
       body: JSON.stringify({ status_verifikasi }),
     }),
 
-  // Notifications
   getNotifications: (params) => request(`/notifications${buildQuery(params)}`),
   markNotificationRead: (id) =>
     request(`/notifications/${id}/read`, {
@@ -183,7 +211,6 @@ export const api = {
       method: "PATCH",
     }),
 
-  // Vendor Portal
   getVendorTenant: () => request("/vendor/tenant"),
   updateVendorTenant: (data) =>
     request("/vendor/tenant", {
@@ -217,7 +244,6 @@ export const api = {
       body: JSON.stringify({ status_pesanan }),
     }),
 
-  // Administrator Portal
   getAdminUsers: (params) => request(`/admin/users${buildQuery(params)}`),
   updateAdminUser: (id, data) =>
     request(`/admin/users/${id}`, {
@@ -240,4 +266,3 @@ export const api = {
       method: "DELETE",
     }),
 };
-

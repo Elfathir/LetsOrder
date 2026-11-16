@@ -1,2361 +1,7826 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Search,
+  ShoppingBag,
+  Star,
+  Clock,
+  ChevronRight,
+  ChevronLeft,
+  Check,
+  AlertCircle,
+  X,
+  User,
+  LogOut,
+  ArrowRight,
+  ArrowLeft,
+  QrCode,
+  Timer,
+  Bell,
+  Heart,
+  HelpCircle,
+  Plus,
+  Minus,
+  Trash2,
+  MapPin,
+  Menu,
+  Eye,
+  EyeOff,
+  Globe,
+  Store,
+  Tag,
+  Lock,
+  Mail,
+  Receipt,
+  RotateCcw,
+  Pencil,
+  TrendingUp,
+  Users,
+  Banknote,
+  CheckCircle2,
+} from "lucide-react";
 import {
   api,
-  clearStoredSession,
-  getStoredToken,
   getStoredUser,
   setStoredSession,
+  clearStoredSession,
 } from "./services/api";
 
-const FALLBACK_CATEGORIES = [
-  { id_kategori: 1, nama_kategori: "Makanan", icon: "categories/bowl.png" },
-  { id_kategori: 2, nama_kategori: "Minuman", icon: "categories/cup.png" },
-  { id_kategori: 3, nama_kategori: "Camilan", icon: "categories/snack.png" },
+const HERO_SLIDES_BY_LANG = {
+  EN: [
+    {
+      tag: "ESTD 2026 · CAMPUS CANTEEN",
+      title: "Skip The Line. Pre-Order Your Campus Meal.",
+      desc: "Freshly prepared by your favorite campus canteen tenants. Grab it warm between lectures without waiting in queue.",
+      image: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1400&auto=format&fit=crop&q=80",
+      primaryCta: "Order now",
+      secondaryCta: "Explore tenants",
+    },
+    {
+      tag: "STUDENT SPECIAL PROMO",
+      title: "10% Off Every Meal With Code STUDENT10",
+      desc: "Enjoy 10% discount on all campus canteen menus for orders above Rp25.000. Apply coupon directly in your cart!",
+      image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1400&auto=format&fit=crop&q=80",
+      primaryCta: "Claim promo",
+      secondaryCta: "View popular menu",
+    },
+    {
+      tag: "SELF-PICKUP DIGITAL",
+      title: "Real-Time Cooking & Counter Pickup Tracker",
+      desc: "Get your digital queue number directly on your phone and arrive just when your warm food is ready at the counter.",
+      image: "https://images.unsplash.com/photo-1498654896293-37aacf113fd9?w=1400&auto=format&fit=crop&q=80",
+      primaryCta: "Track orders",
+      secondaryCta: "Explore menu",
+    },
+  ],
+  ID: [
+    {
+      tag: "ESTD 2026 · KANTIN KAMPUS",
+      title: "Tanpa Antre. Pesan Makanan Kantin Lebih Awal.",
+      desc: "Disiapkan langsung oleh tenant kantin favoritmu. Ambil hangat di sela jadwal kuliah tanpa perlu antre lama.",
+      image: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1400&auto=format&fit=crop&q=80",
+      primaryCta: "Pesan sekarang",
+      secondaryCta: "Lihat kantin",
+    },
+    {
+      tag: "PROMO SPESIAL MAHASISWA",
+      title: "Diskon 10% Setiap Pesanan Dengan Kode STUDENT10",
+      desc: "Nikmati potongan 10% untuk semua menu kantin dengan minimal belanja Rp25.000. Gunakan promo langsung di keranjang!",
+      image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1400&auto=format&fit=crop&q=80",
+      primaryCta: "Pakai promo",
+      secondaryCta: "Lihat menu populer",
+    },
+    {
+      tag: "AMBIL MANDIRI DIGITAL",
+      title: "Pantau Proses Masak & Antrean Secara Real-Time",
+      desc: "Dapatkan nomor antrean digital langsung dari HP dan datang ke konter saat makananmu sudah siap.",
+      image: "https://images.unsplash.com/photo-1498654896293-37aacf113fd9?w=1400&auto=format&fit=crop&q=80",
+      primaryCta: "Lacak pesanan",
+      secondaryCta: "Jelajahi menu",
+    },
+  ],
+};
+
+const TRANSLATIONS = {
+  EN: {
+    subtitleCustomer: "Campus canteen pre-order",
+    subtitleTenant: "Tenant portal",
+    navHome: "Home",
+    navTenant: "Tenant",
+    navOrders: "Orders",
+    navHistory: "History",
+    navDashboard: "Dashboard",
+    navMenu: "Menu",
+    categories: "Categories",
+    catRice: "Rice & Mains",
+    catSnacks: "Snacks",
+    catDrinks: "Drinks",
+    itemsUnit: "items",
+    popularMenu: "Popular menu",
+    viewAll: "View all",
+    emptyMenuTitle: "No menus uploaded yet",
+    emptyMenuDesc: "No campus canteen tenant has uploaded food or beverage menus yet.",
+    tenantTitle: "Tenant",
+    tenantSubtitle: "Order ahead and skip the line at the counter.",
+    searchFoodPlaceholder: "Search food or drinks…",
+    emptyTenantTitle: "No tenants registered yet",
+    emptyTenantDesc: "Canteen tenants will appear here after signing up with a Tenant account.",
+    backTenants: "Back to all tenants",
+    emptyCartTitle: "Your order cart is empty",
+    emptyCartDesc: "Browse foods or drinks from campus canteen tenants before picking a promo and checking out.",
+    browseMenuBtn: "Browse Menu",
+    yourOrder: "Your order",
+    reviewItems: "Review your items and apply a promo before paying.",
+    emptyCartShort: "No meals or drinks selected yet.",
+    stepCart: "Cart & promo",
+    stepPayment: "Payment",
+    stepPreparing: "Preparing",
+    stepPickup: "Pickup",
+    cartTitle: "Cart",
+    addMore: "+ Add more",
+    promosTitle: "Promos",
+    pickPromo: "Pick one promo for this order.",
+    subtotal: "Subtotal",
+    serviceFee: "Service fee",
+    free: "Free",
+    total: "Total",
+    continuePayment: "Continue to payment",
+    orderSummary: "Order summary",
+    cancelEdit: "Cancel & edit order",
+    scanToPay: "Scan to pay",
+    amountDue: "Amount due",
+    paymentTimer: "Payment timer",
+    completePaymentBtn: "I've completed payment",
+    historyTitle: "Order history",
+    historyDesc: "Track active orders and reorder your favorites.",
+    filterAll: "All",
+    filterInProgress: "In progress",
+    filterCompleted: "Completed",
+    filterCancelled: "Cancelled",
+    welcomeBack: "Welcome back",
+    storeOpen: "Open for orders",
+    storeClosed: "Closed for orders",
+    kpiOrders: "Orders today",
+    kpiRevenue: "Revenue today",
+    kpiQueue: "In queue now",
+    kpiPrep: "Avg. prep time",
+    incomingOrders: "Incoming orders",
+    incomingDesc: "Manage active orders from your canteen customers.",
+    noIncomingOrders: "No active incoming orders yet. New customer orders will appear here automatically.",
+    menuAvailability: "Menu availability",
+    itemsAvailable: "items available",
+    manageMenu: "Manage menu",
+    topSellers: "Top sellers today",
+    noMenuUploadedShort: "No menus uploaded yet.",
+    myMenuTitle: "My menu",
+    myMenuDesc: "Upload, edit dishes and control what customers can order.",
+    uploadMenuBtn: "Upload Menu",
+    drawerProfile: "My Profile",
+    drawerFavorites: "Favorites",
+    drawerNotifications: "Notifications",
+    drawerHelp: "Help Center",
+    logout: "Log out",
+    authWelcome: "Welcome back",
+    authCreate: "Create your account",
+    authForgot: "Reset password",
+  },
+  ID: {
+    subtitleCustomer: "Pre-order kantin kampus",
+    subtitleTenant: "Portal tenant",
+    navHome: "Beranda",
+    navTenant: "Kantin",
+    navOrders: "Pesanan",
+    navHistory: "Riwayat",
+    navDashboard: "Dasbor",
+    navMenu: "Menu",
+    categories: "Kategori",
+    catRice: "Makanan Berat",
+    catSnacks: "Camilan",
+    catDrinks: "Minuman",
+    itemsUnit: "menu",
+    popularMenu: "Menu populer",
+    viewAll: "Lihat semua",
+    emptyMenuTitle: "Belum ada menu yang diupload",
+    emptyMenuDesc: "Saat ini belum ada tenant kantin yang mengupload menu makanan atau minuman.",
+    tenantTitle: "Daftar Kantin",
+    tenantSubtitle: "Pesan lebih awal tanpa antre panjang di kasir.",
+    searchFoodPlaceholder: "Cari makanan atau minuman…",
+    emptyTenantTitle: "Belum ada tenant yang terdaftar",
+    emptyTenantDesc: "Tenant kantin akan muncul di sini setelah mendaftar akun Tenant.",
+    backTenants: "Kembali ke daftar kantin",
+    emptyCartTitle: "Keranjang pesanan Anda masih kosong",
+    emptyCartDesc: "Pilih makanan atau minuman dari menu kantin terlebih dahulu sebelum memilih promo dan membayar.",
+    browseMenuBtn: "Pilih Menu Makanan",
+    yourOrder: "Pesanan Anda",
+    reviewItems: "Periksa pesanan Anda dan pilih promo sebelum membayar.",
+    emptyCartShort: "Belum ada makanan atau minuman yang Anda pilih.",
+    stepCart: "Keranjang",
+    stepPayment: "Pembayaran",
+    stepPreparing: "Disiapkan",
+    stepPickup: "Ambil",
+    cartTitle: "Keranjang",
+    addMore: "+ Tambah menu",
+    promosTitle: "Promo",
+    pickPromo: "Pilih satu promo untuk pesanan ini.",
+    subtotal: "Subtotal",
+    serviceFee: "Biaya layanan",
+    free: "Gratis",
+    total: "Total",
+    continuePayment: "Lanjut ke pembayaran",
+    orderSummary: "Ringkasan pesanan",
+    cancelEdit: "Batal & ubah pesanan",
+    scanToPay: "Scan untuk membayar",
+    amountDue: "Total tagihan",
+    paymentTimer: "Batas waktu bayar",
+    completePaymentBtn: "Saya sudah membayar",
+    historyTitle: "Riwayat pesanan",
+    historyDesc: "Pantau pesanan aktif dan pesan ulang menu favoritmu.",
+    filterAll: "Semua",
+    filterInProgress: "Diproses",
+    filterCompleted: "Selesai",
+    filterCancelled: "Dibatalkan",
+    welcomeBack: "Selamat datang kembali",
+    storeOpen: "Buka menerima pesanan",
+    storeClosed: "Sedang tutup",
+    kpiOrders: "Pesanan hari ini",
+    kpiRevenue: "Pendapatan hari ini",
+    kpiQueue: "Sedang antre",
+    kpiPrep: "Rata-rata masak",
+    incomingOrders: "Pesanan masuk",
+    incomingDesc: "Kelola antrean pesanan aktif yang masuk ke kantin Anda.",
+    noIncomingOrders: "Belum ada pesanan masuk saat ini. Pesanan pelanggan akan muncul otomatis di sini.",
+    menuAvailability: "Ketersediaan menu",
+    itemsAvailable: "menu tersedia",
+    manageMenu: "Kelola menu",
+    topSellers: "Terlaris hari ini",
+    noMenuUploadedShort: "Belum ada menu yang diupload.",
+    myMenuTitle: "Menu saya",
+    myMenuDesc: "Upload, ubah menu dan atur ketersediaan untuk pelanggan.",
+    uploadMenuBtn: "Tambah Menu",
+    drawerProfile: "Profil Saya",
+    drawerFavorites: "Favorit",
+    drawerNotifications: "Notifikasi",
+    drawerHelp: "Pusat Bantuan",
+    logout: "Keluar",
+    authWelcome: "Selamat datang",
+    authCreate: "Buat akun baru",
+    authForgot: "Reset kata sandi",
+  },
+};
+
+const PROMOS = [
+  {
+    code: "COMBO3K",
+    title: "Rp3.000 off meal + drink",
+    subtitle: "COMBO3K · Min. Rp20.000",
+    discount: 3000,
+    minSpend: 20000,
+    type: "fixed",
+  },
+  {
+    code: "STUDENT10",
+    title: "10% off for students",
+    subtitle: "STUDENT10 · Add Rp3.000 more to use",
+    discount: 0.1,
+    minSpend: 25000,
+    type: "percentage",
+  },
+  {
+    code: "HEMAT5K",
+    title: "Rp5.000 off your order",
+    subtitle: "HEMAT5K · Add Rp8.000 more to use",
+    discount: 5000,
+    minSpend: 30000,
+    type: "fixed",
+  },
+  {
+    code: "EARLYBIRD",
+    title: "15% off morning orders",
+    subtitle: "EARLYBIRD · Min. Rp15.000",
+    discount: 0.15,
+    minSpend: 15000,
+    type: "percentage",
+  },
 ];
 
-const FALLBACK_TENANTS = [
-  {
-    id_tenant: 1,
-    id_user: 2,
-    nama_tenant: "Kantin Sejahtera",
-    deskripsi:
-      "Menyediakan hidangan nasi, ayam penyet, mie ayam, dan minuman segar favorit mahasiswa UPNVJ.",
-    logo: "tenant/kantin-sejahtera.png",
-    status_buka: true,
-  },
-  {
-    id_tenant: 2,
-    id_user: 3,
-    nama_tenant: "Warung Nusantara",
-    deskripsi:
-      "Aneka soto, nasi goreng spesial, camilan hangat, serta kopi dan teh dingin.",
-    logo: "tenant/warung-nusantara.png",
-    status_buka: true,
-  },
-];
+const TENANTS = [];
+const MENUS = [];
+const INITIAL_CART = [];
+const INITIAL_ORDERS = [];
+const INITIAL_TENANT_MENUS = [];
+const INITIAL_INCOMING_ORDERS = [];
 
-const FALLBACK_MENUS = [
-  {
-    id_menu: 1,
-    id_tenant: 1,
-    id_kategori: 1,
-    nama_menu: "Nasi Ayam Geprek Sambal Bawang",
-    deskripsi:
-      "Ayam crispy geprek dengan sambal bawang segar, nasi hangat, dan lalapan.",
-    gambar: "menu/ayam-geprek.png",
-    harga: 18000,
-    estimasi_menit: 8,
-    status_tersedia: true,
-    tenant: FALLBACK_TENANTS[0],
-    category: FALLBACK_CATEGORIES[0],
-  },
-  {
-    id_menu: 2,
-    id_tenant: 1,
-    id_kategori: 1,
-    nama_menu: "Mie Ayam Bakso Spesial",
-    deskripsi:
-      "Mie ayam kenyal dengan topping ayam manis gurih dan dua bakso sapi.",
-    gambar: "menu/mie-ayam-bakso.png",
-    harga: 16000,
-    estimasi_menit: 7,
-    status_tersedia: true,
-    tenant: FALLBACK_TENANTS[0],
-    category: FALLBACK_CATEGORIES[0],
-  },
-  {
-    id_menu: 3,
-    id_tenant: 1,
-    id_kategori: 2,
-    nama_menu: "Es Teh Manis",
-    deskripsi: "Minuman teh melati dingin yang menyegarkan.",
-    gambar: "menu/es-teh.png",
-    harga: 5000,
-    estimasi_menit: 2,
-    status_tersedia: true,
-    tenant: FALLBACK_TENANTS[0],
-    category: FALLBACK_CATEGORIES[1],
-  },
-  {
-    id_menu: 4,
-    id_tenant: 2,
-    id_kategori: 1,
-    nama_menu: "Nasi Goreng Kampung Telur Dadar",
-    deskripsi:
-      "Nasi goreng bumbu rempah tradisional disajikan dengan telur dadar dan kerupuk.",
-    gambar: "menu/nasi-goreng.png",
-    harga: 17000,
-    estimasi_menit: 9,
-    status_tersedia: true,
-    tenant: FALLBACK_TENANTS[1],
-    category: FALLBACK_CATEGORIES[0],
-  },
-  {
-    id_menu: 5,
-    id_tenant: 2,
-    id_kategori: 3,
-    nama_menu: "Pisang Goreng Keju Cokelat",
-    deskripsi:
-      "Pisang kepok goreng hangat dengan parutan keju dan susu kental manis cokelat.",
-    gambar: "menu/pisang-keju.png",
-    harga: 12000,
-    estimasi_menit: 5,
-    status_tersedia: true,
-    tenant: FALLBACK_TENANTS[1],
-    category: FALLBACK_CATEGORIES[2],
-  },
-];
+function formatRupiah(num) {
+  return "Rp" + Number(num || 0).toLocaleString("id-ID");
+}
 
-function formatRupiah(value) {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-  }).format(Number(value || 0));
+function getInitials(name) {
+  const clean = String(name || "").trim();
+  if (!clean) return "LO";
+  const parts = clean.split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return clean.slice(0, 2).toUpperCase();
 }
 
 export default function App() {
-  const [apiStatus, setApiStatus] = useState("checking");
-  const [user, setUser] = useState(() => getStoredUser());
-  const [activeTab, setActiveTab] = useState("catalog");
-  const [bannerMessage, setBannerMessage] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => getStoredUser());
+  const portalMode = currentUser?.peran === "Vendor" ? "tenant" : "customer";
 
-  // Catalog State
-  const [categories, setCategories] = useState(FALLBACK_CATEGORIES);
-  const [tenants, setTenants] = useState(FALLBACK_TENANTS);
-  const [menus, setMenus] = useState(FALLBACK_MENUS);
-  const [selectedTenantId, setSelectedTenantId] = useState("");
-  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [navTab, setNavTab] = useState("home");
+  const [tenantNavTab, setTenantNavTab] = useState("dashboard");
+
+  const [lang, setLang] = useState(() => localStorage.getItem("letsorder_lang") || "ID");
+  const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+  const t = TRANSLATIONS[lang] || TRANSLATIONS.ID;
+  const heroSlides = HERO_SLIDES_BY_LANG[lang] || HERO_SLIDES_BY_LANG.ID;
+
+  const changeLanguage = (nextLang) => {
+    setLang(nextLang);
+    localStorage.setItem("letsorder_lang", nextLang);
+    setIsLangMenuOpen(false);
+  };
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedMenuDetail, setSelectedMenuDetail] = useState(null);
-  const [detailQuantity, setDetailQuantity] = useState(1);
-  const [detailNotes, setDetailNotes] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
 
-  // Auth Form State
+  const [menusList, setMenusList] = useState([]);
+  const [tenantsList, setTenantsList] = useState([]);
+
+  const [isStoreOpen, setIsStoreOpen] = useState(true);
+  const [ordersTodayCount, setOrdersTodayCount] = useState(0);
+  const [revenueTodayTotal, setRevenueTodayTotal] = useState(0);
+  const [tenantMenus, setTenantMenus] = useState([]);
+  const [tenantMenuFilter, setTenantMenuFilter] = useState("All");
+  const [tenantMenuSearch, setTenantMenuSearch] = useState("");
+  const [incomingOrders, setIncomingOrders] = useState([]);
+  const [editingDish, setEditingDish] = useState(null);
+  const [editDishForm, setEditDishForm] = useState({
+    nama_menu: "",
+    harga: "",
+    kategori_nama: "Rice & Mains",
+    deskripsi: "",
+    gambar: "",
+    estimasi_menit: "8",
+    available: true,
+  });
+  const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  const [newDishForm, setNewDishForm] = useState({
+    nama_menu: "",
+    kategori_nama: "Rice & Mains",
+    harga: "",
+    estimasi_menit: "8",
+    deskripsi: "",
+    gambar: "",
+    available: true,
+  });
+
+  const [tenantOrderStep, setTenantOrderStep] = useState(1);
+  const [tenantHistoryFilter, setTenantHistoryFilter] = useState("All");
+
+  const [heroSlide, setHeroSlide] = useState(0);
+  const [activeTenantView, setActiveTenantView] = useState(null);
+
+  const [activeMenuDetail, setActiveMenuDetail] = useState(null);
+  const [detailMounted, setDetailMounted] = useState(false);
+  const [detailActive, setDetailActive] = useState(false);
+  const [detailQuantity, setDetailQuantity] = useState(1);
+
+  const openFoodDetail = useCallback((menuItem) => {
+    setActiveMenuDetail(menuItem);
+    setDetailQuantity(1);
+    setDetailMounted(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setDetailActive(true);
+      });
+    });
+  }, []);
+
+  const closeFoodDetail = useCallback(() => {
+    setDetailActive(false);
+    setTimeout(() => {
+      setDetailMounted(false);
+      setActiveMenuDetail(null);
+    }, 320);
+  }, []);
+
+  const [cartItems, setCartItems] = useState([]);
+  const [selectedPromo, setSelectedPromo] = useState(PROMOS[0]);
+
+  const [checkoutStep, setCheckoutStep] = useState(1);
+  const [activeOrderId, setActiveOrderId] = useState(null);
+  const [activeQueueCode, setActiveQueueCode] = useState("A-001");
+  const [paymentTimerSeconds, setPaymentTimerSeconds] = useState(899);
+  const [prepTimerSeconds, setPrepTimerSeconds] = useState(525);
+  const [isPaying, setIsPaying] = useState(false);
+
+  const [ordersHistory, setOrdersHistory] = useState([]);
+  const [historyFilter, setHistoryFilter] = useState("All");
+
+  const [favoriteIds, setFavoriteIds] = useState([]);
+  const [notificationsList, setNotificationsList] = useState([]);
+  const [activeDrawerModal, setActiveDrawerModal] = useState(null);
+  const [profileForm, setProfileForm] = useState({
+    nama: "",
+    username: "",
+    email: "",
+    no_telp: "",
+    nama_tenant: "",
+    jenis_kelamin: "",
+    tanggal_lahir: "",
+    avatar: "",
+  });
+  const [isEditingEmail, setIsEditingEmail] = useState(false);
+  const [isEditingPhone, setIsEditingPhone] = useState(false);
+  const [profileAlert, setProfileAlert] = useState({ type: "", text: "" });
+
+  const maskEmail = (rawEmail) => {
+    const str = String(rawEmail || "").trim();
+    if (!str || !str.includes("@")) return "Belum diatur";
+    const [local, domain] = str.split("@");
+    const visible = local.slice(0, 2);
+    const stars = "*".repeat(Math.max(6, local.length - 2));
+    return `${visible}${stars}@${domain}`;
+  };
+
+  const openDrawerModal = useCallback(
+    (modalId) => {
+      if (modalId === "profile") {
+        setProfileForm({
+          nama: currentUser?.nama || "",
+          username: currentUser?.username || "",
+          email: currentUser?.email || "",
+          no_telp: currentUser?.no_telp || "",
+          nama_tenant:
+            currentUser?.tenant?.nama_tenant || currentUser?.nama || "",
+          jenis_kelamin: currentUser?.jenis_kelamin || "",
+          tanggal_lahir: currentUser?.tanggal_lahir || "",
+          avatar: currentUser?.avatar || "",
+        });
+        setIsEditingEmail(false);
+        setIsEditingPhone(false);
+        setProfileAlert({ type: "", text: "" });
+      }
+      setActiveDrawerModal(modalId);
+    },
+    [currentUser]
+  );
+
+  const [drawerMounted, setDrawerMounted] = useState(false);
+  const [drawerActive, setDrawerActive] = useState(false);
+
+  const openDrawer = useCallback(() => {
+    setDrawerMounted(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setDrawerActive(true);
+      });
+    });
+  }, []);
+
+  const closeDrawer = useCallback(() => {
+    setDrawerActive(false);
+    setTimeout(() => {
+      setDrawerMounted(false);
+    }, 320);
+  }, []);
+
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState("login");
+  const [forgotStep, setForgotStep] = useState(1);
+  const [loginRoleTab, setLoginRoleTab] = useState("Customer");
+  const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [authSuccess, setAuthSuccess] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
   const [authForm, setAuthForm] = useState({
-    login: "",
     username: "",
     nama: "",
-    email: "",
     password: "",
-    password_confirmation: "",
-  });
-  const [authLoading, setAuthLoading] = useState(false);
-
-  // Customer Cart, Orders, Payment, Notifications State
-  const [cart, setCart] = useState({
-    id_keranjang: null,
-    items: [],
-    total_harga: 0,
-    tenant: null,
-  });
-  const [orderNotes, setOrderNotes] = useState("");
-  const [orders, setOrders] = useState([]);
-  const [selectedOrder, setSelectedOrder] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState("QRIS");
-  const [activePayment, setActivePayment] = useState(null);
-  const [orderHistoryList, setOrderHistoryList] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-
-  // Vendor State
-  const [vendorTenant, setVendorTenant] = useState(null);
-  const [vendorMenus, setVendorMenus] = useState([]);
-  const [vendorOrders, setVendorOrders] = useState([]);
-  const [vendorMenuForm, setVendorMenuForm] = useState({
-    id_menu: null,
-    id_kategori: 1,
-    nama_menu: "",
-    deskripsi: "",
-    gambar: "menu/default.png",
-    harga: "",
-    estimasi_menit: 5,
-    status_tersedia: true,
-  });
-
-  // Administrator State
-  const [adminUsers, setAdminUsers] = useState([]);
-  const [adminTenants, setAdminTenants] = useState([]);
-  const [adminNewTenant, setAdminNewTenant] = useState({
-    id_user: "",
+    email: "",
     nama_tenant: "",
-    deskripsi: "",
-    logo: "tenant/default.png",
-    status_buka: true,
+    new_password: "",
+    reset_token: "",
   });
-
-  const notify = useCallback((type, text) => {
-    setBannerMessage({ type, text });
-  }, []);
-
-  const loadCatalog = useCallback(async () => {
-    try {
-      const [catRes, tenantRes, menuRes] = await Promise.all([
-        api.getCategories(),
-        api.getTenants(),
-        api.getMenus({
-          id_tenant: selectedTenantId || undefined,
-          id_kategori: selectedCategoryId || undefined,
-          search: searchQuery || undefined,
-        }),
-      ]);
-
-      setApiStatus("connected");
-      if (Array.isArray(catRes?.data) && catRes.data.length > 0) {
-        setCategories(catRes.data);
-      }
-      if (Array.isArray(tenantRes?.data)) {
-        setTenants(tenantRes.data);
-      }
-      if (Array.isArray(menuRes?.data)) {
-        setMenus(menuRes.data);
-      }
-    } catch {
-      setApiStatus("unavailable");
-    }
-  }, [selectedTenantId, selectedCategoryId, searchQuery]);
-
-  const loadCustomerData = useCallback(async () => {
-    if (!user || user.peran !== "Customer") return;
-    try {
-      const [cartRes, ordersRes, notifRes] = await Promise.all([
-        api.getCart(),
-        api.getOrders(),
-        api.getNotifications(),
-      ]);
-      if (cartRes?.data) setCart(cartRes.data);
-      if (Array.isArray(ordersRes?.data)) setOrders(ordersRes.data);
-      if (Array.isArray(notifRes?.data)) setNotifications(notifRes.data);
-    } catch {
-      // Ignore when offline
-    }
-  }, [user]);
-
-  const loadVendorData = useCallback(async () => {
-    if (!user || user.peran !== "Vendor") return;
-    try {
-      const [tenantRes, menusRes, ordersRes, notifRes] = await Promise.all([
-        api.getVendorTenant(),
-        api.getVendorMenus(),
-        api.getVendorOrders(),
-        api.getNotifications(),
-      ]);
-      if (tenantRes?.data) setVendorTenant(tenantRes.data);
-      if (Array.isArray(menusRes?.data)) setVendorMenus(menusRes.data);
-      if (Array.isArray(ordersRes?.data)) setVendorOrders(ordersRes.data);
-      if (Array.isArray(notifRes?.data)) setNotifications(notifRes.data);
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }, [user, notify]);
-
-  const loadAdminData = useCallback(async () => {
-    if (!user || user.peran !== "Administrator") return;
-    try {
-      const [usersRes, tenantsRes] = await Promise.all([
-        api.getAdminUsers(),
-        api.getAdminTenants(),
-      ]);
-      if (Array.isArray(usersRes?.data)) setAdminUsers(usersRes.data);
-      if (Array.isArray(tenantsRes?.data)) setAdminTenants(tenantsRes.data);
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }, [user, notify]);
+  const [googleClientId, setGoogleClientId] = useState(
+    () => (import.meta.env.VITE_GOOGLE_CLIENT_ID || "").trim()
+  );
 
   useEffect(() => {
-    loadCatalog();
-  }, [loadCatalog]);
-
-  useEffect(() => {
-    const token = getStoredToken();
-    if (!token) return;
-
     api
-      .me()
+      .getGoogleConfig()
       .then((res) => {
-        if (res?.data) {
-          setUser(res.data);
-          setStoredSession(token, res.data);
+        if (res?.data?.client_id) {
+          setGoogleClientId(String(res.data.client_id).trim());
         }
       })
-      .catch(() => {
-        clearStoredSession();
-        setUser(null);
-      });
+      .catch(() => {});
+
+    const params = new URLSearchParams(window.location.search);
+    const codeParam = params.get("google_auth_code");
+    const errorParam = params.get("google_error");
+
+    if (codeParam) {
+      window.history.replaceState({}, "", window.location.pathname);
+      setAuthLoading(true);
+      api
+        .exchangeGoogleCode(codeParam)
+        .then((res) => {
+          const user = res?.data?.user;
+          const token = res?.data?.access_token || res?.data?.token;
+          setStoredSession(token, user);
+          setCurrentUser(user);
+          setIsAuthOpen(false);
+          if (user?.peran === "Vendor") {
+            setTenantNavTab("dashboard");
+          } else {
+            setNavTab("home");
+          }
+        })
+        .catch((err) => {
+          setAuthError(err.message || "Gagal login menggunakan Google.");
+        })
+        .finally(() => {
+          setAuthLoading(false);
+        });
+    } else if (errorParam) {
+      setAuthError(errorParam);
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (window.location.hash.includes("access_token=")) {
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      const accessToken = hashParams.get("access_token");
+      const pendingRole = localStorage.getItem("letsorder_pending_role") || "Customer";
+      if (accessToken) {
+        window.history.replaceState({}, "", window.location.pathname);
+        setAuthLoading(true);
+        api
+          .googleLogin({ access_token: accessToken, peran: pendingRole })
+          .then((res) => {
+            const user = res?.data?.user;
+            const token = res?.data?.access_token || res?.data?.token;
+            setStoredSession(token, user);
+            setCurrentUser(user);
+            setIsAuthOpen(false);
+            if (user?.peran === "Vendor") {
+              setTenantNavTab("dashboard");
+            } else {
+              setNavTab("home");
+            }
+          })
+          .catch((err) => {
+            setAuthError(err.message || "Gagal login menggunakan Google.");
+          })
+          .finally(() => {
+            setAuthLoading(false);
+          });
+      }
+    }
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
-    if (user.peran === "Customer") {
-      loadCustomerData();
-    } else if (user.peran === "Vendor") {
-      loadVendorData();
-      setActiveTab("vendor");
-    } else if (user.peran === "Administrator") {
-      loadAdminData();
-      setActiveTab("admin");
-    }
-  }, [user, loadCustomerData, loadVendorData, loadAdminData]);
+  const notify = useCallback(() => {}, []);
 
-  const filteredMenus = useMemo(() => {
-    return menus.filter((menu) => {
-      if (
-        selectedTenantId &&
-        Number(menu.id_tenant) !== Number(selectedTenantId)
-      ) {
-        return false;
-      }
-      if (
-        selectedCategoryId &&
-        Number(menu.id_kategori) !== Number(selectedCategoryId)
-      ) {
-        return false;
-      }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchName = menu.nama_menu?.toLowerCase().includes(q);
-        const matchDesc = menu.deskripsi?.toLowerCase().includes(q);
-        return matchName || matchDesc;
-      }
-      return true;
-    });
-  }, [menus, selectedTenantId, selectedCategoryId, searchQuery]);
+  const displayName =
+    portalMode === "tenant"
+      ? currentUser?.tenant?.nama_tenant || currentUser?.nama || currentUser?.username || "Tenant"
+      : currentUser?.nama || currentUser?.username || "Pengguna";
+  const displayInitials = getInitials(displayName);
 
-  async function handleAuthSubmit(e) {
-    e.preventDefault();
-    setAuthLoading(true);
-    setBannerMessage(null);
+  const syncFromApi = useCallback(async () => {
     try {
-      if (authMode === "login") {
-        const res = await api.login({
-          login: authForm.login,
-          password: authForm.password,
+      if (currentUser) {
+        try {
+          const meRes = await api.me();
+          const validUser =
+            meRes?.data?.user || (meRes?.data?.id_user ? meRes.data : null);
+          if (!validUser) {
+            clearStoredSession();
+            setCurrentUser(null);
+            return;
+          }
+        } catch (err) {
+          if (err?.status === 401) {
+            clearStoredSession();
+            setCurrentUser(null);
+            return;
+          }
+        }
+      }
+      const isVendor = currentUser?.peran === "Vendor";
+      const [tenantsRes, menusRes, vendorMenusRes, ordersRes, cartRes, notifRes] =
+        await Promise.all([
+          api.getTenants().catch(() => null),
+          api.getMenus({ include_unavailable: true }).catch(() => null),
+          isVendor ? api.getVendorMenus().catch(() => null) : Promise.resolve(null),
+          isVendor
+            ? api.getVendorOrders().catch(() => null)
+            : api.getOrders().catch(() => null),
+          !isVendor && currentUser ? api.getCart().catch(() => null) : Promise.resolve(null),
+          currentUser ? api.getNotifications().catch(() => null) : Promise.resolve(null),
+        ]);
+
+      if (tenantsRes?.data) {
+        setTenantsList(
+          tenantsRes.data.map((t) => ({
+            ...t,
+            tagline: t.deskripsi || t.tagline || "Campus Canteen Tenant",
+            gambar: t.gambar || t.logo || "",
+          }))
+        );
+        const myTenant = tenantsRes.data.find((t) => t.id_user === currentUser?.id_user) || tenantsRes.data[0];
+        if (myTenant) {
+          setIsStoreOpen(Boolean(myTenant.status_buka ?? true));
+        }
+      }
+
+      if (menusRes?.data) {
+        setMenusList(
+          menusRes.data.map((m) => ({
+            ...m,
+            available: Boolean(m.status_tersedia ?? m.available ?? true),
+            rating: m.rating || "5.0",
+            reviews: m.reviews || 1,
+          }))
+        );
+      }
+
+      if (vendorMenusRes?.data) {
+        setTenantMenus(
+          vendorMenusRes.data.map((m) => ({
+            ...m,
+            available: Boolean(m.status_tersedia ?? m.available ?? true),
+            sold_today: Number(m.sold_today || 0),
+          }))
+        );
+      }
+
+      if (cartRes?.data?.items) {
+        setCartItems(cartRes.data.items);
+      }
+
+      if (notifRes?.data) {
+        setNotificationsList(notifRes.data);
+      }
+
+      if (ordersRes?.data) {
+        const mappedHistory = ordersRes.data.map((o) => {
+          const firstItem = o.details?.[0]?.nama_menu || "Canteen Order";
+          const extra =
+            (o.details?.length || 0) > 1
+              ? ` + ${o.details.length - 1} more`
+              : "";
+          const statusMap = {
+            "Menunggu Pembayaran": "Preparing",
+            "Sedang Diproses": "Preparing",
+            Diproses: "Preparing",
+            "Siap Diambil": "Ready",
+            Selesai: "Completed",
+            Dibatalkan: "Cancelled",
+          };
+          return {
+            id_pesanan: o.id_pesanan,
+            nomor_antrean: o.nomor_antrean,
+            items_summary: `${firstItem}${extra}`,
+            tenant_name: o.tenant?.nama_tenant || "Canteen Tenant",
+            tanggal: o.waktu_pesan ? o.waktu_pesan.slice(11, 16) : "Just now",
+            total: o.total_harga,
+            status: statusMap[o.status_pesanan] || "Preparing",
+            details: o.details || [],
+          };
         });
+        setOrdersHistory(mappedHistory);
+
+        const completedOrders = ordersRes.data.filter(
+          (o) => o.status_pesanan === "Selesai"
+        );
+        setOrdersTodayCount(ordersRes.data.length);
+        setRevenueTodayTotal(
+          completedOrders.reduce((sum, o) => sum + Number(o.total_harga || 0), 0)
+        );
+
+        const activeQueue = ordersRes.data
+          .filter((o) =>
+            ["Menunggu Pembayaran", "Sedang Diproses", "Diproses", "Siap Diambil"].includes(
+              o.status_pesanan
+            )
+          )
+          .map((o) => ({
+            id: o.id_pesanan,
+            code: o.nomor_antrean,
+            item_name: o.details?.[0]?.nama_menu || "Canteen Meal",
+            user_name: o.user_name || o.user?.nama || o.user?.username || "Customer",
+            items_count: (o.details || []).reduce((s, d) => s + (d.jumlah || 1), 0) || 1,
+            total: o.total_harga,
+            status:
+              o.status_pesanan === "Menunggu Pembayaran"
+                ? "Awaiting payment"
+                : o.status_pesanan === "Siap Diambil"
+                ? "Ready for pickup"
+                : "Preparing",
+          }));
+        setIncomingOrders(activeQueue);
+      }
+    } catch {
+      // Keep current state when offline
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    syncFromApi();
+  }, [syncFromApi]);
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthSuccess("");
+    setAuthLoading(true);
+    try {
+      if (authMode === "forgot") {
+        if (forgotStep === 1) {
+          const res = await api.forgotPassword({
+            login: authForm.username,
+          });
+          setForgotStep(2);
+          setAuthSuccess(
+            res?.message ||
+              "Kode verifikasi 6 digit telah diterbitkan oleh server. Silakan masukkan kode beserta password baru Anda."
+          );
+        } else {
+          const res = await api.resetPassword({
+            login: authForm.username,
+            reset_token: authForm.reset_token,
+            new_password: authForm.new_password,
+          });
+          setAuthSuccess(
+            res?.message ||
+              "Password berhasil diperbarui! Silakan login dengan password baru Anda."
+          );
+          setForgotStep(1);
+          setAuthMode("login");
+          setAuthForm((prev) => ({
+            ...prev,
+            password: prev.new_password,
+            new_password: "",
+            reset_token: "",
+          }));
+        }
+      } else if (authMode === "login") {
+        const res = await api.login({
+          login: authForm.username,
+          password: authForm.password,
+          peran: loginRoleTab,
+        });
+        const user = res?.data?.user;
         const token = res?.data?.access_token || res?.data?.token;
-        const loggedUser = res?.data?.user;
-        setStoredSession(token, loggedUser);
-        setUser(loggedUser);
-        notify("success", `Selamat datang, ${loggedUser.nama}!`);
-        if (loggedUser.peran === "Vendor") setActiveTab("vendor");
-        else if (loggedUser.peran === "Administrator") setActiveTab("admin");
-        else setActiveTab("catalog");
+        setStoredSession(token, user);
+        setCurrentUser(user);
+        setIsAuthOpen(false);
+        setAuthForm({
+          username: "",
+          nama: "",
+          password: "",
+          email: "",
+          nama_tenant: "",
+          new_password: "",
+        });
+        if (user?.peran === "Vendor") {
+          setTenantNavTab("dashboard");
+        } else {
+          setNavTab("home");
+        }
       } else {
         await api.register({
           username: authForm.username,
-          nama: authForm.nama,
+          nama: authForm.nama || authForm.username,
           email: authForm.email,
           password: authForm.password,
-          password_confirmation:
-            authForm.password_confirmation || authForm.password,
+          peran: loginRoleTab,
+          nama_tenant: authForm.nama_tenant || authForm.username,
         });
-        notify("success", "Registrasi berhasil! Silakan login.");
+        setAuthForm({
+          username: "",
+          nama: "",
+          password: "",
+          email: "",
+          nama_tenant: "",
+          new_password: "",
+        });
         setAuthMode("login");
-        setAuthForm((prev) => ({ ...prev, login: prev.username }));
+        setAuthSuccess(
+          "Pendaftaran berhasil! Silakan login menggunakan username dan password Anda."
+        );
       }
     } catch (err) {
-      notify("error", err.message);
+      setAuthError(err.message || "Gagal memproses autentikasi.");
     } finally {
       setAuthLoading(false);
     }
-  }
+  };
 
-  async function handleLogout() {
+  const handleGoogleSignIn = () => {
+    setAuthError("");
+    setAuthSuccess("");
+    localStorage.setItem("letsorder_pending_role", loginRoleTab);
+    const activeClientId = (googleClientId || import.meta.env.VITE_GOOGLE_CLIENT_ID || "").trim();
+
+    if (!activeClientId || !activeClientId.includes(".apps.googleusercontent.com")) {
+      setAuthError(
+        "Google OAuth Client ID (VITE_GOOGLE_CLIENT_ID / GOOGLE_CLIENT_ID) belum diisi di file .env."
+      );
+      return;
+    }
+
+    if (window.google?.accounts?.oauth2) {
+      const tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: activeClientId,
+        scope: "openid email profile",
+        prompt: "select_account",
+        callback: async (tokenResponse) => {
+          if (tokenResponse?.error || !tokenResponse?.access_token) {
+            setAuthError(tokenResponse?.error_description || "Login Google dibatalkan.");
+            return;
+          }
+          setAuthLoading(true);
+          try {
+            const res = await api.googleLogin({
+              access_token: tokenResponse.access_token,
+              peran: loginRoleTab,
+            });
+            const user = res?.data?.user;
+            const token = res?.data?.access_token || res?.data?.token;
+            setStoredSession(token, user);
+            setCurrentUser(user);
+            setIsAuthOpen(false);
+            if (user?.peran === "Vendor") {
+              setTenantNavTab("dashboard");
+            } else {
+              setNavTab("home");
+            }
+          } catch (err) {
+            setAuthError(err.message || "Login dengan Google gagal.");
+          } finally {
+            setAuthLoading(false);
+          }
+        },
+      });
+      tokenClient.requestAccessToken();
+      return;
+    }
+
+    window.location.href = api.getGoogleRedirectUrl(loginRoleTab, activeClientId);
+  };
+
+  const handleLogout = async () => {
     try {
       await api.logout();
     } catch {
-      // Ignore network error on logout
+      // Clear local session regardless of network response
     }
     clearStoredSession();
-    setUser(null);
-    setCart({ id_keranjang: null, items: [], total_harga: 0, tenant: null });
-    setOrders([]);
-    setNotifications([]);
-    setActiveTab("catalog");
-    notify("success", "Anda telah keluar dari sesi.");
-  }
+    setCurrentUser(null);
+    setCartItems([]);
+    setIncomingOrders([]);
+    setTenantMenus([]);
+    setOrdersHistory([]);
+    setAuthForm({
+      username: "",
+      nama: "",
+      password: "",
+      email: "",
+      nama_tenant: "",
+      new_password: "",
+    });
+    closeDrawer();
+  };
 
-  async function handleAddToCart(menu, jumlah = 1, catatan = "") {
-    if (!user) {
-      setActiveTab("auth");
-      notify(
-        "error",
-        "Silakan login sebagai Customer terlebih dahulu untuk memesan."
-      );
-      return;
-    }
-    if (user.peran !== "Customer") {
-      notify("error", "Fitur keranjang khusus untuk akun Customer.");
-      return;
-    }
+  const navContainerRef = useRef(null);
+  const tabRefs = useRef({});
+  const [pillStyle, setPillStyle] = useState({ left: 0, top: 4, width: 0, height: 0, ready: false });
+  const [isHeroPaused, setIsHeroPaused] = useState(false);
 
-    try {
-      const res = await api.addCartItem({
-        id_menu: menu.id_menu,
-        jumlah: Number(jumlah),
-        catatan,
+  const activeNavKey = portalMode === "tenant" ? `t_${tenantNavTab}` : navTab;
+
+  const updatePill = useCallback(() => {
+    const el = tabRefs.current[activeNavKey];
+    const container = navContainerRef.current;
+    if (el && container && el.offsetWidth > 0) {
+      setPillStyle({
+        left: el.offsetLeft,
+        top: el.offsetTop,
+        width: el.offsetWidth,
+        height: el.offsetHeight,
+        ready: true,
       });
-      if (res?.data) setCart(res.data);
-      setSelectedMenuDetail(null);
-      setDetailQuantity(1);
-      setDetailNotes("");
-      notify("success", `${menu.nama_menu} ditambahkan ke keranjang.`);
-    } catch (err) {
-      notify("error", err.message);
     }
-  }
+  }, [activeNavKey]);
 
-  async function handleUpdateCartItem(item, newQty, newNotes) {
-    try {
-      if (newQty <= 0) {
-        await api.deleteCartItem(item.id_item_keranjang);
-      } else {
-        await api.updateCartItem(item.id_item_keranjang, {
-          jumlah: newQty,
-          catatan: newNotes ?? item.catatan ?? "",
-        });
+  useLayoutEffect(() => {
+    updatePill();
+    const rafId = requestAnimationFrame(updatePill);
+    const timerId = setTimeout(updatePill, 60);
+    const handleResize = () => updatePill();
+    window.addEventListener("resize", handleResize);
+
+    let observer = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => updatePill());
+      if (navContainerRef.current) observer.observe(navContainerRef.current);
+      if (tabRefs.current[activeNavKey]) observer.observe(tabRefs.current[activeNavKey]);
+    }
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(() => updatePill()).catch(() => {});
+    }
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(timerId);
+      window.removeEventListener("resize", handleResize);
+      observer?.disconnect();
+    };
+  }, [updatePill, activeNavKey, portalMode, currentUser, lang, cartItems]);
+
+  useEffect(() => {
+    if (isHeroPaused) return;
+    const timer = setInterval(() => {
+      setHeroSlide((prev) => (prev + 1) % heroSlides.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [isHeroPaused, heroSlides.length]);
+
+  useEffect(() => {
+    let interval = null;
+    if (navTab === "orders" && checkoutStep === 2 && paymentTimerSeconds > 0) {
+      interval = setInterval(() => {
+        setPaymentTimerSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [navTab, checkoutStep, paymentTimerSeconds]);
+
+  useEffect(() => {
+    let interval = null;
+    if (navTab === "orders" && checkoutStep === 3 && prepTimerSeconds > 0) {
+      interval = setInterval(() => {
+        setPrepTimerSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [navTab, checkoutStep, prepTimerSeconds]);
+
+  const formatTimer = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins < 10 ? "0" : ""}${mins}:${secs < 10 ? "0" : ""}${secs}`;
+  };
+
+  const subtotal = useMemo(() => {
+    return cartItems.reduce((acc, item) => acc + item.harga * item.jumlah, 0);
+  }, [cartItems]);
+
+  const promoDiscount = useMemo(() => {
+    if (!selectedPromo || subtotal < selectedPromo.minSpend) return 0;
+    if (selectedPromo.type === "percentage") {
+      return Math.round(subtotal * selectedPromo.discount);
+    }
+    return selectedPromo.discount;
+  }, [selectedPromo, subtotal]);
+
+  const orderTotal = useMemo(() => {
+    return Math.max(0, subtotal - promoDiscount);
+  }, [subtotal, promoDiscount]);
+
+  const totalCartCount = useMemo(() => {
+    return cartItems.reduce((acc, item) => acc + item.jumlah, 0);
+  }, [cartItems]);
+
+  const handleAddToCart = async (item, qty = 1) => {
+    setCartItems((prev) => {
+      const idx = prev.findIndex((i) => i.id_menu === item.id_menu);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], jumlah: copy[idx].jumlah + qty };
+        return copy;
       }
-      await loadCustomerData();
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }
+      return [
+        ...prev,
+        {
+          id_menu: item.id_menu,
+          nama_menu: item.nama_menu,
+          tenant_name: item.tenant_name,
+          harga: item.harga,
+          jumlah: qty,
+          gambar: item.gambar,
+        },
+      ];
+    });
+    api.addCartItem({ id_menu: item.id_menu, jumlah: qty }).catch(() => {});
+  };
 
-  async function handleClearCart() {
-    try {
-      await api.clearCart();
-      await loadCustomerData();
-      notify("success", "Keranjang berhasil dikosongkan.");
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }
+  const handleUpdateQty = (id_menu, delta) => {
+    setCartItems((prev) =>
+      prev
+        .map((item) => {
+          if (item.id_menu === id_menu) {
+            const next = item.jumlah + delta;
+            if (next > 0) {
+              api.updateCartItem(id_menu, { jumlah: next }).catch(() => {});
+              return { ...item, jumlah: next };
+            }
+            api.deleteCartItem(id_menu).catch(() => {});
+            return null;
+          }
+          return item;
+        })
+        .filter(Boolean)
+    );
+  };
 
-  async function handleCreateOrder(e) {
-    e.preventDefault();
+  const handleRemoveItem = (id_menu) => {
+    setCartItems((prev) => prev.filter((item) => item.id_menu !== id_menu));
+    api.deleteCartItem(id_menu).catch(() => {});
+  };
+
+  const handleCompletePayment = async () => {
+    setIsPaying(true);
     try {
-      const res = await api.createOrder({ catatan: orderNotes });
-      setOrderNotes("");
-      await loadCustomerData();
-      if (res?.data) {
-        await handleOpenOrderDetail(res.data);
-        setActiveTab("orders");
-      }
-      notify(
-        "success",
-        `Pesanan berhasil dibuat dengan Nomor Antrean ${res?.data?.nomor_antrean}!`
+      const created = await api
+        .createOrder({
+          items: cartItems,
+          promo_code: selectedPromo?.code || null,
+        })
+        .catch(() => null);
+      const oid = created?.data?.id_pesanan || activeOrderId;
+      setActiveOrderId(oid);
+      await api.verifyPaymentByOrder(oid, "Terverifikasi").catch(() => {});
+      await syncFromApi();
+    } finally {
+      setTimeout(() => {
+        setIsPaying(false);
+        setCheckoutStep(3);
+        setPrepTimerSeconds(525);
+      }, 600);
+    }
+  };
+
+  const handleFinishOrder = async () => {
+    await api.updateOrderStatus(activeOrderId, "Selesai").catch(() => {});
+    const newRecord = {
+      id_pesanan: Date.now(),
+      nomor_antrean: "A-108",
+      items_summary:
+        cartItems.length > 0
+          ? `${cartItems[0].nama_menu}${cartItems.length > 1 ? ` + ${cartItems.length - 1} more` : ""}`
+          : "Campus Meal Order",
+      tenant_name: cartItems[0]?.tenant_name || "Kantin Sejahtera",
+      tanggal: "Just now",
+      total: orderTotal,
+      status: "Completed",
+    };
+    setOrdersHistory((prev) => [newRecord, ...prev]);
+    setCartItems([]);
+    setCheckoutStep(1);
+    setNavTab("history");
+    syncFromApi();
+  };
+
+  const filteredMenus = useMemo(() => {
+    return menusList.filter((item) => {
+      if (item.available === false) return false;
+      const matchSearch =
+        searchQuery === "" ||
+        item.nama_menu.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.tenant_name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchCategory =
+        selectedCategory === "All" || item.kategori_nama === selectedCategory;
+      return matchSearch && matchCategory;
+    });
+  }, [menusList, searchQuery, selectedCategory]);
+
+  const filteredTenants = useMemo(() => {
+    return tenantsList.filter((t) => {
+      return (
+        searchQuery === "" ||
+        t.nama_tenant.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t.tagline || "").toLowerCase().includes(searchQuery.toLowerCase())
       );
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }
+    });
+  }, [tenantsList, searchQuery]);
 
-  async function handleOpenOrderDetail(order) {
-    try {
-      const [detailRes, historyRes] = await Promise.all([
-        api.getOrder(order.id_pesanan),
-        api.getOrderStatusHistory(order.id_pesanan),
-      ]);
-      const fullOrder = detailRes?.data || order;
-      setSelectedOrder(fullOrder);
-      setActivePayment(fullOrder.payment || null);
-      setOrderHistoryList(historyRes?.data || fullOrder.status_histories || []);
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }
-
-  async function handleCreatePayment(orderId) {
-    try {
-      const res = await api.createPayment(orderId, {
-        metode_pembayaran: paymentMethod,
-      });
-      setActivePayment(res?.data);
-      await loadCustomerData();
-      notify(
-        "success",
-        `Kode pembayaran simulasi (${paymentMethod}) berhasil dibuat.`
-      );
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }
-
-  async function handleSimulateVerifyPayment(payment) {
-    try {
-      const res = await api.verifyPayment(
-        payment.id_pembayaran,
-        "Terverifikasi"
-      );
-      setActivePayment(res?.data);
-      if (selectedOrder) {
-        await handleOpenOrderDetail(selectedOrder);
-      }
-      await loadCustomerData();
-      notify(
-        "success",
-        "Pembayaran simulasi berhasil diverifikasi! Status pesanan kini Sedang Diproses."
-      );
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }
-
-  async function handleMarkNotificationRead(id) {
-    try {
-      await api.markNotificationRead(id);
-      const res = await api.getNotifications();
-      if (Array.isArray(res?.data)) setNotifications(res.data);
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }
-
-  // Vendor Handlers
-  async function handleToggleTenantOpen() {
-    if (!vendorTenant) return;
-    try {
-      const res = await api.updateVendorTenant({
-        status_buka: !vendorTenant.status_buka,
-      });
-      setVendorTenant(res?.data);
-      await loadCatalog();
-      notify("success", "Status operasional tenant berhasil diperbarui.");
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }
-
-  async function handleSaveVendorMenu(e) {
-    e.preventDefault();
-    try {
-      const payload = {
-        id_kategori: Number(vendorMenuForm.id_kategori),
-        nama_menu: vendorMenuForm.nama_menu,
-        deskripsi: vendorMenuForm.deskripsi,
-        gambar: vendorMenuForm.gambar || "menu/default.png",
-        harga: Number(vendorMenuForm.harga),
-        estimasi_menit: Number(vendorMenuForm.estimasi_menit),
-        status_tersedia: Boolean(vendorMenuForm.status_tersedia),
-      };
-
-      if (vendorMenuForm.id_menu) {
-        await api.updateVendorMenu(vendorMenuForm.id_menu, payload);
-        notify("success", "Menu berhasil diperbarui.");
-      } else {
-        await api.createVendorMenu(payload);
-        notify("success", "Menu baru berhasil ditambahkan.");
-      }
-
-      setVendorMenuForm({
-        id_menu: null,
-        id_kategori: categories[0]?.id_kategori || 1,
-        nama_menu: "",
-        deskripsi: "",
-        gambar: "menu/default.png",
-        harga: "",
-        estimasi_menit: 5,
-        status_tersedia: true,
-      });
-      await loadVendorData();
-      await loadCatalog();
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }
-
-  async function handleToggleMenuAvailability(menu) {
-    try {
-      await api.updateMenuAvailability(menu.id_menu, !menu.status_tersedia);
-      await loadVendorData();
-      await loadCatalog();
-      notify("success", `Ketersediaan ${menu.nama_menu} berhasil diubah.`);
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }
-
-  async function handleDeleteVendorMenu(menuId) {
-    try {
-      await api.deleteVendorMenu(menuId);
-      await loadVendorData();
-      await loadCatalog();
-      notify("success", "Menu berhasil dihapus.");
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }
-
-  async function handleVendorOrderStatus(orderId, nextStatus) {
-    try {
-      await api.updateOrderStatus(orderId, nextStatus);
-      await loadVendorData();
-      notify(
-        "success",
-        `Status pesanan berhasil diperbarui menjadi '${nextStatus}'.`
-      );
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }
-
-  // Admin Handlers
-  async function handleAdminRoleChange(targetUser, newRole) {
-    try {
-      await api.updateAdminUser(targetUser.id_user, { peran: newRole });
-      await loadAdminData();
-      notify(
-        "success",
-        `Peran ${targetUser.username} diperbarui menjadi ${newRole}.`
-      );
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }
-
-  async function handleAdminCreateTenant(e) {
-    e.preventDefault();
-    try {
-      await api.createAdminTenant({
-        ...adminNewTenant,
-        id_user: Number(adminNewTenant.id_user),
-      });
-      setAdminNewTenant({
-        id_user: "",
-        nama_tenant: "",
-        deskripsi: "",
-        logo: "tenant/default.png",
-        status_buka: true,
-      });
-      await loadAdminData();
-      await loadCatalog();
-      notify("success", "Tenant baru berhasil ditambahkan.");
-    } catch (err) {
-      notify("error", err.message);
-    }
-  }
-
-  const unreadCount = notifications.filter((n) => !n.status_baca).length;
+  const tenantMenuItems = useMemo(() => {
+    if (!activeTenantView) return [];
+    return menusList.filter(
+      (m) => m.id_tenant === activeTenantView.id_tenant && m.available !== false
+    );
+  }, [menusList, activeTenantView]);
 
   return (
-    <div style={styles.page}>
-      <header style={styles.header}>
-        <div style={styles.brandRow}>
-          <a
-            href="#catalog"
-            onClick={(e) => {
-              e.preventDefault();
-              setActiveTab("catalog");
+    <div style={{ minHeight: "100vh", backgroundColor: "var(--bg-page)", color: "var(--maroon)" }}>
+      {currentUser && (
+        <>
+          <header
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 100,
+              backgroundColor: "#FFFFFF",
+              borderBottom: "1px solid var(--border-light)",
             }}
-            style={styles.brand}
           >
-            LetsOrder<span style={styles.brandAccent}>.com</span>
-          </a>
-          <span style={styles.tag}>Self-Pickup Kantin UPNVJ</span>
-        </div>
+        <div className="container-app header-inner">
+          <div className="header-left">
+            <button
+              onClick={openDrawer}
+              className="btn-interactive"
+              style={{
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                padding: 6,
+                color: "var(--maroon)",
+                display: "flex",
+                alignItems: "center",
+                borderRadius: "8px",
+                flexShrink: 0,
+              }}
+              aria-label="Open menu"
+            >
+              <Menu size={22} strokeWidth={2.4} />
+            </button>
 
-        <nav style={styles.nav}>
-          <button
-            type="button"
-            onClick={() => setActiveTab("catalog")}
-            style={
-              activeTab === "catalog" ? styles.navBtnActive : styles.navBtn
-            }
-          >
-            Katalog Menu
-          </button>
-
-          {(!user || user.peran === "Customer") && (
-            <>
-              <button
-                type="button"
-                onClick={() => setActiveTab("cart")}
-                style={
-                  activeTab === "cart" ? styles.navBtnActive : styles.navBtn
+            <div
+              onClick={() => {
+                if (portalMode === "tenant") {
+                  setTenantNavTab("dashboard");
+                } else {
+                  setNavTab("home");
+                  setActiveTenantView(null);
+                  setSelectedCategory("All");
                 }
-              >
-                Keranjang ({cart?.total_item || cart?.items?.length || 0})
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("orders")}
-                style={
-                  activeTab === "orders" ? styles.navBtnActive : styles.navBtn
-                }
-              >
-                Pesanan Saya ({orders.length})
-              </button>
-            </>
-          )}
-
-          {user?.peran === "Vendor" && (
-            <button
-              type="button"
-              onClick={() => setActiveTab("vendor")}
-              style={
-                activeTab === "vendor" ? styles.navBtnActive : styles.navBtn
-              }
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                cursor: "pointer",
+                userSelect: "none",
+                minWidth: 0,
+              }}
             >
-              Portal Vendor
-            </button>
-          )}
+              <svg width="38" height="38" viewBox="0 0 100 100" fill="none" style={{ flexShrink: 0 }}>
+                <circle cx="50" cy="50" r="46" stroke="#D49354" strokeWidth="3" />
+                <circle cx="50" cy="50" r="41" stroke="#E5B888" strokeWidth="1.5" />
+                <path
+                  d="M33 26V40C33 44 36 46 39 46V74H43V46C46 46 49 44 49 40V26H46V38H44V26H38V38H36V26H33Z"
+                  fill="#522A28"
+                />
+                <path
+                  d="M51 32L78 50L51 68V32Z"
+                  fill="#F8A34B"
+                  stroke="#522A28"
+                  strokeWidth="3.5"
+                  strokeLinejoin="round"
+                />
+              </svg>
 
-          {user?.peran === "Administrator" && (
-            <button
-              type="button"
-              onClick={() => setActiveTab("admin")}
-              style={
-                activeTab === "admin" ? styles.navBtnActive : styles.navBtn
-              }
-            >
-              Portal Admin
-            </button>
-          )}
-
-          {user && (
-            <button
-              type="button"
-              onClick={() => setActiveTab("notifications")}
-              style={
-                activeTab === "notifications"
-                  ? styles.navBtnActive
-                  : styles.navBtn
-              }
-            >
-              Notifikasi {unreadCount > 0 ? `(${unreadCount})` : ""}
-            </button>
-          )}
-
-          {user ? (
-            <div style={styles.userBadge}>
-              <span>
-                <strong>{user.nama}</strong> ({user.peran})
-              </span>
-              <button
-                type="button"
-                onClick={handleLogout}
-                style={styles.logoutBtn}
-              >
-                Keluar
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setActiveTab("auth")}
-              style={styles.primaryBtn}
-            >
-              Masuk / Daftar
-            </button>
-          )}
-        </nav>
-      </header>
-
-      <div style={styles.statusBar}>
-        <span
-          style={{
-            ...styles.statusDot,
-            background:
-              apiStatus === "connected"
-                ? "#15803d"
-                : apiStatus === "unavailable"
-                  ? "#b45309"
-                  : "#64748b",
-          }}
-        />
-        <span>
-          {apiStatus === "connected"
-            ? "Terhubung ke Backend API Laravel"
-            : apiStatus === "unavailable"
-              ? "Mode Pratinjau Katalog (Pastikan server Laravel berjalan di http://127.0.0.1:8000 untuk transaksi penuh)"
-              : "Memeriksa koneksi backend..."}
-        </span>
-      </div>
-
-      {bannerMessage && (
-        <div
-          style={{
-            ...styles.alertBanner,
-            background:
-              bannerMessage.type === "error" ? "#fef2f2" : "#f0fdf4",
-            borderColor:
-              bannerMessage.type === "error" ? "#fecaca" : "#bbf7d0",
-            color: bannerMessage.type === "error" ? "#991b1b" : "#166534",
-          }}
-        >
-          <span>{bannerMessage.text}</span>
-          <button
-            type="button"
-            onClick={() => setBannerMessage(null)}
-            style={styles.closeAlertBtn}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* TAB: CATALOG */}
-      {activeTab === "catalog" && (
-        <div>
-          <section style={styles.heroCompact}>
-            <div>
-              <p style={styles.eyebrow}>PEMESANAN & SELF-PICKUP DIGITAL</p>
-              <h1 style={styles.heroTitle}>
-                Pesan makanan kantin tanpa antre panjang.
-              </h1>
-              <p style={styles.heroSubtitle}>
-                Pilih menu dari satu tenant, lakukan simulasi pembayaran QRIS
-                atau dompet digital, dan ambil pesanan langsung di tenant dengan{" "}
-                <strong>Nomor Antrean</strong>.
-              </p>
-            </div>
-          </section>
-
-          {/* Daftar Tenant */}
-          <section style={styles.section}>
-            <div style={styles.sectionHeader}>
-              <h2 style={styles.sectionTitle}>Daftar Tenant Kantin</h2>
-              {selectedTenantId && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedTenantId("")}
-                  style={styles.linkBtn}
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 800,
+                    color: "var(--maroon)",
+                    lineHeight: 1.15,
+                    letterSpacing: "-0.01em",
+                    whiteSpace: "nowrap",
+                  }}
                 >
-                  Tampilkan Semua Tenant
-                </button>
-              )}
+                  Let's Order
+                </div>
+                <div
+                  className="header-subtitle"
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-muted)",
+                    fontWeight: 500,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {portalMode === "tenant" ? t.subtitleTenant : t.subtitleCustomer}
+                </div>
+              </div>
             </div>
-            <div style={styles.tenantGrid}>
-              {tenants.map((tenant) => {
-                const isSelected =
-                  Number(selectedTenantId) === Number(tenant.id_tenant);
-                return (
-                  <div
-                    key={tenant.id_tenant}
-                    onClick={() =>
-                      setSelectedTenantId(isSelected ? "" : tenant.id_tenant)
+          </div>
+
+          <nav
+            ref={navContainerRef}
+            className="desktop-top-nav"
+          >
+            {pillStyle.ready && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: pillStyle.left,
+                  top: pillStyle.top !== undefined ? pillStyle.top : 4,
+                  width: pillStyle.width,
+                  height: pillStyle.height || 38,
+                  boxSizing: "border-box",
+                  borderRadius: "var(--radius-pill)",
+                  backgroundColor: "var(--bg-cream)",
+                  border:
+                    portalMode === "tenant"
+                      ? "1px solid #EFE3D8"
+                      : "1.5px solid var(--maroon)",
+                  transition: "left 0.32s cubic-bezier(0.22, 1, 0.36, 1), width 0.32s cubic-bezier(0.22, 1, 0.36, 1)",
+                  pointerEvents: "none",
+                  zIndex: 1,
+                  boxShadow:
+                    portalMode === "tenant"
+                      ? "none"
+                      : "0 2px 6px rgba(82, 42, 40, 0.08)",
+                }}
+              />
+            )}
+
+            {(portalMode === "tenant"
+              ? [
+                  { id: "t_dashboard", tab: "dashboard", label: t.navDashboard },
+                  { id: "t_menu", tab: "menu", label: t.navMenu },
+                  { id: "t_orders", tab: "orders", label: t.navOrders },
+                  { id: "t_history", tab: "history", label: t.navHistory },
+                ]
+              : [
+                  { id: "home", tab: "home", label: t.navHome },
+                  { id: "tenant", tab: "tenant", label: t.navTenant },
+                  {
+                    id: "orders",
+                    tab: "orders",
+                    label: t.navOrders,
+                    badge: totalCartCount > 0 ? totalCartCount : null,
+                  },
+                  { id: "history", tab: "history", label: t.navHistory },
+                ]
+            ).map((tab) => {
+              const active =
+                portalMode === "tenant"
+                  ? tenantNavTab === tab.tab
+                  : navTab === tab.tab;
+              return (
+                <button
+                  key={tab.id}
+                  ref={(el) => (tabRefs.current[tab.id] = el)}
+                  className="nav-tab-btn"
+                  onClick={() => {
+                    if (portalMode === "tenant") {
+                      setTenantNavTab(tab.tab);
+                    } else {
+                      setNavTab(tab.tab);
+                      setActiveTenantView(null);
+                      closeFoodDetail();
                     }
+                  }}
+                  style={{
+                    fontWeight: active ? 800 : 500,
+                  }}
+                >
+                  <span>{tab.label}</span>
+                  {tab.badge && (
+                    <span
+                      key={tab.badge}
+                      className="badge-pop"
+                      style={{
+                        padding: "1px 7px",
+                        borderRadius: 999,
+                        backgroundColor: "var(--orange)",
+                        color: "#FFFFFF",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        boxShadow: "0 2px 6px rgba(248, 163, 75, 0.4)",
+                      }}
+                    >
+                      {tab.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="header-right">
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => setIsLangMenuOpen((prev) => !prev)}
+                aria-haspopup="listbox"
+                aria-expanded={isLangMenuOpen}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 6,
+                  minWidth: 74,
+                  padding: "7px 12px",
+                  borderRadius: "var(--radius-pill)",
+                  border: "1px solid var(--border-light)",
+                  backgroundColor: "#FFFFFF",
+                  color: "var(--maroon)",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <Globe size={15} color="var(--text-muted)" />
+                <span>{lang}</span>
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>▼</span>
+              </button>
+
+              {isLangMenuOpen && (
+                <>
+                  <div
+                    onClick={() => setIsLangMenuOpen(false)}
+                    style={{ position: "fixed", inset: 0, zIndex: 199 }}
+                  />
+                  <div
+                    role="listbox"
                     style={{
-                      ...styles.tenantCard,
-                      borderColor: isSelected ? "#2563eb" : "#e2e8f0",
-                      background: isSelected ? "#eff6ff" : "#ffffff",
+                      position: "absolute",
+                      top: "calc(100% + 8px)",
+                      right: 0,
+                      minWidth: 168,
+                      backgroundColor: "#FFFFFF",
+                      border: "1px solid var(--border-light)",
+                      borderRadius: 14,
+                      boxShadow: "0 12px 30px rgba(82, 42, 40, 0.14)",
+                      padding: 6,
+                      zIndex: 200,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
                     }}
                   >
-                    <div style={styles.cardTopRow}>
-                      <h3 style={styles.cardTitle}>{tenant.nama_tenant}</h3>
-                      <span
+                    {[
+                      { code: "ID", label: "Indonesia (ID)" },
+                      { code: "EN", label: "English (EN)" },
+                    ].map((item) => (
+                      <button
+                        key={item.code}
+                        type="button"
+                        onClick={() => changeLanguage(item.code)}
                         style={{
-                          ...styles.badge,
-                          background: tenant.status_buka
-                            ? "#dcfce7"
-                            : "#fee2e2",
-                          color: tenant.status_buka ? "#166534" : "#991b1b",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          width: "100%",
+                          padding: "8px 12px",
+                          borderRadius: 10,
+                          border: "none",
+                          backgroundColor: lang === item.code ? "var(--bg-cream)" : "transparent",
+                          color: "var(--maroon)",
+                          fontSize: 13,
+                          fontWeight: lang === item.code ? 800 : 500,
+                          cursor: "pointer",
+                          textAlign: "left",
                         }}
                       >
-                        {tenant.status_buka ? "Buka" : "Tutup"}
-                      </span>
-                    </div>
-                    <p style={styles.cardDesc}>{tenant.deskripsi}</p>
+                        <span>{item.label}</span>
+                        {lang === item.code && <Check size={14} color="var(--orange-dark)" />}
+                      </button>
+                    ))}
                   </div>
-                );
-              })}
+                </>
+              )}
             </div>
-          </section>
 
-          {/* Filter Kategori & Pencarian */}
-          <section style={styles.section}>
-            <div style={styles.filterBar}>
-              <div style={styles.categoryPills}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategoryId("")}
-                  style={
-                    selectedCategoryId === ""
-                      ? styles.pillActive
-                      : styles.pill
-                  }
-                >
-                  Semua Kategori
-                </button>
-                {categories.map((cat) => (
-                  <button
-                    key={cat.id_kategori}
-                    type="button"
-                    onClick={() => setSelectedCategoryId(cat.id_kategori)}
-                    style={
-                      Number(selectedCategoryId) === Number(cat.id_kategori)
-                        ? styles.pillActive
-                        : styles.pill
-                    }
+            <button
+              onClick={() => openDrawerModal("profile")}
+              className="btn-interactive btn-lift"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "6px 12px 6px 8px",
+                borderRadius: "var(--radius-pill)",
+                border: "1px solid var(--border-light)",
+                backgroundColor: "#FFFFFF",
+                cursor: "pointer",
+                minWidth: 0,
+              }}
+              title={t.drawerProfile}
+            >
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  backgroundColor: portalMode === "tenant" ? "#EFE2D4" : "var(--bg-cream)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: "var(--maroon)",
+                  overflow: "hidden",
+                  flexShrink: 0,
+                }}
+              >
+                {currentUser?.avatar ? (
+                  <img
+                    src={currentUser.avatar}
+                    alt={displayName}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  displayInitials
+                )}
+              </div>
+              <span className="header-profile-name">
+                {displayName}
+              </span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+        {(portalMode === "tenant"
+          ? [
+              { id: "t_dashboard", tab: "dashboard", label: t.navDashboard, icon: TrendingUp },
+              { id: "t_menu", tab: "menu", label: t.navMenu, icon: Store },
+              {
+                id: "t_orders",
+                tab: "orders",
+                label: t.navOrders,
+                icon: Receipt,
+                badge: incomingOrders.length > 0 ? incomingOrders.length : null,
+              },
+              { id: "t_history", tab: "history", label: t.navHistory, icon: Clock },
+            ]
+          : [
+              { id: "home", tab: "home", label: t.navHome, icon: Store },
+              { id: "tenant", tab: "tenant", label: t.navTenant, icon: MapPin },
+              {
+                id: "orders",
+                tab: "orders",
+                label: t.navOrders,
+                icon: ShoppingBag,
+                badge: totalCartCount > 0 ? totalCartCount : null,
+              },
+              { id: "history", tab: "history", label: t.navHistory, icon: Clock },
+            ]
+        ).map((tab) => {
+          const active =
+            portalMode === "tenant"
+              ? tenantNavTab === tab.tab
+              : navTab === tab.tab;
+          const IconComp = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                if (portalMode === "tenant") {
+                  setTenantNavTab(tab.tab);
+                } else {
+                  setNavTab(tab.tab);
+                  setActiveTenantView(null);
+                  closeFoodDetail();
+                }
+              }}
+              style={{
+                position: "relative",
+                border: "none",
+                backgroundColor: active ? "var(--bg-cream)" : "transparent",
+                borderRadius: 14,
+                padding: "8px 4px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 3,
+                color: "var(--maroon)",
+                cursor: "pointer",
+                minHeight: 48,
+              }}
+            >
+              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                <IconComp size={18} strokeWidth={active ? 2.5 : 2} />
+                {tab.badge && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: -6,
+                      right: -12,
+                      padding: "1px 5px",
+                      borderRadius: 999,
+                      backgroundColor: "var(--orange)",
+                      color: "#FFFFFF",
+                      fontSize: 10,
+                      fontWeight: 800,
+                    }}
                   >
-                    {cat.nama_kategori}
-                  </button>
-                ))}
+                    {tab.badge}
+                  </span>
+                )}
               </div>
-              <input
-                type="search"
-                placeholder="Cari makanan atau minuman..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={styles.searchInput}
-              />
-            </div>
+              <span style={{ fontSize: 11, fontWeight: active ? 800 : 600 }}>
+                {tab.label}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
 
-            {/* Daftar Menu */}
-            {filteredMenus.length === 0 ? (
-              <div style={styles.emptyBox}>
-                Belum ada menu yang sesuai dengan filter pencarian.
-              </div>
-            ) : (
-              <div style={styles.menuGrid}>
-                {filteredMenus.map((menu) => {
-                  const tenantOpen = menu.tenant
-                    ? menu.tenant.status_buka
-                    : true;
-                  const canOrder = menu.status_tersedia && tenantOpen;
-                  return (
-                    <article key={menu.id_menu} style={styles.menuCard}>
-                      <div style={styles.cardTopRow}>
-                        <span style={styles.categoryTag}>
-                          {menu.category?.nama_kategori || "Menu"}
-                        </span>
-                        <span style={styles.timeTag}>
-                          ⏱ ~{menu.estimasi_menit} menit
-                        </span>
-                      </div>
-                      <h3 style={styles.menuTitle}>{menu.nama_menu}</h3>
-                      <p style={styles.tenantLabel}>
-                        🏪 {menu.tenant?.nama_tenant || `Tenant #${menu.id_tenant}`}
-                      </p>
-                      <p style={styles.cardDesc}>{menu.deskripsi}</p>
-                      <div style={styles.menuFooter}>
-                        <strong style={styles.priceText}>
-                          {formatRupiah(menu.harga)}
-                        </strong>
-                        <div style={styles.actionGroup}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedMenuDetail(menu);
-                              setDetailQuantity(1);
-                              setDetailNotes("");
+      <main className="main-content-area" style={{ paddingBottom: 60 }}>
+        {portalMode === "tenant" && (
+          <>
+            {tenantNavTab === "dashboard" && (
+              <div className="container-app animate-fade" style={{ paddingTop: 32 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 24,
+                    flexWrap: "wrap",
+                    gap: 16,
+                  }}
+                >
+                  <div>
+                    <h1
+                      style={{
+                        fontSize: 32,
+                        fontWeight: 900,
+                        color: "var(--maroon)",
+                        letterSpacing: "-0.02em",
+                        marginBottom: 2,
+                      }}
+                    >
+                      {t.navDashboard}
+                    </h1>
+                    <p style={{ fontSize: 15, color: "var(--text-muted)" }}>
+                      {t.welcomeBack}, {displayName}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      const next = !isStoreOpen;
+                      setIsStoreOpen(next);
+                      api.updateVendorTenant({ status_buka: next }).catch(() => {});
+                    }}
+                    className="btn-interactive"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "9px 18px",
+                      borderRadius: "var(--radius-pill)",
+                      border: "1px solid var(--border-light)",
+                      backgroundColor: "#FFFFFF",
+                      boxShadow: "var(--shadow-sm)",
+                      cursor: "pointer",
+                      fontSize: 13,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        backgroundColor: isStoreOpen ? "var(--orange)" : "#9CA3AF",
+                      }}
+                    />
+                    <span style={{ fontWeight: 800, color: "var(--maroon)" }}>
+                      {isStoreOpen ? t.storeOpen : t.storeClosed}
+                    </span>
+                    <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>
+                      · 18:00
+                    </span>
+                  </button>
+                </div>
+                <div
+                  className="grid-kpi-4"
+                  style={{
+                    marginBottom: 26,
+                  }}
+                >
+                  {[
+                    {
+                      label: t.kpiOrders,
+                      value: String(ordersTodayCount),
+                      badge: "+18%",
+                      icon: Receipt,
+                    },
+                    {
+                      label: t.kpiRevenue,
+                      value: formatRupiah(revenueTodayTotal),
+                      badge: "+12%",
+                      icon: Banknote,
+                    },
+                    {
+                      label: t.kpiQueue,
+                      value: String(incomingOrders.length),
+                      badge: "Live",
+                      icon: Users,
+                    },
+                    {
+                      label: t.kpiPrep,
+                      value: "7 min",
+                      badge: "−2 min",
+                      icon: Timer,
+                    },
+                  ].map((kpi) => {
+                    const IconComp = kpi.icon;
+                    return (
+                      <div
+                        key={kpi.label}
+                        className="card-hover"
+                        style={{
+                          backgroundColor: "#FFFFFF",
+                          borderRadius: "var(--radius-lg)",
+                          border: "1px solid var(--border-light)",
+                          padding: "20px 22px",
+                          boxShadow: "var(--shadow-card)",
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                          minHeight: 132,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            marginBottom: 16,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 10,
+                              backgroundColor: "var(--bg-cream)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "var(--maroon)",
                             }}
-                            style={styles.secondaryBtn}
                           >
-                            Detail
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!canOrder}
-                            onClick={() => handleAddToCart(menu, 1, "")}
-                            style={
-                              canOrder
-                                ? styles.primaryBtn
-                                : styles.disabledBtn
-                            }
+                            <IconComp size={18} strokeWidth={2.2} />
+                          </div>
+
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              padding: "3px 10px",
+                              borderRadius: "var(--radius-pill)",
+                              backgroundColor: "var(--bg-cream)",
+                              color: "var(--maroon)",
+                              fontSize: 11,
+                              fontWeight: 800,
+                            }}
                           >
-                            {canOrder ? "+ Keranjang" : "Habis / Tutup"}
-                          </button>
+                            <TrendingUp size={11} />
+                            <span>{kpi.badge}</span>
+                          </span>
+                        </div>
+
+                        <div>
+                          <div
+                            style={{
+                              fontSize: 13,
+                              color: "var(--text-muted)",
+                              marginBottom: 2,
+                              fontWeight: 500,
+                            }}
+                          >
+                            {kpi.label}
+                          </div>
+                          <div
+                            className="tabular"
+                            style={{
+                              fontSize: 26,
+                              fontWeight: 900,
+                              color: "var(--maroon)",
+                              letterSpacing: "-0.02em",
+                            }}
+                          >
+                            {kpi.value}
+                          </div>
                         </div>
                       </div>
-                    </article>
+                    );
+                  })}
+                </div>
+                <div
+                  className="grid-dashboard-split"
+                >
+                  <div
+                    style={{
+                      backgroundColor: "#FFFFFF",
+                      borderRadius: "var(--radius-xl)",
+                      border: "1px solid var(--border-light)",
+                      padding: "24px 26px",
+                      boxShadow: "var(--shadow-card)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: 18,
+                      }}
+                    >
+                      <div>
+                        <h2
+                          style={{
+                            fontSize: 18,
+                            fontWeight: 800,
+                            color: "var(--maroon)",
+                            marginBottom: 2,
+                          }}
+                        >
+                          {t.incomingOrders}
+                        </h2>
+                        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                          {t.incomingDesc}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => setTenantNavTab("orders")}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          color: "var(--maroon)",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        <span>{t.viewAll}</span>
+                        <ArrowRight size={14} />
+                      </button>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      {incomingOrders.map((ord) => {
+                        const isAwaiting = ord.status === "Awaiting payment";
+                        const isPrep = ord.status === "Preparing";
+                        const isReady = ord.status === "Ready for pickup";
+
+                        return (
+                          <div
+                            key={ord.id}
+                            className="card-hover"
+                            style={{
+                              borderRadius: "var(--radius-md)",
+                              border: "1px solid var(--border-light)",
+                              padding: "14px 16px",
+                              backgroundColor: "#FFFFFF",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 14,
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                              <div
+                                style={{
+                                  width: 48,
+                                  height: 48,
+                                  borderRadius: 11,
+                                  backgroundColor: "var(--maroon)",
+                                  color: "#FFFFFF",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {ord.code}
+                              </div>
+
+                              <div>
+                                <div
+                                  style={{
+                                    fontSize: 15,
+                                    fontWeight: 800,
+                                    color: "var(--maroon)",
+                                    marginBottom: 2,
+                                  }}
+                                >
+                                  {ord.item_name}
+                                </div>
+                                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                  {ord.user_name} · {ord.items_count}{" "}
+                                  {ord.items_count > 1 ? "items" : "item"} ·{" "}
+                                  {formatRupiah(ord.total)}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  padding: "5px 12px",
+                                  borderRadius: "var(--radius-pill)",
+                                  backgroundColor: isReady
+                                    ? "var(--orange)"
+                                    : "var(--bg-cream)",
+                                  color: "var(--maroon)",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    width: 6,
+                                    height: 6,
+                                    borderRadius: "50%",
+                                    backgroundColor: isReady
+                                      ? "var(--maroon)"
+                                      : "var(--orange)",
+                                  }}
+                                />
+                                <span>{ord.status}</span>
+                              </span>
+                              {isAwaiting && (
+                                <button
+                                  onClick={() => {
+                                    setTenantOrderStep(1);
+                                    setTenantNavTab("orders");
+                                  }}
+                                  className="btn-interactive"
+                                  style={{
+                                    border: "none",
+                                    background: "transparent",
+                                    color: "var(--maroon)",
+                                    fontSize: 13,
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                    padding: "6px 10px",
+                                  }}
+                                >
+                                  View order
+                                </button>
+                              )}
+
+                              {isPrep && (
+                                <button
+                                  onClick={() => {
+                                    setIncomingOrders((prev) =>
+                                      prev.map((o) =>
+                                        o.id === ord.id
+                                          ? { ...o, status: "Ready for pickup" }
+                                          : o
+                                      )
+                                    );
+                                    api.updateOrderStatus(ord.id, "Siap Diambil").catch(() => {});
+                                  }}
+                                  className="btn-interactive btn-lift"
+                                  style={{
+                                    padding: "8px 18px",
+                                    borderRadius: "var(--radius-pill)",
+                                    border: "none",
+                                    backgroundColor: "var(--orange)",
+                                    color: "var(--maroon)",
+                                    fontSize: 12,
+                                    fontWeight: 800,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Mark ready
+                                </button>
+                              )}
+
+                              {isReady && (
+                                <button
+                                  onClick={() => {
+                                    setIncomingOrders((prev) =>
+                                      prev.filter((o) => o.id !== ord.id)
+                                    );
+                                    setOrdersTodayCount((c) => c + 1);
+                                    setRevenueTodayTotal((r) => r + ord.total);
+                                    setOrdersHistory((prev) => [
+                                      {
+                                        id_pesanan: Date.now(),
+                                        nomor_antrean: ord.code,
+                                        items_summary: `${ord.item_name}${
+                                          ord.items_count > 1
+                                            ? ` + ${ord.items_count - 1} more`
+                                            : ""
+                                        }`,
+                                        tenant_name: displayName,
+                                        tanggal: "Just now",
+                                        total: ord.total,
+                                        status: "Completed",
+                                      },
+                                      ...prev,
+                                    ]);
+                                    api.updateOrderStatus(ord.id, "Selesai").catch(() => {});
+                                  }}
+                                  className="btn-interactive"
+                                  style={{
+                                    padding: "8px 16px",
+                                    borderRadius: "var(--radius-pill)",
+                                    border: "1px solid var(--border-input)",
+                                    backgroundColor: "#FFFFFF",
+                                    color: "var(--maroon)",
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Complete pickup
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {incomingOrders.length === 0 && (
+                        <div
+                          style={{
+                            padding: "32px 20px",
+                            borderRadius: "var(--radius-lg)",
+                            backgroundColor: "#FAF6F2",
+                            border: "1px dashed var(--border-input)",
+                            textAlign: "center",
+                            color: "var(--text-muted)",
+                            fontSize: 14,
+                          }}
+                        >
+                          {t.noIncomingOrders}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+                    {(() => {
+                      const availList = tenantMenus.filter((m) => m.available);
+                      const unavailList = tenantMenus.filter((m) => !m.available);
+                      const pct =
+                        tenantMenus.length > 0
+                          ? (availList.length / tenantMenus.length) * 100
+                          : 0;
+                      return (
+                        <div
+                          style={{
+                            backgroundColor: "#FFFFFF",
+                            borderRadius: "var(--radius-xl)",
+                            border: "1px solid var(--border-light)",
+                            padding: "22px 24px",
+                            boxShadow: "var(--shadow-card)",
+                          }}
+                        >
+                          <h3
+                            style={{
+                              fontSize: 17,
+                              fontWeight: 800,
+                              color: "var(--maroon)",
+                              marginBottom: 10,
+                            }}
+                          >
+                            {t.menuAvailability}
+                          </h3>
+
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "baseline",
+                              gap: 8,
+                              marginBottom: 10,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 28,
+                                fontWeight: 900,
+                                color: "var(--maroon)",
+                                letterSpacing: "-0.02em",
+                              }}
+                            >
+                              {availList.length} / {tenantMenus.length}
+                            </span>
+                            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                              {t.itemsAvailable}
+                            </span>
+                          </div>
+                          <div
+                            style={{
+                              width: "100%",
+                              height: 8,
+                              borderRadius: 999,
+                              backgroundColor: "#F2EAE4",
+                              overflow: "hidden",
+                              marginBottom: 10,
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: `${pct}%`,
+                                height: "100%",
+                                borderRadius: 999,
+                                backgroundColor: "var(--orange)",
+                                transition: "width 0.35s ease",
+                              }}
+                            />
+                          </div>
+
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "var(--text-muted)",
+                              marginBottom: 16,
+                            }}
+                          >
+                            {tenantMenus.length === 0
+                              ? t.noMenuUploadedShort
+                              : unavailList.length > 0
+                              ? `${lang === "EN" ? "Unavailable" : "Habis"}: ${unavailList.map((u) => u.nama_menu).join(", ")}`
+                              : lang === "EN"
+                              ? "All menu items are currently available!"
+                              : "Semua menu sedang tersedia!"}
+                          </div>
+
+                          <button
+                            onClick={() => setTenantNavTab("menu")}
+                            className="btn-interactive"
+                            style={{
+                              width: "100%",
+                              padding: "11px 16px",
+                              borderRadius: "var(--radius-pill)",
+                              border: "1px solid var(--border-input)",
+                              backgroundColor: "#FFFFFF",
+                              color: "var(--maroon)",
+                              fontSize: 13,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 6,
+                            }}
+                          >
+                            <span>{t.manageMenu}</span>
+                            <ArrowRight size={14} />
+                          </button>
+                        </div>
+                      );
+                    })()}
+                    <div
+                      style={{
+                        backgroundColor: "#FFFFFF",
+                        borderRadius: "var(--radius-xl)",
+                        border: "1px solid var(--border-light)",
+                        padding: "22px 24px",
+                        boxShadow: "var(--shadow-card)",
+                      }}
+                    >
+                      <h3
+                        style={{
+                          fontSize: 17,
+                          fontWeight: 800,
+                          color: "var(--maroon)",
+                          marginBottom: 14,
+                        }}
+                      >
+                        {t.topSellers}
+                      </h3>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        {tenantMenus.slice(0, 3).map((topItem, idx) => (
+                          <div
+                            key={topItem.id_menu}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              paddingBottom: idx < 2 ? 12 : 0,
+                              borderBottom:
+                                idx < 2 ? "1px solid var(--border-light)" : "none",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                              <div
+                                style={{
+                                  width: 42,
+                                  height: 42,
+                                  borderRadius: 10,
+                                  backgroundColor: "var(--bg-warm-img)",
+                                  overflow: "hidden",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {topItem.gambar ? (
+                                  <img
+                                    src={topItem.gambar}
+                                    alt={topItem.nama_menu}
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      objectFit: "cover",
+                                    }}
+                                  />
+                                ) : null}
+                              </div>
+
+                              <div>
+                                <div
+                                  style={{
+                                    fontSize: 14,
+                                    fontWeight: 700,
+                                    color: "var(--maroon)",
+                                  }}
+                                >
+                                  {topItem.nama_menu}
+                                </div>
+                                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                  {topItem.sold_today || 0} sold
+                                </div>
+                              </div>
+                            </div>
+
+                            <div
+                              className="tabular"
+                              style={{
+                                fontSize: 14,
+                                fontWeight: 800,
+                                color: "var(--maroon)",
+                              }}
+                            >
+                              {formatRupiah(topItem.harga * (topItem.sold_today || 0))}
+                            </div>
+                          </div>
+                        ))}
+                        {tenantMenus.length === 0 && (
+                          <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "12px 0" }}>
+                            {t.noMenuUploadedShort}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {tenantNavTab === "menu" && (
+              <div className="container-app animate-fade" style={{ paddingTop: 32 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 22,
+                    flexWrap: "wrap",
+                    gap: 16,
+                  }}
+                >
+                  <div>
+                    <h1
+                      style={{
+                        fontSize: 32,
+                        fontWeight: 900,
+                        color: "var(--maroon)",
+                        letterSpacing: "-0.02em",
+                        marginBottom: 2,
+                      }}
+                    >
+                      {t.myMenuTitle}
+                    </h1>
+                    <p style={{ fontSize: 15, color: "var(--text-muted)" }}>
+                      {t.myMenuDesc}
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", width: "100%", maxWidth: 460, justifyContent: "flex-end" }}>
+                    <div
+                      className="search-pill-box"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        backgroundColor: "#FFFFFF",
+                        borderRadius: "var(--radius-pill)",
+                        padding: "5px 6px 5px 18px",
+                        border: "1px solid var(--border-input)",
+                        width: 290,
+                        boxShadow: "var(--shadow-sm)",
+                      }}
+                    >
+                      <input
+                        type="text"
+                        placeholder="Search your menu..."
+                        value={tenantMenuSearch}
+                        onChange={(e) => setTenantMenuSearch(e.target.value)}
+                        style={{
+                          border: "none",
+                          outline: "none",
+                          background: "transparent",
+                          fontSize: 13,
+                          color: "var(--maroon)",
+                          width: "100%",
+                        }}
+                      />
+                      <button
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: "50%",
+                          border: "none",
+                          backgroundColor: "var(--maroon)",
+                          color: "#FFFFFF",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          flexShrink: 0,
+                        }}
+                        aria-label="Search menu"
+                      >
+                        <Search size={14} />
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setNewDishForm({
+                          nama_menu: "",
+                          harga: "",
+                          kategori_nama: "Rice & Mains",
+                          estimasi_menit: "10",
+                          deskripsi: "",
+                          gambar: "",
+                        });
+                        setIsAddMenuOpen(true);
+                      }}
+                      className="btn-interactive btn-lift"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "11px 22px",
+                        borderRadius: "var(--radius-pill)",
+                        border: "none",
+                        backgroundColor: "var(--orange)",
+                        color: "var(--maroon)",
+                        fontSize: 13,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
+                      }}
+                    >
+                      <Plus size={16} strokeWidth={2.8} />
+                      <span>{t.uploadMenuBtn}</span>
+                    </button>
+                  </div>
+                </div>
+                {(() => {
+                  const availCount = tenantMenus.filter((m) => m.available).length;
+                  const unavailCount = tenantMenus.filter((m) => !m.available).length;
+                  const displayedMenus = tenantMenus.filter((item) => {
+                    const matchFilter =
+                      tenantMenuFilter === "All"
+                        ? true
+                        : tenantMenuFilter === "Available"
+                        ? item.available
+                        : !item.available;
+                    const matchSearch =
+                      tenantMenuSearch === "" ||
+                      item.nama_menu
+                        .toLowerCase()
+                        .includes(tenantMenuSearch.toLowerCase());
+                    return matchFilter && matchSearch;
+                  });
+
+                  return (
+                    <>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          marginBottom: 24,
+                          flexWrap: "wrap",
+                          gap: 12,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          {[
+                            { id: "All", label: `${t.filterAll} (${tenantMenus.length})` },
+                            { id: "Available", label: `${lang === "EN" ? "Available" : "Tersedia"} (${availCount})` },
+                            { id: "Unavailable", label: `${lang === "EN" ? "Unavailable" : "Habis"} (${unavailCount})` },
+                          ].map((f) => {
+                            const active = tenantMenuFilter === f.id;
+                            return (
+                              <button
+                                key={f.id}
+                                onClick={() => setTenantMenuFilter(f.id)}
+                                className="btn-interactive"
+                                style={{
+                                  padding: "8px 18px",
+                                  borderRadius: "var(--radius-pill)",
+                                  border: active
+                                    ? "1px solid var(--maroon)"
+                                    : "1px solid var(--border-input)",
+                                  backgroundColor: active ? "var(--maroon)" : "#FFFFFF",
+                                  color: active ? "#FFFFFF" : "var(--maroon)",
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {f.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                          Tap the pencil to rename · switch the toggle to change availability
+                        </div>
+                      </div>
+                      <div className="grid-4-cols">
+                        {displayedMenus.map((dish) => (
+                          <div key={dish.id_menu} style={{ display: "flex", flexDirection: "column" }}>
+                            <div
+                              className="img-zoom-parent"
+                              style={{
+                                position: "relative",
+                                aspectRatio: "1 / 1",
+                                borderRadius: "var(--radius-lg)",
+                                backgroundColor: "var(--bg-warm-img)",
+                                overflow: "hidden",
+                                marginBottom: 12,
+                              }}
+                            >
+                              <img
+                                src={dish.gambar}
+                                alt={dish.nama_menu}
+                                className="img-zoom-child"
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover",
+                                  opacity: dish.available ? 1 : 0.35,
+                                  transition: "opacity 0.25s ease, transform 0.45s ease",
+                                }}
+                              />
+                              {!dish.available && (
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    backgroundColor: "rgba(253, 240, 226, 0.45)",
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      padding: "6px 18px",
+                                      borderRadius: "var(--radius-pill)",
+                                      backgroundColor: "var(--maroon)",
+                                      color: "#FFFFFF",
+                                      fontSize: 12,
+                                      fontWeight: 700,
+                                      boxShadow: "0 4px 12px rgba(82, 42, 40, 0.2)",
+                                    }}
+                                  >
+                                    Unavailable
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "flex-start",
+                                justifyContent: "space-between",
+                                gap: 8,
+                                marginBottom: 10,
+                              }}
+                            >
+                              <div>
+                                <div
+                                  style={{
+                                    fontSize: 15,
+                                    fontWeight: 800,
+                                    color: "var(--maroon)",
+                                    lineHeight: 1.25,
+                                  }}
+                                >
+                                  {dish.nama_menu}
+                                </div>
+                                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                  {dish.tenant_name}
+                                </div>
+                              </div>
+
+                              <button
+                                onClick={() => {
+                                  setEditingDish(dish);
+                                  setEditDishForm({
+                                    nama_menu: dish.nama_menu,
+                                    harga: String(dish.harga),
+                                    available: dish.available,
+                                  });
+                                }}
+                                className="btn-interactive"
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: "50%",
+                                  border: "1px solid var(--border-light)",
+                                  backgroundColor: "#FFFFFF",
+                                  color: "var(--maroon)",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  cursor: "pointer",
+                                  flexShrink: 0,
+                                }}
+                                title="Edit menu item"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                            </div>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              <span
+                                className="tabular"
+                                style={{
+                                  fontSize: 15,
+                                  fontWeight: 800,
+                                  color: "var(--maroon)",
+                                }}
+                              >
+                                {formatRupiah(dish.harga)}
+                              </span>
+
+                              <div
+                                onClick={() => {
+                                  const nextAvail = !dish.available;
+                                  setTenantMenus((prev) =>
+                                    prev.map((m) =>
+                                      m.id_menu === dish.id_menu
+                                        ? { ...m, available: nextAvail }
+                                        : m
+                                    )
+                                  );
+                                  setMenusList((prev) =>
+                                    prev.map((m) =>
+                                      m.id_menu === dish.id_menu
+                                        ? { ...m, available: nextAvail, status_tersedia: nextAvail }
+                                        : m
+                                    )
+                                  );
+                                  api
+                                    .updateMenuAvailability(dish.id_menu, nextAvail)
+                                    .catch(() => {});
+                                }}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  cursor: "pointer",
+                                  userSelect: "none",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: 42,
+                                    height: 23,
+                                    borderRadius: 999,
+                                    backgroundColor: dish.available
+                                      ? "var(--orange)"
+                                      : "#D8D2CE",
+                                    position: "relative",
+                                    transition: "background-color 0.25s ease",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      width: 17,
+                                      height: 17,
+                                      borderRadius: "50%",
+                                      backgroundColor: "#FFFFFF",
+                                      position: "absolute",
+                                      top: 3,
+                                      left: dish.available ? 22 : 3,
+                                      transition:
+                                        "left 0.25s cubic-bezier(0.22, 1, 0.36, 1)",
+                                      boxShadow: "0 1px 3px rgba(0,0,0,0.18)",
+                                    }}
+                                  />
+                                </div>
+
+                                <span
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: dish.available ? 700 : 500,
+                                    color: dish.available
+                                      ? "var(--maroon)"
+                                      : "var(--text-muted)",
+                                  }}
+                                >
+                                  {dish.available ? "Available" : "Unavailable"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {displayedMenus.length === 0 && (
+                        <div
+                          style={{
+                            padding: "48px 24px",
+                            borderRadius: "var(--radius-xl)",
+                            backgroundColor: "#FFFFFF",
+                            border: "1px dashed var(--border-input)",
+                            textAlign: "center",
+                            boxShadow: "var(--shadow-sm)",
+                          }}
+                        >
+                          <div style={{ fontSize: 18, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
+                            Belum ada menu di daftar ini
+                          </div>
+                          <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 18 }}>
+                            Upload menu makanan atau minuman kantin Anda agar pelanggan bisa langsung memesan.
+                          </p>
+                          <button
+                            onClick={() => {
+                              setNewDishForm({
+                                nama_menu: "",
+                                harga: "",
+                                kategori_nama: "Rice & Mains",
+                                estimasi_menit: "10",
+                                deskripsi: "",
+                                gambar: "",
+                              });
+                              setIsAddMenuOpen(true);
+                            }}
+                            className="btn-interactive btn-lift"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 8,
+                              padding: "12px 24px",
+                              borderRadius: "var(--radius-pill)",
+                              border: "none",
+                              backgroundColor: "var(--orange)",
+                              color: "var(--maroon)",
+                              fontSize: 14,
+                              fontWeight: 800,
+                              cursor: "pointer",
+                              boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
+                            }}
+                          >
+                            <Plus size={16} strokeWidth={2.8} />
+                            <span>Upload Menu Pertama</span>
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+            {tenantNavTab === "orders" && (
+              <div className="container-app animate-fade" style={{ paddingTop: 32, maxWidth: 980 }}>
+                <div style={{ marginBottom: 22 }}>
+                  <h1
+                    style={{
+                      fontSize: 32,
+                      fontWeight: 900,
+                      color: "var(--maroon)",
+                      letterSpacing: "-0.02em",
+                      marginBottom: 4,
+                    }}
+                  >
+                    {t.incomingOrders}
+                  </h1>
+                  <p style={{ fontSize: 15, color: "var(--text-muted)" }}>
+                    {t.incomingDesc} ({displayName})
+                  </p>
+                </div>
+
+                {incomingOrders.length === 0 ? (
+                  <div
+                    style={{
+                      backgroundColor: "#FFFFFF",
+                      borderRadius: "var(--radius-xl)",
+                      border: "1px dashed var(--border-input)",
+                      padding: "56px 28px",
+                      boxShadow: "var(--shadow-sm)",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 58,
+                        height: 58,
+                        borderRadius: "50%",
+                        backgroundColor: "var(--bg-cream)",
+                        color: "var(--maroon)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        margin: "0 auto 14px",
+                      }}
+                    >
+                      <Receipt size={26} />
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
+                      {lang === "EN" ? "No active incoming orders" : "Belum ada pesanan aktif saat ini"}
+                    </div>
+                    <p style={{ fontSize: 14, color: "var(--text-muted)", maxWidth: 440, margin: "0 auto" }}>
+                      {t.noIncomingOrders}
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      backgroundColor: "#FFFFFF",
+                      borderRadius: "var(--radius-xl)",
+                      border: "1px solid var(--border-light)",
+                      padding: "24px",
+                      boxShadow: "var(--shadow-card)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
+                    {incomingOrders.map((ord) => {
+                      const isPrep = ord.status === "Preparing";
+                      const isReady = ord.status === "Ready for pickup";
+                      return (
+                        <div
+                          key={ord.id}
+                          className="card-hover"
+                          style={{
+                            borderRadius: "var(--radius-md)",
+                            border: "1px solid var(--border-light)",
+                            padding: "16px 18px",
+                            backgroundColor: "#FFFFFF",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 14,
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                            <div
+                              style={{
+                                width: 48,
+                                height: 48,
+                                borderRadius: 11,
+                                backgroundColor: "var(--maroon)",
+                                color: "#FFFFFF",
+                                fontSize: 12,
+                                fontWeight: 800,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {ord.code}
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 15, fontWeight: 800, color: "var(--maroon)", marginBottom: 2 }}>
+                                {ord.item_name}
+                              </div>
+                              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                {ord.user_name} · {ord.items_count} item · {formatRupiah(ord.total)}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                padding: "5px 12px",
+                                borderRadius: "var(--radius-pill)",
+                                backgroundColor: isReady ? "var(--orange)" : "var(--bg-cream)",
+                                color: "var(--maroon)",
+                                fontSize: 12,
+                                fontWeight: 700,
+                              }}
+                            >
+                              {ord.status}
+                            </span>
+
+                            {isPrep && (
+                              <button
+                                onClick={() => {
+                                  setIncomingOrders((prev) =>
+                                    prev.map((o) =>
+                                      o.id === ord.id ? { ...o, status: "Ready for pickup" } : o
+                                    )
+                                  );
+                                  api.updateOrderStatus(ord.id, "Siap Diambil").catch(() => {});
+                                }}
+                                className="btn-interactive btn-lift"
+                                style={{
+                                  padding: "8px 18px",
+                                  borderRadius: "var(--radius-pill)",
+                                  border: "none",
+                                  backgroundColor: "var(--orange)",
+                                  color: "var(--maroon)",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Mark ready
+                              </button>
+                            )}
+
+                            {isReady && (
+                              <button
+                                onClick={() => {
+                                  setIncomingOrders((prev) => prev.filter((o) => o.id !== ord.id));
+                                  setOrdersTodayCount((c) => c + 1);
+                                  setRevenueTodayTotal((r) => r + ord.total);
+                                  setOrdersHistory((prev) => [
+                                    {
+                                      id_pesanan: Date.now(),
+                                      nomor_antrean: ord.code,
+                                      items_summary: ord.item_name,
+                                      tenant_name: displayName,
+                                      tanggal: "Just now",
+                                      total: ord.total,
+                                      status: "Completed",
+                                    },
+                                    ...prev,
+                                  ]);
+                                  api.updateOrderStatus(ord.id, "Selesai").catch(() => {});
+                                }}
+                                className="btn-interactive"
+                                style={{
+                                  padding: "8px 16px",
+                                  borderRadius: "var(--radius-pill)",
+                                  border: "1px solid var(--border-input)",
+                                  backgroundColor: "#FFFFFF",
+                                  color: "var(--maroon)",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Complete pickup
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+            {tenantNavTab === "history" && (
+              <div className="container-app animate-fade" style={{ paddingTop: 32, maxWidth: 980 }}>
+                <div style={{ marginBottom: 22 }}>
+                  <h1
+                    style={{
+                      fontSize: 32,
+                      fontWeight: 900,
+                      color: "var(--maroon)",
+                      letterSpacing: "-0.02em",
+                      marginBottom: 4,
+                    }}
+                  >
+                    {t.historyTitle}
+                  </h1>
+                  <p style={{ fontSize: 15, color: "var(--text-muted)" }}>
+                    {t.historyDesc}
+                  </p>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+                  {[
+                    { key: "All", label: t.filterAll },
+                    { key: "In progress", label: t.filterInProgress },
+                    { key: "Completed", label: t.filterCompleted },
+                    { key: "Cancelled", label: t.filterCancelled },
+                  ].map((tab) => {
+                    const active = tenantHistoryFilter === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        onClick={() => setTenantHistoryFilter(tab.key)}
+                        className="btn-interactive"
+                        style={{
+                          padding: "8px 18px",
+                          borderRadius: "var(--radius-pill)",
+                          border: active
+                            ? "1px solid var(--maroon)"
+                            : "1px solid var(--border-input)",
+                          backgroundColor: active ? "var(--maroon)" : "#FFFFFF",
+                          color: active ? "#FFFFFF" : "var(--maroon)",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "var(--radius-xl)",
+                    border: "1px solid var(--border-light)",
+                    padding: "22px",
+                    boxShadow: "var(--shadow-card)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 14,
+                  }}
+                >
+                  {ordersHistory
+                    .filter((ord) => {
+                      if (tenantHistoryFilter === "All") return true;
+                      if (tenantHistoryFilter === "In progress")
+                        return ord.status === "Preparing";
+                      return ord.status === tenantHistoryFilter;
+                    })
+                    .map((order) => {
+                      const isPrep = order.status === "Preparing";
+                      const isCompleted = order.status === "Completed";
+                      return (
+                        <div
+                          key={order.id_pesanan}
+                          className="card-hover"
+                          style={{
+                            borderRadius: "var(--radius-lg)",
+                            border: "1px solid var(--border-light)",
+                            padding: "16px 20px",
+                            backgroundColor: "#FFFFFF",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                            <div
+                              style={{
+                                width: 52,
+                                height: 52,
+                                borderRadius: 12,
+                                backgroundColor: "var(--bg-warm-img)",
+                                flexShrink: 0,
+                              }}
+                            />
+                            <div>
+                              <div
+                                style={{
+                                  fontSize: 15,
+                                  fontWeight: 800,
+                                  color: "var(--maroon)",
+                                  marginBottom: 2,
+                                }}
+                              >
+                                {order.items_summary}
+                              </div>
+                              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                {order.tanggal} · {formatRupiah(order.total)}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                padding: "5px 12px",
+                                borderRadius: "var(--radius-pill)",
+                                backgroundColor: isCompleted
+                                  ? "var(--maroon)"
+                                  : isPrep
+                                  ? "var(--bg-cream)"
+                                  : "#FFFFFF",
+                                border:
+                                  !isCompleted && !isPrep
+                                    ? "1px solid var(--border-input)"
+                                    : "none",
+                                color: isCompleted
+                                  ? "#FFFFFF"
+                                  : isPrep
+                                  ? "var(--maroon)"
+                                  : "var(--text-muted)",
+                                fontSize: 12,
+                                fontWeight: 700,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: 6,
+                                  height: 6,
+                                  borderRadius: "50%",
+                                  backgroundColor:
+                                    isCompleted || isPrep
+                                      ? "var(--orange)"
+                                      : "#9CA3AF",
+                                }}
+                              />
+                              <span>{order.status}</span>
+                            </span>
+
+                            <ChevronRight size={16} color="var(--maroon)" />
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+        {portalMode === "customer" && (
+          <>
+        {navTab === "home" && !activeTenantView && (
+          <div className="container-app animate-fade" style={{ paddingTop: 28 }}>
+            <div
+              onMouseEnter={() => setIsHeroPaused(true)}
+              onMouseLeave={() => setIsHeroPaused(false)}
+              style={{
+                position: "relative",
+                width: "100%",
+                borderRadius: "var(--radius-xl)",
+                overflow: "hidden",
+                marginBottom: 36,
+                boxShadow: "var(--shadow-card)",
+                backgroundColor: "var(--bg-banner)",
+                border: "1px solid #EADBCE",
+                minHeight: 310,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  width: `${heroSlides.length * 100}%`,
+                  transform: `translateX(-${heroSlide * (100 / heroSlides.length)}%)`,
+                  transition: "transform 0.65s cubic-bezier(0.25, 1, 0.5, 1)",
+                  willChange: "transform",
+                }}
+              >
+                {heroSlides.map((slide, sIdx) => (
+                  <div
+                    key={sIdx}
+                    style={{
+                      width: `${100 / heroSlides.length}%`,
+                      flexShrink: 0,
+                      position: "relative",
+                      minHeight: 310,
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        zIndex: 1,
+                        backgroundImage: `linear-gradient(90deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.80) 48%, rgba(255,255,255,0.18) 100%), url('${slide.image}')`,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center right",
+                      }}
+                    />
+                    <div
+                      className="hero-slide-inner"
+                      style={{
+                        position: "relative",
+                        zIndex: 2,
+                        padding: "42px 52px",
+                        maxWidth: 620,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "4px 12px",
+                          borderRadius: "var(--radius-pill)",
+                          backgroundColor: "var(--bg-cream)",
+                          color: "var(--maroon)",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          letterSpacing: "0.08em",
+                          textTransform: "uppercase",
+                          marginBottom: 14,
+                        }}
+                      >
+                        <Tag size={12} color="var(--orange)" />
+                        <span>{slide.tag}</span>
+                      </div>
+
+                      <h1
+                        className="hero-slide-title"
+                        style={{
+                          fontSize: 34,
+                          fontWeight: 900,
+                          lineHeight: 1.18,
+                          color: "var(--maroon)",
+                          letterSpacing: "-0.02em",
+                          marginBottom: 12,
+                        }}
+                      >
+                        {slide.title}
+                      </h1>
+
+                      <p
+                        style={{
+                          fontSize: 15,
+                          color: "var(--text-muted)",
+                          lineHeight: 1.5,
+                          marginBottom: 22,
+                        }}
+                      >
+                        {slide.desc}
+                      </p>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                        <button
+                          onClick={() => {
+                            if (sIdx === 0) {
+                              const el = document.getElementById("popular-menu-section");
+                              el?.scrollIntoView({ behavior: "smooth" });
+                            } else {
+                              setNavTab("orders");
+                            }
+                          }}
+                          style={{
+                            padding: "12px 28px",
+                            borderRadius: "var(--radius-pill)",
+                            border: "none",
+                            backgroundColor: "var(--orange)",
+                            color: "#FFFFFF",
+                            fontSize: 14,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            boxShadow: "0 4px 14px rgba(248, 163, 75, 0.4)",
+                            transition: "transform 0.15s ease",
+                          }}
+                        >
+                          <span>{slide.primaryCta}</span>
+                          <ArrowRight size={16} />
+                        </button>
+
+                        <button
+                          onClick={() => setNavTab("tenant")}
+                          style={{
+                            padding: "12px 22px",
+                            borderRadius: "var(--radius-pill)",
+                            border: "1px solid var(--border-light)",
+                            backgroundColor: "#FFFFFF",
+                            color: "var(--maroon)",
+                            fontSize: 14,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {slide.secondaryCta}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => setHeroSlide((prev) => (prev - 1 + heroSlides.length) % heroSlides.length)}
+                aria-label="Previous slide"
+                style={{
+                  position: "absolute",
+                  left: 16,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  zIndex: 4,
+                  width: 38,
+                  height: 38,
+                  borderRadius: "50%",
+                  border: "1px solid rgba(82, 42, 40, 0.12)",
+                  backgroundColor: "rgba(255, 255, 255, 0.92)",
+                  backdropFilter: "blur(6px)",
+                  color: "var(--maroon)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
+                  transition: "background-color 0.2s ease, transform 0.2s ease",
+                }}
+              >
+                <ChevronLeft size={20} />
+              </button>
+              <button
+                onClick={() => setHeroSlide((prev) => (prev + 1) % heroSlides.length)}
+                aria-label="Next slide"
+                style={{
+                  position: "absolute",
+                  right: 16,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  zIndex: 4,
+                  width: 38,
+                  height: 38,
+                  borderRadius: "50%",
+                  border: "1px solid rgba(82, 42, 40, 0.12)",
+                  backgroundColor: "rgba(255, 255, 255, 0.92)",
+                  backdropFilter: "blur(6px)",
+                  color: "var(--maroon)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
+                  transition: "background-color 0.2s ease, transform 0.2s ease",
+                }}
+              >
+                <ChevronRight size={20} />
+              </button>
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 16,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  zIndex: 4,
+                  padding: "5px 14px",
+                  borderRadius: "var(--radius-pill)",
+                  backgroundColor: "rgba(255, 255, 255, 0.95)",
+                  backdropFilter: "blur(6px)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                }}
+              >
+                {heroSlides.map((_, idx) => {
+                  const active = heroSlide === idx;
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => setHeroSlide(idx)}
+                      style={{
+                        border: "none",
+                        cursor: "pointer",
+                        padding: 0,
+                        width: active ? 22 : 7,
+                        height: 7,
+                        borderRadius: 999,
+                        backgroundColor: active ? "var(--maroon)" : "#D9CECA",
+                        transition: "all 0.3s cubic-bezier(0.22, 1, 0.36, 1)",
+                      }}
+                      aria-label={`Go to slide ${idx + 1}`}
+                    />
                   );
                 })}
               </div>
+            </div>
+            <div style={{ marginBottom: 40 }}>
+              <h2
+                style={{
+                  fontSize: 24,
+                  fontWeight: 800,
+                  color: "var(--maroon)",
+                  letterSpacing: "-0.01em",
+                  marginBottom: 16,
+                }}
+              >
+                {t.categories}
+              </h2>
+
+              <div
+                className="grid-3-cols"
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: "var(--radius-lg)",
+                  border: "1px solid var(--border-light)",
+                  padding: "18px 20px",
+                  boxShadow: "var(--shadow-sm)",
+                }}
+              >
+                {[
+                  {
+                    key: "Rice & Mains",
+                    label: t.catRice,
+                    count: `${menusList.filter((m) => m.kategori_nama === "Rice & Mains" && m.available !== false).length} ${t.itemsUnit}`,
+                    iconSvg: (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path
+                          d="M4 11C4 16 7.5 19 12 19C16.5 19 20 16 20 11H4Z"
+                          stroke="#522A28"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                        <path d="M8 7V5M12 7V4M16 7V5" stroke="#F8A34B" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    key: "Snacks",
+                    label: t.catSnacks,
+                    count: `${menusList.filter((m) => m.kategori_nama === "Snacks" && m.available !== false).length} ${t.itemsUnit}`,
+                    iconSvg: (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path
+                          d="M6 9V19C6 20.1 6.9 21 8 21H16C17.1 21 18 20.1 18 19V9H6Z"
+                          stroke="#522A28"
+                          strokeWidth="2"
+                        />
+                        <path d="M9 5V3M12 5V3M15 5V3" stroke="#F8A34B" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    key: "Drinks",
+                    label: t.catDrinks,
+                    count: `${menusList.filter((m) => m.kategori_nama === "Drinks" && m.available !== false).length} ${t.itemsUnit}`,
+                    iconSvg: (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path
+                          d="M5 8V18C5 19.65 6.35 21 8 21H14C15.65 21 17 19.65 17 18V8H5Z"
+                          stroke="#522A28"
+                          strokeWidth="2"
+                        />
+                        <path d="M17 10H19C20.1 10 21 10.9 21 12C21 13.1 20.1 14 19 14H17" stroke="#522A28" strokeWidth="2" />
+                      </svg>
+                    ),
+                  },
+                ].map((cat) => {
+                  const isSelected = selectedCategory === cat.key;
+                  return (
+                    <div
+                      key={cat.key}
+                      onClick={() =>
+                        setSelectedCategory((prev) => (prev === cat.key ? "All" : cat.key))
+                      }
+                      className="card-hover"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "16px 20px",
+                        borderRadius: "var(--radius-md)",
+                        backgroundColor: isSelected ? "var(--orange-soft)" : "#FAF6F2",
+                        border: isSelected ? "1.5px solid var(--orange)" : "1px solid var(--border-light)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                        <div
+                          style={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: 12,
+                            backgroundColor: "#FFFFFF",
+                            border: "1px solid var(--border-light)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {cat.iconSvg}
+                        </div>
+                        <div>
+                          <div
+                            style={{
+                              fontSize: 16,
+                              fontWeight: 700,
+                              color: "var(--maroon)",
+                            }}
+                          >
+                            {cat.label}
+                          </div>
+                          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                            {cat.count}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          width: 30,
+                          height: 30,
+                          borderRadius: "50%",
+                          backgroundColor: "#FFFFFF",
+                          border: "1px solid var(--border-light)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <ChevronRight size={16} color="var(--maroon)" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div id="popular-menu-section" style={{ marginBottom: 40 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 18,
+                }}
+              >
+                <div>
+                  <h2
+                    style={{
+                      fontSize: 24,
+                      fontWeight: 800,
+                      color: "var(--maroon)",
+                      letterSpacing: "-0.01em",
+                    }}
+                  >
+                    {t.popularMenu}
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setSelectedCategory("All")}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--maroon)",
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <span>{t.viewAll}</span>
+                  <ArrowRight size={15} />
+                </button>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(265px, 1fr))",
+                  gap: 22,
+                }}
+              >
+                {filteredMenus.map((item) => (
+                  <div
+                    key={item.id_menu}
+                    className="card-hover img-zoom-parent"
+                    style={{
+                      borderRadius: "var(--radius-lg)",
+                      backgroundColor: "#FFFFFF",
+                      border: "1px solid var(--border-light)",
+                      overflow: "hidden",
+                      boxShadow: "var(--shadow-sm)",
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    <div
+                      onClick={() => openFoodDetail(item)}
+                      style={{
+                        position: "relative",
+                        height: 190,
+                        backgroundColor: "var(--bg-warm-img)",
+                        cursor: "pointer",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <img
+                        src={item.gambar}
+                        alt={item.nama_menu}
+                        className="img-zoom-child"
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                      />
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 12,
+                          right: 12,
+                          padding: "4px 8px",
+                          borderRadius: "var(--radius-pill)",
+                          backgroundColor: "#FFFFFF",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "var(--maroon)",
+                          boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
+                        }}
+                      >
+                        <Star size={12} fill="#F8A34B" color="#F8A34B" />
+                        <span>{item.rating}</span>
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        padding: "16px 18px",
+                        display: "flex",
+                        flexDirection: "column",
+                        flexGrow: 1,
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <div>
+                        <h3
+                          onClick={() => openFoodDetail(item)}
+                          style={{
+                            fontSize: 16,
+                            fontWeight: 800,
+                            color: "var(--maroon)",
+                            marginBottom: 4,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {item.nama_menu}
+                        </h3>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            fontSize: 12,
+                            color: "var(--text-muted)",
+                            marginBottom: 14,
+                          }}
+                        >
+                          <span>{item.tenant_name}</span>
+                          <span>·</span>
+                          <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                            <Clock size={12} />
+                            {item.estimasi_menit} min
+                          </span>
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          paddingTop: 10,
+                          borderTop: "1px solid var(--border-light)",
+                        }}
+                      >
+                        <div
+                          className="tabular"
+                          style={{
+                            fontSize: 17,
+                            fontWeight: 800,
+                            color: "var(--maroon)",
+                          }}
+                        >
+                          {formatRupiah(item.harga)}
+                        </div>
+                        <button
+                          onClick={() => handleAddToCart(item, 1)}
+                          className="btn-interactive"
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: "50%",
+                            border: "none",
+                            backgroundColor: "var(--orange)",
+                            color: "#FFFFFF",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                            boxShadow: "0 3px 8px rgba(248, 163, 75, 0.4)",
+                          }}
+                          title="Add to cart"
+                        >
+                          <Plus size={18} strokeWidth={2.6} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {filteredMenus.length === 0 && (
+                <div
+                  style={{
+                    padding: "48px 24px",
+                    borderRadius: "var(--radius-xl)",
+                    backgroundColor: "#FFFFFF",
+                    border: "1px dashed var(--border-input)",
+                    textAlign: "center",
+                    boxShadow: "var(--shadow-sm)",
+                  }}
+                >
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
+                    {t.emptyMenuTitle}
+                  </div>
+                  <p style={{ fontSize: 14, color: "var(--text-muted)" }}>
+                    {t.emptyMenuDesc}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {navTab === "tenant" && !activeTenantView && (
+          <div className="container-app animate-fade" style={{ paddingTop: 32 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 28,
+                flexWrap: "wrap",
+                gap: 14,
+              }}
+            >
+              <div>
+                <h1
+                  style={{
+                    fontSize: 32,
+                    fontWeight: 900,
+                    color: "var(--maroon)",
+                    letterSpacing: "-0.02em",
+                    marginBottom: 4,
+                  }}
+                >
+                  {t.tenantTitle}
+                </h1>
+                <p style={{ fontSize: 15, color: "var(--text-muted)" }}>
+                  {t.tenantSubtitle}
+                </p>
+              </div>
+              <div
+                className="search-pill-box"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: "var(--radius-pill)",
+                  padding: "5px 6px 5px 18px",
+                  border: "1px solid var(--border-input)",
+                  boxShadow: "var(--shadow-sm)",
+                  width: 320,
+                }}
+              >
+                <input
+                  type="text"
+                  placeholder={t.searchFoodPlaceholder}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    border: "none",
+                    outline: "none",
+                    background: "transparent",
+                    fontSize: 14,
+                    color: "var(--maroon)",
+                    width: "100%",
+                  }}
+                />
+                <button
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: "50%",
+                    border: "none",
+                    backgroundColor: "var(--maroon)",
+                    color: "#FFFFFF",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Search size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="grid-4-cols">
+              {filteredTenants.map((tenant) => (
+                <div
+                  key={tenant.id_tenant}
+                  onClick={() => setActiveTenantView(tenant)}
+                  className="card-hover img-zoom-parent"
+                  style={{
+                    borderRadius: "var(--radius-lg)",
+                    backgroundColor: "#FFFFFF",
+                    overflow: "hidden",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: 190,
+                      borderRadius: "var(--radius-lg)",
+                      backgroundColor: "var(--bg-warm-img)",
+                      overflow: "hidden",
+                      position: "relative",
+                      marginBottom: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {tenant.gambar ? (
+                      <img
+                        src={tenant.gambar}
+                        alt={tenant.nama_tenant}
+                        className="img-zoom-child"
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    ) : (
+                      <Store size={42} color="var(--maroon)" style={{ opacity: 0.45 }} />
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "4px 2px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 800,
+                        color: "var(--maroon)",
+                      }}
+                    >
+                      {tenant.nama_tenant}
+                    </span>
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: "var(--maroon)",
+                      }}
+                    >
+                      <Star size={14} fill="#F8A34B" color="#F8A34B" />
+                      <span>{tenant.rating || "5.0"}</span>
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {filteredTenants.length === 0 && (
+              <div
+                style={{
+                  padding: "48px 24px",
+                  borderRadius: "var(--radius-xl)",
+                  backgroundColor: "#FFFFFF",
+                  border: "1px dashed var(--border-input)",
+                  textAlign: "center",
+                  boxShadow: "var(--shadow-sm)",
+                }}
+              >
+                <div style={{ fontSize: 18, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
+                  {t.emptyTenantTitle}
+                </div>
+                <p style={{ fontSize: 14, color: "var(--text-muted)" }}>
+                  {t.emptyTenantDesc}
+                </p>
+              </div>
             )}
-          </section>
+          </div>
+        )}
+        {navTab === "tenant" && activeTenantView && (
+          <div className="container-app animate-fade" style={{ paddingTop: 32 }}>
+            <button
+              onClick={() => setActiveTenantView(null)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 16px",
+                borderRadius: "var(--radius-pill)",
+                border: "1px solid var(--border-light)",
+                backgroundColor: "#FFFFFF",
+                color: "var(--maroon)",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                marginBottom: 20,
+              }}
+            >
+              <ArrowLeft size={15} />
+              <span>{t.backTenants}</span>
+            </button>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 24,
+                flexWrap: "wrap",
+                gap: 12,
+              }}
+            >
+              <div>
+                <h1
+                  style={{
+                    fontSize: 32,
+                    fontWeight: 900,
+                    color: "var(--maroon)",
+                    letterSpacing: "-0.02em",
+                  }}
+                >
+                  {t.navMenu}
+                </h1>
+                <p style={{ fontSize: 14, color: "var(--text-muted)" }}>
+                  {tenantMenuItems.length} {t.itemsUnit} · {activeTenantView.nama_tenant}
+                </p>
+              </div>
+              <div
+                className="search-pill-box"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: "var(--radius-pill)",
+                  padding: "5px 6px 5px 18px",
+                  border: "1px solid var(--border-input)",
+                  width: 300,
+                }}
+              >
+                <input
+                  type="text"
+                  placeholder={t.searchFoodPlaceholder}
+                  style={{
+                    border: "none",
+                    outline: "none",
+                    background: "transparent",
+                    fontSize: 14,
+                    width: "100%",
+                  }}
+                />
+                <button
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: "50%",
+                    border: "none",
+                    backgroundColor: "var(--maroon)",
+                    color: "#FFFFFF",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Search size={15} />
+                </button>
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              {tenantMenuItems.map((item) => (
+                <div
+                  key={item.id_menu}
+                  className="card-hover img-zoom-parent"
+                  style={{
+                    backgroundColor: "#F3ECE8",
+                    borderRadius: "var(--radius-xl)",
+                    padding: "18px 24px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+                    <div
+                      onClick={() => openFoodDetail(item)}
+                      style={{
+                        position: "relative",
+                        width: 130,
+                        height: 130,
+                        borderRadius: "var(--radius-md)",
+                        backgroundColor: "#E2E3E2",
+                        overflow: "hidden",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <img
+                        src={item.gambar}
+                        alt={item.nama_menu}
+                        className="img-zoom-child"
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                      />
+                      <div
+                        style={{
+                          position: "absolute",
+                          bottom: 8,
+                          right: 8,
+                          padding: "3px 8px",
+                          borderRadius: "var(--radius-pill)",
+                          backgroundColor: "#FFFFFF",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "var(--maroon)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        <Star size={12} fill="#F8A34B" color="#F8A34B" />
+                        <span>{item.rating}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3
+                        onClick={() => openFoodDetail(item)}
+                        style={{
+                          fontSize: 22,
+                          fontWeight: 800,
+                          color: "var(--maroon)",
+                          cursor: "pointer",
+                          marginBottom: 6,
+                        }}
+                      >
+                        {item.nama_menu}
+                      </h3>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          fontSize: 14,
+                          color: "var(--text-muted)",
+                          marginBottom: 10,
+                        }}
+                      >
+                        <span>{item.tenant_name}</span>
+                        <span>·</span>
+                        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <Clock size={14} />
+                          {item.estimasi_menit} min
+                        </span>
+                      </div>
+                      <div
+                        className="tabular"
+                        style={{
+                          fontSize: 20,
+                          fontWeight: 900,
+                          color: "var(--maroon)",
+                        }}
+                      >
+                        {formatRupiah(item.harga)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleAddToCart(item, 1)}
+                    className="btn-interactive"
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: "50%",
+                      border: "none",
+                      backgroundColor: "var(--orange)",
+                      color: "#FFFFFF",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      boxShadow: "0 4px 12px rgba(248, 163, 75, 0.4)",
+                    }}
+                  >
+                    <Plus size={22} strokeWidth={2.8} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {navTab === "orders" && (
+          <div className="container-app animate-fade" style={{ paddingTop: 28, maxWidth: 1040 }}>
+            <div style={{ marginBottom: 20 }}>
+              <h1
+                style={{
+                  fontSize: 32,
+                  fontWeight: 900,
+                  color: "var(--maroon)",
+                  letterSpacing: "-0.02em",
+                  marginBottom: 4,
+                }}
+              >
+                {checkoutStep === 1
+                  ? t.yourOrder
+                  : checkoutStep === 2
+                  ? t.stepPayment
+                  : checkoutStep === 3
+                  ? t.stepPreparing
+                  : t.stepPickup}
+              </h1>
+              <p style={{ fontSize: 15, color: "var(--text-muted)" }}>
+                {checkoutStep === 1
+                  ? cartItems.length === 0
+                    ? t.emptyCartShort
+                    : t.reviewItems
+                  : checkoutStep === 2
+                  ? (lang === "EN"
+                      ? "Scan the QRIS code with any e-wallet or mobile banking app."
+                      : "Scan kode QRIS dengan e-wallet atau mobile banking apa pun.")
+                  : checkoutStep === 3
+                  ? (lang === "EN"
+                      ? "Your meal is being prepared by the kitchen."
+                      : "Pesananmu sedang disiapkan oleh dapur kantin.")
+                  : (lang === "EN"
+                      ? "Show this code to the canteen staff."
+                      : "Tunjukkan kode ini ke petugas kantin saat mengambil pesanan.")}
+              </p>
+            </div>
+
+            {checkoutStep === 1 && cartItems.length === 0 ? (
+              <div
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: "var(--radius-xl)",
+                  border: "1px dashed var(--border-input)",
+                  padding: "60px 28px",
+                  boxShadow: "var(--shadow-sm)",
+                  textAlign: "center",
+                }}
+              >
+                <div
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: "50%",
+                    backgroundColor: "var(--bg-cream)",
+                    color: "var(--maroon)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    margin: "0 auto 16px",
+                  }}
+                >
+                  <ShoppingBag size={28} />
+                </div>
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 900,
+                    color: "var(--maroon)",
+                    marginBottom: 6,
+                  }}
+                >
+                  {t.emptyCartTitle}
+                </div>
+                <p
+                  style={{
+                    fontSize: 14,
+                    color: "var(--text-muted)",
+                    maxWidth: 440,
+                    margin: "0 auto 22px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {t.emptyCartDesc}
+                </p>
+                <button
+                  onClick={() => setNavTab("home")}
+                  className="btn-interactive btn-lift"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "13px 28px",
+                    borderRadius: "var(--radius-pill)",
+                    border: "none",
+                    backgroundColor: "var(--orange)",
+                    color: "var(--maroon)",
+                    fontSize: 14,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
+                  }}
+                >
+                  <Plus size={16} strokeWidth={2.8} />
+                  <span>{t.browseMenuBtn}</span>
+                </button>
+              </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "var(--radius-xl)",
+                    border: "1px solid var(--border-light)",
+                    padding: "16px 28px",
+                    marginBottom: 32,
+                    boxShadow: "var(--shadow-sm)",
+                  }}
+                >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  position: "relative",
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    left: "10%",
+                    right: "10%",
+                    height: 2,
+                    backgroundColor: "var(--border-input)",
+                    zIndex: 1,
+                    transform: "translateY(-50%)",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "100%",
+                      backgroundColor: "var(--maroon)",
+                      width:
+                        checkoutStep === 1
+                          ? "0%"
+                          : checkoutStep === 2
+                          ? "33%"
+                          : checkoutStep === 3
+                          ? "66%"
+                          : "100%",
+                      transition: "width 0.3s ease",
+                    }}
+                  />
+                </div>
+
+                {[
+                  { step: 1, label: t.stepCart, icon: ShoppingBag },
+                  { step: 2, label: t.stepPayment, icon: QrCode },
+                  { step: 3, label: t.stepPreparing, icon: Clock },
+                  { step: 4, label: t.stepPickup, icon: Store },
+                ].map((s) => {
+                  const Icon = s.icon;
+                  const isDone = checkoutStep > s.step;
+                  const isActive = checkoutStep === s.step;
+                  return (
+                    <div
+                      key={s.step}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        zIndex: 2,
+                        backgroundColor: "#FFFFFF",
+                        padding: "0 8px",
+                      }}
+                    >
+                      <div
+                        onClick={() => {
+                          if (s.step < checkoutStep) setCheckoutStep(s.step);
+                        }}
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: "50%",
+                          backgroundColor: isDone
+                            ? "var(--maroon)"
+                            : isActive
+                            ? "var(--orange)"
+                            : "#F3ECE8",
+                          color: isDone || isActive ? "#FFFFFF" : "var(--text-muted)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: s.step < checkoutStep ? "pointer" : "default",
+                          transition: "all 0.2s ease",
+                        }}
+                      >
+                        {isDone ? <Check size={18} strokeWidth={2.8} /> : <Icon size={18} />}
+                      </div>
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: isActive ? 800 : 600,
+                          color: isActive ? "var(--maroon)" : "var(--text-muted)",
+                        }}
+                      >
+                        {s.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {checkoutStep === 1 && (
+              <div className="grid-checkout-split">
+                <div
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "var(--radius-xl)",
+                    border: "1px solid var(--border-light)",
+                    padding: "24px",
+                    boxShadow: "var(--shadow-sm)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: 20,
+                    }}
+                  >
+                    <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--maroon)" }}>
+                      {t.cartTitle} ({cartItems.length} {t.itemsUnit})
+                    </h3>
+                    <button
+                      onClick={() => setNavTab("home")}
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        color: "var(--maroon)",
+                        fontSize: 14,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {t.addMore}
+                    </button>
+                  </div>
+
+                  {cartItems.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "36px 0", color: "var(--text-muted)" }}>
+                      Your cart is empty. Click "+ Add more" to choose meals!
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      {cartItems.map((item) => (
+                        <div
+                          key={item.id_menu}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            paddingBottom: 16,
+                            borderBottom: "1px solid var(--border-light)",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                            <button
+                              onClick={() => handleRemoveItem(item.id_menu)}
+                              style={{
+                                border: "none",
+                                background: "transparent",
+                                cursor: "pointer",
+                                color: "var(--text-muted)",
+                                padding: 2,
+                              }}
+                            >
+                              <X size={16} />
+                            </button>
+
+                            <div
+                              style={{
+                                width: 56,
+                                height: 56,
+                                borderRadius: "var(--radius-md)",
+                                backgroundColor: "var(--bg-warm-img)",
+                                overflow: "hidden",
+                              }}
+                            >
+                              <img
+                                src={item.gambar}
+                                alt={item.nama_menu}
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover",
+                                }}
+                              />
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: 15, fontWeight: 800, color: "var(--maroon)" }}>
+                                {item.nama_menu}
+                              </div>
+                              <div
+                                className="tabular"
+                                style={{ fontSize: 13, color: "var(--text-muted)" }}
+                              >
+                                {formatRupiah(item.harga)} each
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                padding: "4px 10px",
+                                borderRadius: "var(--radius-pill)",
+                                border: "1px solid var(--border-input)",
+                              }}
+                            >
+                              <button
+                                onClick={() => handleUpdateQty(item.id_menu, -1)}
+                                style={{ border: "none", background: "transparent", cursor: "pointer", padding: 2 }}
+                              >
+                                <Minus size={13} color="var(--maroon)" />
+                              </button>
+                              <span
+                                className="tabular"
+                                style={{ fontSize: 14, fontWeight: 800, padding: "0 10px", color: "var(--maroon)" }}
+                              >
+                                {item.jumlah}
+                              </span>
+                              <button
+                                onClick={() => handleUpdateQty(item.id_menu, 1)}
+                                style={{ border: "none", background: "transparent", cursor: "pointer", padding: 2 }}
+                              >
+                                <Plus size={13} color="var(--maroon)" />
+                              </button>
+                            </div>
+
+                            <div
+                              className="tabular"
+                              style={{
+                                fontSize: 16,
+                                fontWeight: 800,
+                                color: "var(--maroon)",
+                                minWidth: 80,
+                                textAlign: "right",
+                              }}
+                            >
+                              {formatRupiah(item.harga * item.jumlah)}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "var(--radius-xl)",
+                    border: "1px solid var(--border-light)",
+                    padding: "24px",
+                    boxShadow: "var(--shadow-sm)",
+                  }}
+                >
+                  <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>
+                    {t.promosTitle}
+                  </h3>
+                  <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
+                    {t.pickPromo}
+                  </p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
+                    {PROMOS.map((promo) => {
+                      const isSelected = selectedPromo?.code === promo.code;
+                      return (
+                        <div
+                          key={promo.code}
+                          onClick={() => setSelectedPromo(promo)}
+                          style={{
+                            padding: "12px 14px",
+                            borderRadius: "var(--radius-md)",
+                            backgroundColor: isSelected ? "var(--orange-soft)" : "#FFFFFF",
+                            border: isSelected ? "1.5px solid var(--orange)" : "1px solid var(--border-input)",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div
+                              style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: 8,
+                                backgroundColor: isSelected ? "var(--orange)" : "var(--bg-cream)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                color: isSelected ? "#FFFFFF" : "var(--maroon)",
+                              }}
+                            >
+                              <Tag size={16} />
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 800, color: "var(--maroon)" }}>
+                                {promo.title}
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                                {promo.subtitle}
+                              </div>
+                            </div>
+                          </div>
+
+                          {isSelected ? (
+                            <div
+                              style={{
+                                width: 22,
+                                height: 22,
+                                borderRadius: "50%",
+                                backgroundColor: "var(--maroon)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <Check size={13} color="#FFFFFF" strokeWidth={3} />
+                            </div>
+                          ) : (
+                            <div
+                              style={{
+                                width: 22,
+                                height: 22,
+                                borderRadius: "50%",
+                                border: "1px solid var(--border-input)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <Plus size={13} color="var(--text-muted)" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}>
+                      <span style={{ color: "var(--text-muted)" }}>{t.subtotal}</span>
+                      <span className="tabular font-medium">{formatRupiah(subtotal)}</span>
+                    </div>
+
+                    {selectedPromo && (
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, color: "var(--orange-tag)" }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          Promo <span style={{ padding: "1px 6px", borderRadius: 4, backgroundColor: "var(--orange-soft)", fontSize: 11, fontWeight: 700 }}>{selectedPromo.code}</span>
+                        </span>
+                        <span className="tabular font-medium">-{formatRupiah(promoDiscount)}</span>
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}>
+                      <span style={{ color: "var(--text-muted)" }}>{t.serviceFee}</span>
+                      <span style={{ color: "#059669", fontWeight: 700 }}>{t.free}</span>
+                    </div>
+
+                    <div
+                      style={{
+                        borderTop: "1px solid var(--border-light)",
+                        paddingTop: 12,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <span style={{ fontSize: 17, fontWeight: 900, color: "var(--maroon)" }}>{t.total}</span>
+                      <span
+                        className="tabular"
+                        style={{
+                          fontSize: 22,
+                          fontWeight: 900,
+                          color: "var(--maroon)",
+                        }}
+                      >
+                        {formatRupiah(orderTotal)}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setCheckoutStep(2)}
+                    disabled={cartItems.length === 0}
+                    style={{
+                      width: "100%",
+                      padding: "15px",
+                      borderRadius: "var(--radius-pill)",
+                      border: "none",
+                      backgroundColor: "var(--orange)",
+                      color: "#FFFFFF",
+                      fontSize: 15,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      boxShadow: "0 4px 14px rgba(248, 163, 75, 0.4)",
+                    }}
+                  >
+                    <span>{t.continuePayment}</span>
+                    <ArrowRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+            {checkoutStep === 2 && (
+              <div className="grid-payment-split">
+                <div
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "var(--radius-xl)",
+                    border: "1px solid var(--border-light)",
+                    padding: "26px",
+                    boxShadow: "var(--shadow-sm)",
+                  }}
+                >
+                  <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--maroon)", marginBottom: 18 }}>
+                    {t.orderSummary}
+                  </h3>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
+                    {cartItems.map((item) => (
+                      <div
+                        key={item.id_menu}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                          <div
+                            style={{
+                              width: 48,
+                              height: 48,
+                              borderRadius: 10,
+                              backgroundColor: "var(--bg-warm-img)",
+                              overflow: "hidden",
+                            }}
+                          >
+                            <img
+                              src={item.gambar}
+                              alt={item.nama_menu}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 800, color: "var(--maroon)" }}>
+                              {item.nama_menu}
+                            </div>
+                            <div className="tabular" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                              {formatRupiah(item.harga)} each · × {item.jumlah}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="tabular font-bold" style={{ fontSize: 15, color: "var(--maroon)" }}>
+                          {formatRupiah(item.harga * item.jumlah)}
+                        </div>
+                      </div>
+                    ))}
+
+                    <div style={{ borderTop: "1px dashed var(--border-light)", margin: "6px 0" }} />
+
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--text-muted)" }}>
+                      <span>Subtotal</span>
+                      <span className="tabular font-medium">{formatRupiah(subtotal)}</span>
+                    </div>
+
+                    {selectedPromo && (
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--orange-tag)" }}>
+                        <span>Promo {selectedPromo.code}</span>
+                        <span className="tabular font-medium">-{formatRupiah(promoDiscount)}</span>
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--text-muted)" }}>
+                      <span>Service fee</span>
+                      <span style={{ color: "#059669", fontWeight: 700 }}>Free</span>
+                    </div>
+
+                    <div
+                      style={{
+                        borderTop: "1px solid var(--border-light)",
+                        paddingTop: 10,
+                        display: "flex",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <span style={{ fontSize: 16, fontWeight: 800, color: "var(--maroon)" }}>Total</span>
+                      <span className="tabular" style={{ fontSize: 19, fontWeight: 900, color: "var(--maroon)" }}>
+                        {formatRupiah(orderTotal)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setCheckoutStep(1)}
+                    style={{
+                      width: "100%",
+                      padding: "11px",
+                      borderRadius: "var(--radius-pill)",
+                      border: "1px solid var(--border-input)",
+                      backgroundColor: "#FFFFFF",
+                      color: "var(--maroon)",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t.cancelEdit}
+                  </button>
+                </div>
+                <div
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "var(--radius-xl)",
+                    border: "1px solid var(--border-light)",
+                    padding: "32px 28px",
+                    boxShadow: "var(--shadow-sm)",
+                    textAlign: "center",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                  }}
+                >
+                  <div style={{ fontSize: 17, fontWeight: 800, color: "var(--maroon)", marginBottom: 2 }}>
+                    {t.scanToPay}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>
+                    {t.amountDue}
+                  </div>
+                  <div
+                    className="tabular"
+                    style={{
+                      fontSize: 28,
+                      fontWeight: 900,
+                      color: "var(--maroon)",
+                      marginBottom: 20,
+                    }}
+                  >
+                    {formatRupiah(orderTotal)}
+                  </div>
+                  <div
+                    style={{
+                      position: "relative",
+                      width: 220,
+                      height: 220,
+                      borderRadius: "var(--radius-lg)",
+                      backgroundColor: "var(--maroon)",
+                      padding: 16,
+                      boxShadow: "0 8px 24px rgba(82, 42, 40, 0.15)",
+                      overflow: "hidden",
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div
+                      className="animate-scan"
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        right: 0,
+                        height: 3,
+                        backgroundColor: "var(--orange)",
+                        boxShadow: "0 0 10px rgba(248, 163, 75, 0.9)",
+                        zIndex: 4,
+                      }}
+                    />
+                    <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%", shapeRendering: "crispEdges" }}>
+                      <rect x="0" y="0" width="30" height="30" fill="#FFFFFF" />
+                      <rect x="5" y="5" width="20" height="20" fill="#522A28" />
+                      <rect x="10" y="10" width="10" height="10" fill="#FFFFFF" />
+
+                      <rect x="70" y="0" width="30" height="30" fill="#FFFFFF" />
+                      <rect x="75" y="5" width="20" height="20" fill="#522A28" />
+                      <rect x="80" y="10" width="10" height="10" fill="#FFFFFF" />
+
+                      <rect x="0" y="70" width="30" height="30" fill="#FFFFFF" />
+                      <rect x="5" y="75" width="20" height="20" fill="#522A28" />
+                      <rect x="10" y="80" width="10" height="10" fill="#FFFFFF" />
+
+                      <rect x="38" y="12" width="8" height="18" fill="#FFFFFF" />
+                      <rect x="52" y="8" width="10" height="10" fill="#FFFFFF" />
+                      <rect x="42" y="42" width="16" height="16" fill="#F8A34B" />
+                      <rect x="68" y="42" width="12" height="12" fill="#FFFFFF" />
+                      <rect x="85" y="55" width="10" height="10" fill="#FFFFFF" />
+                      <rect x="38" y="72" width="12" height="20" fill="#FFFFFF" />
+                      <rect x="55" y="82" width="15" height="10" fill="#FFFFFF" />
+                      <rect x="75" y="75" width="20" height="15" fill="#FFFFFF" />
+                    </svg>
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "var(--text-muted)",
+                      letterSpacing: "0.08em",
+                      marginBottom: 18,
+                    }}
+                  >
+                    QRIS · LET'S ORDER CANTEEN
+                  </div>
+                  <div
+                    style={{
+                      width: "100%",
+                      padding: "16px",
+                      borderRadius: "var(--radius-lg)",
+                      backgroundColor: "var(--bg-cream)",
+                      marginBottom: 20,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                      <Timer size={15} />
+                      <span>{t.paymentTimer}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+                      {lang === "EN"
+                        ? "Your order is held until the timer runs out."
+                        : "Pesanan Anda ditahan hingga batas waktu pembayaran berakhir."}
+                    </div>
+                    <div
+                      className="tabular"
+                      style={{
+                        fontSize: 34,
+                        fontWeight: 900,
+                        color: "var(--maroon)",
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      {formatTimer(paymentTimerSeconds)}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleCompletePayment}
+                    disabled={isPaying}
+                    style={{
+                      width: "100%",
+                      padding: "15px",
+                      borderRadius: "var(--radius-pill)",
+                      border: "none",
+                      backgroundColor: "var(--orange)",
+                      color: "#FFFFFF",
+                      fontSize: 15,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      boxShadow: "0 4px 14px rgba(248, 163, 75, 0.4)",
+                    }}
+                  >
+                    <Check size={18} strokeWidth={2.8} />
+                    <span>
+                      {isPaying
+                        ? lang === "EN"
+                          ? "Verifying QRIS payment…"
+                          : "Memverifikasi pembayaran QRIS…"
+                        : t.completePaymentBtn}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+            {checkoutStep === 3 && (
+              <div style={{ maxWidth: 540, margin: "0 auto", textAlign: "center" }} className="animate-fade">
+                <div
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "var(--radius-xl)",
+                    padding: "36px 32px",
+                    boxShadow: "var(--shadow-card)",
+                    border: "1px solid var(--border-light)",
+                    marginBottom: 24,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "4px 14px",
+                      borderRadius: "var(--radius-pill)",
+                      backgroundColor: "var(--status-preparing-bg)",
+                      color: "var(--status-preparing-text)",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      marginBottom: 16,
+                    }}
+                  >
+                    <span>●</span>
+                    <span>Preparing</span>
+                  </div>
+
+                  <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 8 }}>
+                    Your queue number
+                  </div>
+                  <div
+                    className="tabular"
+                    style={{
+                      fontSize: 72,
+                      fontWeight: 900,
+                      color: "var(--maroon)",
+                      letterSpacing: "0.04em",
+                      lineHeight: 1,
+                      marginBottom: 14,
+                    }}
+                  >
+                    A-108
+                  </div>
+
+                  <div style={{ fontSize: 16, fontWeight: 800, color: "var(--maroon)", marginBottom: 16 }}>
+                    Ayam Geprek Sambal + 1 more
+                  </div>
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "8px 18px",
+                      borderRadius: "var(--radius-pill)",
+                      backgroundColor: "var(--bg-footer-drawer)",
+                      color: "var(--maroon)",
+                      fontSize: 13,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <MapPin size={15} color="var(--orange)" />
+                    <span>Pick up at Kantin Sejahtera, Canteen Hall A</span>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "var(--radius-xl)",
+                    padding: "24px",
+                    border: "1px solid var(--border-light)",
+                    boxShadow: "var(--shadow-sm)",
+                    marginBottom: 20,
+                  }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-muted)", marginBottom: 6 }}>
+                    Time to pickup
+                  </div>
+                  <div
+                    className="tabular"
+                    style={{
+                      fontSize: 48,
+                      fontWeight: 900,
+                      color: "var(--maroon)",
+                      lineHeight: 1,
+                      marginBottom: 10,
+                    }}
+                  >
+                    {formatTimer(prepTimerSeconds)}
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                    Come by when the timer ends — no need to wait in line.
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setCheckoutStep(4)}
+                  style={{
+                    width: "100%",
+                    padding: "15px",
+                    borderRadius: "var(--radius-pill)",
+                    border: "1px solid var(--border-input)",
+                    backgroundColor: "#FFFFFF",
+                    color: "var(--maroon)",
+                    fontSize: 15,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    boxShadow: "var(--shadow-sm)",
+                  }}
+                >
+                  <span>I'm at the counter</span>
+                  <ArrowRight size={16} />
+                </button>
+              </div>
+            )}
+            {checkoutStep === 4 && (
+              <div style={{ maxWidth: 540, margin: "0 auto", textAlign: "center" }} className="animate-fade">
+                <div
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "var(--radius-xl)",
+                    padding: "36px 32px",
+                    boxShadow: "var(--shadow-card)",
+                    border: "1px solid var(--border-light)",
+                    marginBottom: 24,
+                  }}
+                >
+                  <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 4 }}>
+                    Pickup code
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: "var(--maroon)", marginBottom: 20 }}>
+                    Queue A-108
+                  </div>
+                  <div
+                    style={{
+                      width: 200,
+                      height: 200,
+                      margin: "0 auto 20px",
+                      borderRadius: "var(--radius-md)",
+                      backgroundColor: "var(--maroon)",
+                      padding: 16,
+                      boxShadow: "0 6px 18px rgba(82, 42, 40, 0.12)",
+                    }}
+                  >
+                    <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%", shapeRendering: "crispEdges" }}>
+                      <rect x="0" y="0" width="30" height="30" fill="#FFFFFF" />
+                      <rect x="5" y="5" width="20" height="20" fill="#522A28" />
+                      <rect x="10" y="10" width="10" height="10" fill="#FFFFFF" />
+
+                      <rect x="70" y="0" width="30" height="30" fill="#FFFFFF" />
+                      <rect x="75" y="5" width="20" height="20" fill="#522A28" />
+                      <rect x="80" y="10" width="10" height="10" fill="#FFFFFF" />
+
+                      <rect x="0" y="70" width="30" height="30" fill="#FFFFFF" />
+                      <rect x="5" y="75" width="20" height="20" fill="#522A28" />
+                      <rect x="10" y="80" width="10" height="10" fill="#FFFFFF" />
+
+                      <rect x="40" y="15" width="10" height="20" fill="#FFFFFF" />
+                      <rect x="45" y="45" width="18" height="18" fill="#F8A34B" />
+                      <rect x="70" y="50" width="15" height="15" fill="#FFFFFF" />
+                      <rect x="40" y="75" width="20" height="15" fill="#FFFFFF" />
+                      <rect x="75" y="75" width="20" height="15" fill="#FFFFFF" />
+                    </svg>
+                  </div>
+
+                  <div style={{ borderTop: "1px dashed var(--border-light)", margin: "16px 0" }} />
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 15, color: "var(--text-muted)" }}>Order</span>
+                    <span className="tabular font-bold" style={{ fontSize: 16, color: "var(--maroon)" }}>
+                      {formatRupiah(orderTotal)}
+                    </span>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 20 }}>
+                  Show this code to the canteen staff. Tap below once you've received your food.
+                </p>
+
+                <button
+                  onClick={handleFinishOrder}
+                  style={{
+                    width: "100%",
+                    padding: "16px",
+                    borderRadius: "var(--radius-pill)",
+                    border: "none",
+                    backgroundColor: "var(--orange)",
+                    color: "#FFFFFF",
+                    fontSize: 16,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    boxShadow: "0 4px 16px rgba(248, 163, 75, 0.4)",
+                  }}
+                >
+                  <Check size={18} strokeWidth={2.8} />
+                  <span>Finish order</span>
+                </button>
+              </div>
+            )}
+              </>
+            )}
+          </div>
+        )}
+        {navTab === "history" && (
+          <div className="container-app animate-fade" style={{ paddingTop: 32, maxWidth: 960 }}>
+            <div style={{ marginBottom: 24 }}>
+              <h1
+                style={{
+                  fontSize: 32,
+                  fontWeight: 900,
+                  color: "var(--maroon)",
+                  letterSpacing: "-0.02em",
+                  marginBottom: 4,
+                }}
+              >
+                {t.historyTitle}
+              </h1>
+              <p style={{ fontSize: 15, color: "var(--text-muted)" }}>
+                {t.historyDesc}
+              </p>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
+              {[
+                { key: "All", label: t.filterAll },
+                { key: "In progress", label: t.filterInProgress },
+                { key: "Completed", label: t.filterCompleted },
+                { key: "Cancelled", label: t.filterCancelled },
+              ].map((tab) => {
+                const active = historyFilter === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setHistoryFilter(tab.key)}
+                    style={{
+                      padding: "8px 22px",
+                      borderRadius: "var(--radius-pill)",
+                      border: active ? "none" : "1px solid var(--border-input)",
+                      backgroundColor: active ? "var(--maroon)" : "#FFFFFF",
+                      color: active ? "#FFFFFF" : "var(--maroon)",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: "var(--radius-xl)",
+                border: "1px solid var(--border-light)",
+                boxShadow: "var(--shadow-sm)",
+                overflow: "hidden",
+              }}
+            >
+              {ordersHistory
+                .filter((order) => {
+                  if (historyFilter === "All") return true;
+                  if (historyFilter === "In progress")
+                    return order.status === "Preparing" || order.status === "Ready for pickup";
+                  return order.status === historyFilter;
+                })
+                .map((order, idx, arr) => (
+                  <div
+                    key={order.id_pesanan}
+                    style={{
+                      padding: "20px 24px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      borderBottom: idx !== arr.length - 1 ? "1px solid var(--border-light)" : "none",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                      <div
+                        style={{
+                          width: 52,
+                          height: 52,
+                          borderRadius: "var(--radius-md)",
+                          backgroundColor: "#E2E3E2",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Store size={22} color="var(--maroon)" />
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: "var(--maroon)" }}>
+                          {order.items_summary}
+                        </div>
+                        <div
+                          className="tabular"
+                          style={{ fontSize: 13, color: "var(--text-muted)" }}
+                        >
+                          {order.tanggal} · {formatRupiah(order.total)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "5px 14px",
+                          borderRadius: "var(--radius-pill)",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          backgroundColor:
+                            order.status === "Completed"
+                              ? "var(--maroon)"
+                              : order.status === "Cancelled"
+                              ? "var(--status-cancelled-bg)"
+                              : "var(--status-preparing-bg)",
+                          color:
+                            order.status === "Completed"
+                              ? "#FFFFFF"
+                              : order.status === "Cancelled"
+                              ? "var(--text-muted)"
+                              : "var(--status-preparing-text)",
+                        }}
+                      >
+                        <span>●</span>
+                        <span>{order.status}</span>
+                      </span>
+
+                      <button
+                        onClick={() => {
+                          setCheckoutStep(1);
+                          setNavTab("orders");
+                          notify("Reordering items into your cart.");
+                        }}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          cursor: "pointer",
+                          color: "var(--text-muted)",
+                          padding: 4,
+                        }}
+                      >
+                        <ChevronRight size={18} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+          </>
+        )}
+      </main>
+      {editingDish && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1250,
+            backgroundColor: "rgba(82, 42, 40, 0.38)",
+            backdropFilter: "blur(5px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+          className="animate-fade"
+          onClick={() => setEditingDish(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="animate-modal-zoom"
+            style={{
+              width: "100%",
+              maxWidth: 460,
+              backgroundColor: "#FFFFFF",
+              borderRadius: "var(--radius-xl)",
+              padding: "26px 28px",
+              boxShadow: "var(--shadow-float)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                marginBottom: 18,
+              }}
+            >
+              <div>
+                <h2
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 900,
+                    color: "var(--maroon)",
+                    marginBottom: 2,
+                  }}
+                >
+                  Edit menu
+                </h2>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                  Changes appear to customers right away.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setEditingDish(null)}
+                className="btn-interactive"
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  border: "1px solid var(--border-light)",
+                  backgroundColor: "#FFFFFF",
+                  color: "var(--maroon)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                }}
+                aria-label="Close edit modal"
+              >
+                <X size={16} strokeWidth={2.4} />
+              </button>
+            </div>
+            <div
+              style={{
+                backgroundColor: "var(--bg-subtle)",
+                borderRadius: 16,
+                padding: "12px 14px",
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+                marginBottom: 18,
+              }}
+            >
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 12,
+                  backgroundColor: "var(--bg-warm-img)",
+                  overflow: "hidden",
+                  flexShrink: 0,
+                }}
+              >
+                <img
+                  src={editingDish.gambar}
+                  alt={editingDish.nama_menu}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              </div>
+
+              <div>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 800,
+                    color: "var(--maroon)",
+                    marginBottom: 2,
+                  }}
+                >
+                  {editDishForm.nama_menu || editingDish.nama_menu}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  {editingDish.kategori_nama} ·{" "}
+                  {formatRupiah(Number(editDishForm.harga) || editingDish.harga)}
+                </div>
+              </div>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const parsedPrice =
+                  Number(String(editDishForm.harga).replace(/\D/g, "")) ||
+                  editingDish.harga;
+                const nextName = editDishForm.nama_menu || editingDish.nama_menu;
+                setTenantMenus((prev) =>
+                  prev.map((m) =>
+                    m.id_menu === editingDish.id_menu
+                      ? {
+                          ...m,
+                          nama_menu: nextName,
+                          harga: parsedPrice,
+                          available: editDishForm.available,
+                        }
+                      : m
+                  )
+                );
+                setMenusList((prev) =>
+                  prev.map((m) =>
+                    m.id_menu === editingDish.id_menu
+                      ? {
+                          ...m,
+                          nama_menu: nextName,
+                          harga: parsedPrice,
+                          available: editDishForm.available,
+                          status_tersedia: editDishForm.available,
+                        }
+                      : m
+                  )
+                );
+                api
+                  .updateVendorMenu(editingDish.id_menu, {
+                    nama_menu: nextName,
+                    harga: parsedPrice,
+                    status_tersedia: editDishForm.available,
+                  })
+                  .catch(() => {});
+                setEditingDish(null);
+              }}
+              style={{ display: "flex", flexDirection: "column", gap: 16 }}
+            >
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: "var(--maroon)",
+                    marginBottom: 6,
+                  }}
+                >
+                  Menu name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editDishForm.nama_menu}
+                  onChange={(e) =>
+                    setEditDishForm((prev) => ({
+                      ...prev,
+                      nama_menu: e.target.value,
+                    }))
+                  }
+                  style={{
+                    width: "100%",
+                    padding: "11px 14px",
+                    borderRadius: 12,
+                    border: "1px solid var(--border-input)",
+                    fontSize: 14,
+                    color: "var(--maroon)",
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: "var(--maroon)",
+                    marginBottom: 6,
+                  }}
+                >
+                  Price
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editDishForm.harga}
+                  onChange={(e) =>
+                    setEditDishForm((prev) => ({
+                      ...prev,
+                      harga: e.target.value,
+                    }))
+                  }
+                  style={{
+                    width: "100%",
+                    padding: "11px 14px",
+                    borderRadius: 12,
+                    border: "1px solid var(--border-input)",
+                    fontSize: 14,
+                    color: "var(--maroon)",
+                    outline: "none",
+                  }}
+                />
+              </div>
+              <div
+                style={{
+                  borderRadius: 16,
+                  border: "1px solid var(--border-light)",
+                  padding: "14px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 800,
+                      color: "var(--maroon)",
+                      marginBottom: 2,
+                    }}
+                  >
+                    Availability
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "var(--text-muted)",
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    Customers can only order this dish when it is available.
+                  </div>
+                </div>
+
+                <div
+                  onClick={() =>
+                    setEditDishForm((prev) => ({
+                      ...prev,
+                      available: !prev.available,
+                    }))
+                  }
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    cursor: "pointer",
+                    userSelect: "none",
+                    flexShrink: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 44,
+                      height: 24,
+                      borderRadius: 999,
+                      backgroundColor: editDishForm.available
+                        ? "var(--orange)"
+                        : "#D8D2CE",
+                      position: "relative",
+                      transition: "background-color 0.25s ease",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: "50%",
+                        backgroundColor: "#FFFFFF",
+                        position: "absolute",
+                        top: 3,
+                        left: editDishForm.available ? 23 : 3,
+                        transition: "left 0.25s cubic-bezier(0.22, 1, 0.36, 1)",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.18)",
+                      }}
+                    />
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "var(--maroon)",
+                    }}
+                  >
+                    {editDishForm.available ? "Available" : "Unavailable"}
+                  </span>
+                </div>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 12,
+                  marginTop: 4,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setEditingDish(null)}
+                  className="btn-interactive"
+                  style={{
+                    padding: "12px",
+                    borderRadius: "var(--radius-pill)",
+                    border: "1px solid var(--border-input)",
+                    backgroundColor: "#FFFFFF",
+                    color: "var(--maroon)",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="btn-interactive btn-lift"
+                  style={{
+                    padding: "12px",
+                    borderRadius: "var(--radius-pill)",
+                    border: "none",
+                    backgroundColor: "var(--orange)",
+                    color: "var(--maroon)",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
+                  }}
+                >
+                  Save changes
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  const idToDelete = editingDish.id_menu;
+                  setTenantMenus((prev) => prev.filter((m) => m.id_menu !== idToDelete));
+                  setMenusList((prev) => prev.filter((m) => m.id_menu !== idToDelete));
+                  setEditingDish(null);
+                  await api.deleteVendorMenu(idToDelete).catch(() => {});
+                }}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "#B91C1C",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  paddingTop: 4,
+                }}
+              >
+                <Trash2 size={14} />
+                <span>Hapus menu ini</span>
+              </button>
+            </form>
+          </div>
         </div>
       )}
 
-      {/* MODAL: DETAIL MENU */}
-      {selectedMenuDetail && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalCard}>
-            <div style={styles.cardTopRow}>
-              <h2 style={{ margin: 0 }}>{selectedMenuDetail.nama_menu}</h2>
+      {isAddMenuOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1150,
+            backgroundColor: "rgba(42, 24, 18, 0.45)",
+            backdropFilter: "blur(5px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+          onClick={() => setIsAddMenuOpen(false)}
+          className="animate-fade"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="animate-modal-zoom"
+            style={{
+              width: "100%",
+              maxWidth: 480,
+              maxHeight: "90vh",
+              overflowY: "auto",
+              backgroundColor: "#FFFFFF",
+              borderRadius: "var(--radius-xl)",
+              padding: "26px 28px 24px",
+              boxShadow: "0 20px 50px rgba(82, 42, 40, 0.24)",
+              border: "1px solid var(--border-light)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <h3 style={{ fontSize: 22, fontWeight: 900, color: "var(--maroon)", marginBottom: 2 }}>
+                  Upload Menu Baru
+                </h3>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                  Tambahkan makanan atau minuman ke kantin {displayName}.
+                </p>
+              </div>
               <button
-                type="button"
-                onClick={() => setSelectedMenuDetail(null)}
-                style={styles.closeAlertBtn}
+                onClick={() => setIsAddMenuOpen(false)}
+                className="btn-interactive"
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  border: "none",
+                  backgroundColor: "var(--bg-cream)",
+                  color: "var(--maroon)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                }}
               >
-                ✕
+                <X size={16} strokeWidth={2.4} />
               </button>
             </div>
-            <p style={styles.tenantLabel}>
-              🏪 {selectedMenuDetail.tenant?.nama_tenant} • ⏱ Estimasi{" "}
-              {selectedMenuDetail.estimasi_menit} menit
-            </p>
-            <p style={styles.cardDesc}>{selectedMenuDetail.deskripsi}</p>
-            <p style={styles.priceLarge}>
-              {formatRupiah(selectedMenuDetail.harga)}
-            </p>
 
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Jumlah Pesanan</label>
-              <input
-                type="number"
-                min="1"
-                value={detailQuantity}
-                onChange={(e) =>
-                  setDetailQuantity(Math.max(1, Number(e.target.value)))
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const parsedPrice = Number(String(newDishForm.harga).replace(/\D/g, "")) || 10000;
+                const payload = {
+                  nama_menu: newDishForm.nama_menu,
+                  harga: parsedPrice,
+                  kategori_nama: newDishForm.kategori_nama || "Rice & Mains",
+                  estimasi_menit: Number(newDishForm.estimasi_menit) || 10,
+                  deskripsi: newDishForm.deskripsi || `Menu segar dari ${displayName}.`,
+                  gambar:
+                    newDishForm.gambar ||
+                    "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=700&auto=format&fit=crop&q=80",
+                  status_tersedia: true,
+                };
+                try {
+                  await api.createVendorMenu(payload);
+                  await syncFromApi();
+                  setIsAddMenuOpen(false);
+                } catch {
+                  setIsAddMenuOpen(false);
                 }
-                style={styles.input}
-              />
+              }}
+              style={{ display: "flex", flexDirection: "column", gap: 14 }}
+            >
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
+                  Nama Menu
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Ayam Geprek Sambal Bawang"
+                  value={newDishForm.nama_menu}
+                  onChange={(e) => setNewDishForm((p) => ({ ...p, nama_menu: e.target.value }))}
+                  style={{
+                    width: "100%",
+                    padding: "11px 14px",
+                    borderRadius: 12,
+                    border: "1px solid var(--border-input)",
+                    fontSize: 14,
+                    color: "var(--maroon)",
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
+                    Harga (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="1000"
+                    placeholder="18000"
+                    value={newDishForm.harga}
+                    onChange={(e) => setNewDishForm((p) => ({ ...p, harga: e.target.value }))}
+                    style={{
+                      width: "100%",
+                      padding: "11px 14px",
+                      borderRadius: 12,
+                      border: "1px solid var(--border-input)",
+                      fontSize: 14,
+                      color: "var(--maroon)",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
+                    Kategori
+                  </label>
+                  <select
+                    value={newDishForm.kategori_nama}
+                    onChange={(e) => setNewDishForm((p) => ({ ...p, kategori_nama: e.target.value }))}
+                    style={{
+                      width: "100%",
+                      padding: "11px 14px",
+                      borderRadius: 12,
+                      border: "1px solid var(--border-input)",
+                      fontSize: 14,
+                      color: "var(--maroon)",
+                      backgroundColor: "#FFFFFF",
+                      outline: "none",
+                    }}
+                  >
+                    <option value="Rice & Mains">Rice & Mains</option>
+                    <option value="Snacks">Snacks</option>
+                    <option value="Drinks">Drinks</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
+                    Estimasi Siap (Menit)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={newDishForm.estimasi_menit}
+                    onChange={(e) => setNewDishForm((p) => ({ ...p, estimasi_menit: e.target.value }))}
+                    style={{
+                      width: "100%",
+                      padding: "11px 14px",
+                      borderRadius: 12,
+                      border: "1px solid var(--border-input)",
+                      fontSize: 14,
+                      color: "var(--maroon)",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
+                    Upload Foto Menu
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        if (typeof reader.result === "string") {
+                          setNewDishForm((p) => ({ ...p, gambar: reader.result }));
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "1px solid var(--border-input)",
+                      fontSize: 12,
+                      color: "var(--maroon)",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
+                  Atau Masukkan URL Gambar (Opsional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="https://images.unsplash.com/..."
+                  value={newDishForm.gambar?.startsWith("data:") ? "" : newDishForm.gambar}
+                  onChange={(e) => setNewDishForm((p) => ({ ...p, gambar: e.target.value }))}
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: 12,
+                    border: "1px solid var(--border-input)",
+                    fontSize: 13,
+                    color: "var(--maroon)",
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              {newDishForm.gambar && (
+                <div
+                  style={{
+                    height: 120,
+                    borderRadius: 12,
+                    overflow: "hidden",
+                    backgroundColor: "var(--bg-warm-img)",
+                    border: "1px solid var(--border-light)",
+                  }}
+                >
+                  <img
+                    src={newDishForm.gambar}
+                    alt="Preview"
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                </div>
+              )}
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
+                  Deskripsi Menu
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Jelaskan bahan dan keunggulan menu ini..."
+                  value={newDishForm.deskripsi}
+                  onChange={(e) => setNewDishForm((p) => ({ ...p, deskripsi: e.target.value }))}
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: 12,
+                    border: "1px solid var(--border-input)",
+                    fontSize: 13,
+                    color: "var(--maroon)",
+                    outline: "none",
+                    resize: "vertical",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 4 }}>
+                <button
+                  type="button"
+                  onClick={() => setIsAddMenuOpen(false)}
+                  className="btn-interactive"
+                  style={{
+                    padding: "12px",
+                    borderRadius: "var(--radius-pill)",
+                    border: "1px solid var(--border-input)",
+                    backgroundColor: "#FFFFFF",
+                    color: "var(--maroon)",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="btn-interactive btn-lift"
+                  style={{
+                    padding: "12px",
+                    borderRadius: "var(--radius-pill)",
+                    border: "none",
+                    backgroundColor: "var(--orange)",
+                    color: "var(--maroon)",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
+                  }}
+                >
+                  Simpan & Upload
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {drawerMounted && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            backdropFilter: "blur(5px)",
+            opacity: drawerActive ? 1 : 0,
+            transition: "opacity 0.3s ease",
+            pointerEvents: drawerActive ? "auto" : "none",
+          }}
+          onClick={closeDrawer}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              bottom: 0,
+              width: "100%",
+              maxWidth: 350,
+              backgroundColor: "#FFFFFF",
+              borderTopRightRadius: "24px",
+              borderBottomRightRadius: "24px",
+              boxShadow: "0 20px 48px rgba(82, 42, 40, 0.18)",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              overflow: "hidden",
+              transform: drawerActive ? "translateX(0)" : "translateX(-100%)",
+              transition: "transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)",
+            }}
+          >
+            <div style={{ padding: "24px 22px 0" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                <button
+                  onClick={closeDrawer}
+                  className="btn-interactive"
+                  style={{
+                    border: "none",
+                    background: "var(--bg-cream)",
+                    width: 36,
+                    height: 36,
+                    borderRadius: "50%",
+                    cursor: "pointer",
+                    color: "var(--maroon)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  aria-label="Close menu"
+                >
+                  <X size={18} strokeWidth={2.4} />
+                </button>
+              </div>
+              <div style={{ textAlign: "center", marginBottom: 28 }}>
+                <div
+                  onClick={() => {
+                    closeDrawer();
+                    openDrawerModal("profile");
+                  }}
+                  className="btn-interactive"
+                  style={{
+                    position: "relative",
+                    width: 76,
+                    height: 76,
+                    borderRadius: "50%",
+                    backgroundColor: "var(--bg-cream)",
+                    border: "3px solid #EDD1B4",
+                    color: "var(--maroon)",
+                    fontSize: 24,
+                    fontWeight: 900,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    margin: "0 auto 10px",
+                    overflow: "hidden",
+                    boxShadow: "0 4px 14px rgba(82, 42, 40, 0.1)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {currentUser?.avatar ? (
+                    <img
+                      src={currentUser.avatar}
+                      alt={displayName}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    <span>{displayInitials}</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: "var(--maroon)" }}>
+                  {displayName}
+                </div>
+                <div style={{ fontSize: 13, color: "var(--text-muted)", fontWeight: 600 }}>
+                  {currentUser?.email || (portalMode === "tenant" ? "Tenant Portal · Let's Order" : "Pengguna · Let's Order")}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: "var(--radius-lg)",
+                  border: "1px solid var(--border-light)",
+                  overflow: "hidden",
+                  boxShadow: "var(--shadow-sm)",
+                }}
+              >
+                {[
+                  { id: "profile", label: t.drawerProfile, icon: User },
+                  { id: "favorites", label: t.drawerFavorites, icon: Heart },
+                  { id: "notifications", label: t.drawerNotifications, icon: Bell },
+                  { id: "help", label: t.drawerHelp, icon: HelpCircle },
+                ].map((item, idx, arr) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        closeDrawer();
+                        openDrawerModal(item.id);
+                      }}
+                      className="drawer-item"
+                      style={{
+                        width: "100%",
+                        padding: "16px 18px",
+                        border: "none",
+                        borderBottom: idx !== arr.length - 1 ? "1px solid var(--border-light)" : "none",
+                        backgroundColor: "#FFFFFF",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 10,
+                            backgroundColor: "var(--bg-cream)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "var(--maroon)",
+                            transition: "transform 0.2s ease",
+                          }}
+                        >
+                          <Icon size={16} />
+                        </div>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--maroon)" }}>
+                          {item.label}
+                        </span>
+                      </div>
+                      <ChevronRight size={16} color="var(--text-light)" className="drawer-chevron" />
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Catatan Item (Opsional)</label>
-              <input
-                type="text"
-                placeholder="Contoh: Tanpa es / Sambal pisah"
-                value={detailNotes}
-                onChange={(e) => setDetailNotes(e.target.value)}
-                style={styles.input}
-              />
-            </div>
-
-            <div style={styles.cardTopRow}>
+            <div
+              style={{
+                backgroundColor: "var(--bg-footer-drawer)",
+                padding: "20px 22px",
+                borderTop: "1px solid var(--border-light)",
+              }}
+            >
               <button
-                type="button"
-                onClick={() => setSelectedMenuDetail(null)}
-                style={styles.secondaryBtn}
+                onClick={handleLogout}
+                className="btn-interactive btn-lift"
+                style={{
+                  width: "100%",
+                  padding: "14px",
+                  borderRadius: "var(--radius-pill)",
+                  border: "none",
+                  backgroundColor: "var(--maroon)",
+                  color: "#FFFFFF",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  boxShadow: "0 4px 12px rgba(82, 42, 40, 0.25)",
+                }}
               >
-                Batal
-              </button>
-              <button
-                type="button"
-                disabled={!selectedMenuDetail.status_tersedia}
-                onClick={() =>
-                  handleAddToCart(
-                    selectedMenuDetail,
-                    detailQuantity,
-                    detailNotes
-                  )
-                }
-                style={styles.primaryBtn}
-              >
-                Tambahkan ({formatRupiah(selectedMenuDetail.harga * detailQuantity)})
+                <LogOut size={16} />
+                <span>{t.logout}</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* TAB: AUTH */}
-      {activeTab === "auth" && (
-        <section style={styles.authContainer}>
-          <div style={styles.authCard}>
-            <div style={styles.tabSwitch}>
+      {activeDrawerModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1150,
+            backgroundColor: "rgba(42, 24, 18, 0.45)",
+            backdropFilter: "blur(5px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+          onClick={() => setActiveDrawerModal(null)}
+          className="animate-fade"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="animate-modal-zoom"
+            style={{
+              width: "100%",
+              maxWidth: activeDrawerModal === "profile" ? 760 : 460,
+              maxHeight: "90vh",
+              overflowY: "auto",
+              backgroundColor: "#FFFFFF",
+              borderRadius: "var(--radius-xl)",
+              padding: activeDrawerModal === "profile" ? "30px 34px" : "26px 28px",
+              boxShadow: "0 20px 50px rgba(82, 42, 40, 0.24)",
+              border: "1px solid var(--border-light)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                paddingBottom: activeDrawerModal === "profile" ? 16 : 0,
+                marginBottom: activeDrawerModal === "profile" ? 22 : 18,
+                borderBottom:
+                  activeDrawerModal === "profile" ? "1px solid var(--border-light)" : "none",
+              }}
+            >
+              <div>
+                <h3 style={{ fontSize: 22, fontWeight: 900, color: "var(--maroon)", marginBottom: 4 }}>
+                  {activeDrawerModal === "profile" && t.drawerProfile}
+                  {activeDrawerModal === "favorites" && t.drawerFavorites}
+                  {activeDrawerModal === "notifications" && t.drawerNotifications}
+                  {activeDrawerModal === "help" && t.drawerHelp}
+                </h3>
+                {activeDrawerModal === "profile" && (
+                  <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                    {lang === "EN"
+                      ? "Manage your profile details to protect and secure your account"
+                      : "Kelola informasi profil Anda untuk mengontrol, melindungi dan mengamankan akun"}
+                  </p>
+                )}
+              </div>
               <button
-                type="button"
-                onClick={() => setAuthMode("login")}
-                style={
-                  authMode === "login" ? styles.pillActive : styles.pill
-                }
+                onClick={() => setActiveDrawerModal(null)}
+                className="btn-interactive"
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  border: "none",
+                  backgroundColor: "var(--bg-cream)",
+                  color: "var(--maroon)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
               >
-                Login
-              </button>
-              <button
-                type="button"
-                onClick={() => setAuthMode("register")}
-                style={
-                  authMode === "register" ? styles.pillActive : styles.pill
-                }
-              >
-                Registrasi Customer
+                <X size={16} />
               </button>
             </div>
 
-            <form onSubmit={handleAuthSubmit} style={styles.formStack}>
-              {authMode === "login" ? (
-                <>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Username atau Email</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="customer01 / vendor01 / admin"
-                      value={authForm.login}
-                      onChange={(e) =>
-                        setAuthForm({ ...authForm, login: e.target.value })
-                      }
-                      style={styles.input}
-                    />
+            {activeDrawerModal === "profile" && (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setProfileAlert({ type: "", text: "" });
+                  const emailChanged =
+                    String(profileForm.email || "").trim().toLowerCase() !==
+                    String(currentUser?.email || "").trim().toLowerCase();
+                  const phoneDigits = String(profileForm.no_telp || "").replace(/\D/g, "");
+                  if (emailChanged && phoneDigits.length < 8) {
+                    setProfileAlert({
+                      type: "error",
+                      text: "Anda wajib menambahkan Nomor Telepon valid (min. 8 digit) terlebih dahulu sebelum mengubah alamat Email.",
+                    });
+                    setIsEditingPhone(true);
+                    return;
+                  }
+
+                  const payload = {
+                    nama: profileForm.nama,
+                    email: profileForm.email,
+                    no_telp: profileForm.no_telp,
+                    jenis_kelamin: profileForm.jenis_kelamin,
+                    tanggal_lahir: profileForm.tanggal_lahir,
+                    avatar: profileForm.avatar,
+                    ...(portalMode === "tenant"
+                      ? { nama_tenant: profileForm.nama_tenant }
+                      : {}),
+                  };
+
+                  try {
+                    const res = await api.updateProfile(payload);
+                    const updatedUser = res?.data?.user || res?.data || {
+                      ...currentUser,
+                      ...payload,
+                    };
+                    setCurrentUser(updatedUser);
+                    localStorage.setItem("letsorder_auth_user", JSON.stringify(updatedUser));
+                    setIsEditingEmail(false);
+                    setIsEditingPhone(false);
+                    setProfileAlert({
+                      type: "success",
+                      text: "Profil Anda berhasil disimpan.",
+                    });
+                    await syncFromApi();
+                  } catch (err) {
+                    setProfileAlert({
+                      type: "error",
+                      text: err.message || "Gagal menyimpan perubahan profil.",
+                    });
+                  }
+                }}
+              >
+                {profileAlert.text && (
+                  <div
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 12,
+                      backgroundColor:
+                        profileAlert.type === "error" ? "#FEF2F2" : "#ECFDF5",
+                      border:
+                        profileAlert.type === "error"
+                          ? "1px solid #FECACA"
+                          : "1px solid #A7F3D0",
+                      color: profileAlert.type === "error" ? "#991B1B" : "#065F46",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      marginBottom: 18,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    {profileAlert.type === "error" ? (
+                      <AlertCircle size={15} />
+                    ) : (
+                      <CheckCircle2 size={15} />
+                    )}
+                    <span>{profileAlert.text}</span>
                   </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Password</label>
-                    <input
-                      type="password"
-                      required
-                      placeholder="••••••••"
-                      value={authForm.password}
-                      onChange={(e) =>
-                        setAuthForm({ ...authForm, password: e.target.value })
-                      }
-                      style={styles.input}
-                    />
+                )}
+
+                <div className="grid-profile-split">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    <div className="profile-field-row">
+                      <span className="profile-field-label">
+                        Username
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 800,
+                          color: "var(--maroon)",
+                        }}
+                      >
+                        {currentUser?.username || "-"}
+                      </span>
+                    </div>
+
+                    <div className="profile-field-row">
+                      <label className="profile-field-label">
+                        Nama
+                      </label>
+                      <input
+                        type="text"
+                        value={profileForm.nama}
+                        onChange={(e) =>
+                          setProfileForm((p) => ({ ...p, nama: e.target.value }))
+                        }
+                        placeholder="Masukkan nama lengkap Anda"
+                        style={{
+                          width: "100%",
+                          padding: "10px 14px",
+                          borderRadius: 10,
+                          border: "1px solid var(--border-input)",
+                          fontSize: 14,
+                          color: "var(--maroon)",
+                          outline: "none",
+                        }}
+                      />
+                    </div>
+
+                    <div className="profile-field-row">
+                      <label className="profile-field-label">
+                        Email
+                      </label>
+                      {isEditingEmail ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <input
+                            type="email"
+                            required
+                            value={profileForm.email}
+                            onChange={(e) =>
+                              setProfileForm((p) => ({ ...p, email: e.target.value }))
+                            }
+                            placeholder="nama@email.com"
+                            style={{
+                              flex: 1,
+                              padding: "9px 12px",
+                              borderRadius: 10,
+                              border: "1px solid var(--border-input)",
+                              fontSize: 13,
+                              color: "var(--maroon)",
+                              outline: "none",
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingEmail(false)}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              border: "1px solid var(--border-input)",
+                              backgroundColor: "var(--bg-cream)",
+                              color: "var(--maroon)",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Selesai
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ fontSize: 14, color: "var(--maroon)", fontWeight: 600 }}>
+                            {maskEmail(profileForm.email || currentUser?.email)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!String(profileForm.no_telp || "").trim()) {
+                                setProfileAlert({
+                                  type: "error",
+                                  text: "Tambahkan Nomor Telepon terlebih dahulu sebelum mengubah alamat Email.",
+                                });
+                                setIsEditingPhone(true);
+                                return;
+                              }
+                              setProfileAlert({ type: "", text: "" });
+                              setIsEditingEmail(true);
+                            }}
+                            style={{
+                              border: "none",
+                              background: "transparent",
+                              color: "var(--orange-tag)",
+                              fontSize: 13,
+                              fontWeight: 700,
+                              textDecoration: "underline",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Ubah
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="profile-field-row">
+                      <label className="profile-field-label">
+                        Nomor Telepon
+                      </label>
+                      {isEditingPhone ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <input
+                            type="tel"
+                            value={profileForm.no_telp}
+                            onChange={(e) =>
+                              setProfileForm((p) => ({ ...p, no_telp: e.target.value }))
+                            }
+                            placeholder="0812xxxxxxxx"
+                            style={{
+                              flex: 1,
+                              padding: "9px 12px",
+                              borderRadius: 10,
+                              border: "1px solid var(--border-input)",
+                              fontSize: 13,
+                              color: "var(--maroon)",
+                              outline: "none",
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (String(profileForm.no_telp || "").trim()) {
+                                setIsEditingPhone(false);
+                                setProfileAlert({ type: "", text: "" });
+                              }
+                            }}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              border: "1px solid var(--border-input)",
+                              backgroundColor: "var(--bg-cream)",
+                              color: "var(--maroon)",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Selesai
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          {profileForm.no_telp ? (
+                            <>
+                              <span style={{ fontSize: 14, color: "var(--maroon)", fontWeight: 600 }}>
+                                {profileForm.no_telp}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setIsEditingPhone(true)}
+                                style={{
+                                  border: "none",
+                                  background: "transparent",
+                                  color: "var(--orange-tag)",
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  textDecoration: "underline",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Ubah
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setIsEditingPhone(true)}
+                              style={{
+                                border: "none",
+                                background: "transparent",
+                                color: "var(--orange-tag)",
+                                fontSize: 13,
+                                fontWeight: 700,
+                                textDecoration: "underline",
+                                cursor: "pointer",
+                                padding: 0,
+                              }}
+                            >
+                              Tambah
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {portalMode === "tenant" && (
+                      <div className="profile-field-row">
+                        <label className="profile-field-label">
+                          Nama Tenant
+                        </label>
+                        <input
+                          type="text"
+                          value={profileForm.nama_tenant}
+                          onChange={(e) =>
+                            setProfileForm((p) => ({
+                              ...p,
+                              nama_tenant: e.target.value,
+                            }))
+                          }
+                          placeholder="Masukkan nama tenant kantin"
+                          style={{
+                            width: "100%",
+                            padding: "10px 14px",
+                            borderRadius: 10,
+                            border: "1px solid var(--border-input)",
+                            fontSize: 14,
+                            color: "var(--maroon)",
+                            outline: "none",
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    <div className="profile-field-row">
+                      <span className="profile-field-label">
+                        Jenis Kelamin
+                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+                        {["Laki-laki", "Perempuan", "Lainnya"].map((g) => {
+                          const checked = profileForm.jenis_kelamin === g;
+                          return (
+                            <label
+                              key={g}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 7,
+                                fontSize: 13,
+                                color: "var(--maroon)",
+                                fontWeight: checked ? 700 : 500,
+                                cursor: "pointer",
+                              }}
+                            >
+                              <input
+                                type="radio"
+                                name="jenis_kelamin"
+                                checked={checked}
+                                onChange={() =>
+                                  setProfileForm((p) => ({ ...p, jenis_kelamin: g }))
+                                }
+                                style={{ accentColor: "var(--maroon)", cursor: "pointer" }}
+                              />
+                              <span>{g}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="profile-field-row">
+                      <label className="profile-field-label">
+                        Tanggal lahir
+                      </label>
+                      <input
+                        type="date"
+                        value={profileForm.tanggal_lahir}
+                        onChange={(e) =>
+                          setProfileForm((p) => ({
+                            ...p,
+                            tanggal_lahir: e.target.value,
+                          }))
+                        }
+                        style={{
+                          width: "100%",
+                          maxWidth: 210,
+                          padding: "9px 12px",
+                          borderRadius: 10,
+                          border: "1px solid var(--border-input)",
+                          fontSize: 13,
+                          color: "var(--maroon)",
+                          outline: "none",
+                        }}
+                      />
+                    </div>
+
+                    <div className="profile-field-row" style={{ marginTop: 6 }}>
+                      <div />
+                      <div>
+                        <button
+                          type="submit"
+                          className="btn-interactive btn-lift"
+                          style={{
+                            padding: "11px 30px",
+                            borderRadius: "var(--radius-pill)",
+                            border: "none",
+                            backgroundColor: "var(--orange)",
+                            color: "var(--maroon)",
+                            fontSize: 14,
+                            fontWeight: 800,
+                            cursor: "pointer",
+                            boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
+                          }}
+                        >
+                          Simpan
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </>
-              ) : (
-                <>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Username</label>
-                    <input
-                      type="text"
-                      required
-                      value={authForm.username}
-                      onChange={(e) =>
-                        setAuthForm({ ...authForm, username: e.target.value })
-                      }
-                      style={styles.input}
-                    />
+
+                  <div className="profile-avatar-col">
+                    <div
+                      style={{
+                        width: 108,
+                        height: 108,
+                        borderRadius: "50%",
+                        backgroundColor: "var(--bg-cream)",
+                        border: "3px solid #EDD1B4",
+                        overflow: "hidden",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 32,
+                        fontWeight: 900,
+                        color: "var(--maroon)",
+                        marginBottom: 16,
+                        boxShadow: "0 6px 18px rgba(82, 42, 40, 0.1)",
+                      }}
+                    >
+                      {profileForm.avatar ? (
+                        <img
+                          src={profileForm.avatar}
+                          alt="Profile Avatar"
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      ) : (
+                        <span>{displayInitials}</span>
+                      )}
+                    </div>
+
+                    <label
+                      className="btn-interactive"
+                      style={{
+                        display: "inline-block",
+                        padding: "9px 20px",
+                        borderRadius: "var(--radius-pill)",
+                        border: "1px solid var(--border-input)",
+                        backgroundColor: "#FFFFFF",
+                        color: "var(--maroon)",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        marginBottom: 12,
+                        boxShadow: "var(--shadow-sm)",
+                      }}
+                    >
+                      <span>Pilih Gambar</span>
+                      <input
+                        type="file"
+                        accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 1024 * 1024) {
+                            setProfileAlert({
+                              type: "error",
+                              text: "Ukuran gambar terlalu besar! Maksimal 1 MB.",
+                            });
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            if (typeof reader.result === "string") {
+                              setProfileForm((p) => ({ ...p, avatar: reader.result }));
+                              setProfileAlert({ type: "", text: "" });
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                      <div>Ukuran gambar: maks. 1 MB</div>
+                      <div>Format gambar: .JPEG, .PNG</div>
+                    </div>
                   </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Nama Lengkap</label>
-                    <input
-                      type="text"
-                      required
-                      value={authForm.nama}
-                      onChange={(e) =>
-                        setAuthForm({ ...authForm, nama: e.target.value })
-                      }
-                      style={styles.input}
-                    />
+                </div>
+              </form>
+            )}
+
+            {activeDrawerModal === "favorites" && (
+              <div>
+                {menusList.filter((m) => favoriteIds.includes(m.id_menu)).length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "24px 12px", color: "var(--text-muted)", fontSize: 14 }}>
+                    Belum ada menu favorit yang disimpan.
                   </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Email</label>
-                    <input
-                      type="email"
-                      required
-                      value={authForm.email}
-                      onChange={(e) =>
-                        setAuthForm({ ...authForm, email: e.target.value })
-                      }
-                      style={styles.input}
-                    />
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {menusList
+                      .filter((m) => favoriteIds.includes(m.id_menu))
+                      .map((fav) => (
+                        <div
+                          key={fav.id_menu}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "10px 12px",
+                            borderRadius: 12,
+                            border: "1px solid var(--border-light)",
+                          }}
+                        >
+                          <span style={{ fontWeight: 700, color: "var(--maroon)" }}>{fav.nama_menu}</span>
+                          <span className="tabular" style={{ fontWeight: 800, color: "var(--maroon)" }}>
+                            {formatRupiah(fav.harga)}
+                          </span>
+                        </div>
+                      ))}
                   </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Password (Min. 8 karakter)</label>
-                    <input
-                      type="password"
-                      required
-                      minLength={8}
-                      value={authForm.password}
-                      onChange={(e) =>
+                )}
+              </div>
+            )}
+
+            {activeDrawerModal === "notifications" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {notificationsList.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "24px 12px", color: "var(--text-muted)", fontSize: 14 }}>
+                    Belum ada notifikasi baru saat ini.
+                  </div>
+                ) : (
+                  notificationsList.map((n, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: 12,
+                        backgroundColor: "var(--bg-cream)",
+                        fontSize: 13,
+                        color: "var(--maroon)",
+                      }}
+                    >
+                      {n.pesan || n.title}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {activeDrawerModal === "help" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                <div style={{ padding: "12px 14px", borderRadius: 12, backgroundColor: "#FAF6F2", border: "1px solid var(--border-light)" }}>
+                  <div style={{ fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>Bagaimana cara memesan makanan?</div>
+                  Pilih menu dari halaman Home atau Tenant, masukkan ke keranjang, lalu selesaikan pembayaran QRIS untuk mendapatkan nomor antrean.
+                </div>
+                <div style={{ padding: "12px 14px", borderRadius: 12, backgroundColor: "#FAF6F2", border: "1px solid var(--border-light)" }}>
+                  <div style={{ fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>Bagaimana cara upload menu bagi Tenant?</div>
+                  Login sebagai Tenant (Vendor), buka tab <strong>Menu</strong>, lalu klik tombol <strong>+ Upload Menu</strong>.
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {detailMounted && activeMenuDetail && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1100,
+            backgroundColor: "rgba(0,0,0,0.55)",
+            backdropFilter: "blur(6px)",
+            opacity: detailActive ? 1 : 0,
+            transition: "opacity 0.32s ease",
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+            pointerEvents: detailActive ? "auto" : "none",
+          }}
+          onClick={closeFoodDetail}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 820,
+              backgroundColor: "#FFFFFF",
+              borderTopLeftRadius: "28px",
+              borderTopRightRadius: "28px",
+              boxShadow: "0 -16px 50px rgba(82, 42, 40, 0.22)",
+              position: "relative",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              transform: detailActive ? "translateY(0)" : "translateY(100%)",
+              transition: "transform 0.35s cubic-bezier(0.18, 1, 0.32, 1)",
+              padding: "16px 32px 32px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+              <div
+                style={{
+                  width: 48,
+                  height: 5,
+                  borderRadius: 999,
+                  backgroundColor: "#E2D7D0",
+                }}
+              />
+            </div>
+
+            <button
+              onClick={closeFoodDetail}
+              className="btn-interactive"
+              style={{
+                position: "absolute",
+                top: 18,
+                right: 22,
+                zIndex: 10,
+                width: 36,
+                height: 36,
+                borderRadius: "50%",
+                border: "none",
+                backgroundColor: "var(--bg-cream)",
+                cursor: "pointer",
+                color: "var(--maroon)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              aria-label="Close"
+            >
+              <X size={18} strokeWidth={2.4} />
+            </button>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1.25fr",
+                gap: 32,
+                marginTop: 8,
+                marginBottom: 28,
+              }}
+            >
+              <div
+                className="img-zoom-parent"
+                style={{
+                  height: 290,
+                  borderRadius: "var(--radius-xl)",
+                  backgroundColor: "var(--bg-warm-img)",
+                  overflow: "hidden",
+                  position: "relative",
+                  boxShadow: "var(--shadow-sm)",
+                }}
+              >
+                <img
+                  src={activeMenuDetail.gambar}
+                  alt={activeMenuDetail.nama_menu}
+                  className="img-zoom-child"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 14,
+                    right: 14,
+                    padding: "4px 10px",
+                    borderRadius: "var(--radius-pill)",
+                    backgroundColor: "#FFFFFF",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "var(--maroon)",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                  }}
+                >
+                  <Star size={13} fill="#F8A34B" color="#F8A34B" />
+                  <span>{activeMenuDetail.rating} ({activeMenuDetail.reviews} reviews)</span>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                <div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontSize: 13,
+                      color: "var(--text-muted)",
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 700, color: "var(--maroon)" }}>
+                      <Store size={14} />
+                      {activeMenuDetail.tenant_name}
+                    </span>
+                    <span>·</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <Clock size={14} />
+                      Ready in {activeMenuDetail.estimasi_menit} min
+                    </span>
+                  </div>
+
+                  <h2
+                    style={{
+                      fontSize: 24,
+                      fontWeight: 900,
+                      color: "var(--maroon)",
+                      lineHeight: 1.2,
+                      marginBottom: 10,
+                      letterSpacing: "-0.01em",
+                    }}
+                  >
+                    {activeMenuDetail.nama_menu}
+                  </h2>
+
+                  <p
+                    style={{
+                      fontSize: 14,
+                      color: "var(--text-muted)",
+                      lineHeight: 1.55,
+                      marginBottom: 16,
+                    }}
+                  >
+                    {activeMenuDetail.deskripsi}
+                  </p>
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      borderTop: "1px solid var(--border-light)",
+                      paddingTop: 14,
+                      marginBottom: 16,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>Price</div>
+                      <div
+                        className="tabular"
+                        style={{
+                          fontSize: 24,
+                          fontWeight: 900,
+                          color: "var(--maroon)",
+                        }}
+                      >
+                        {formatRupiah(activeMenuDetail.harga)}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "5px 12px",
+                        borderRadius: "var(--radius-pill)",
+                        border: "1px solid var(--border-input)",
+                        backgroundColor: "#FFFFFF",
+                      }}
+                    >
+                      <button
+                        onClick={() => setDetailQuantity((prev) => Math.max(1, prev - 1))}
+                        className="btn-interactive"
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          cursor: "pointer",
+                          padding: 4,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Minus size={15} color="var(--maroon)" />
+                      </button>
+                      <span
+                        className="tabular"
+                        style={{
+                          fontSize: 15,
+                          fontWeight: 800,
+                          padding: "0 14px",
+                          color: "var(--maroon)",
+                        }}
+                      >
+                        {detailQuantity}
+                      </span>
+                      <button
+                        onClick={() => setDetailQuantity((prev) => prev + 1)}
+                        className="btn-interactive"
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          cursor: "pointer",
+                          padding: 4,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Plus size={15} color="var(--maroon)" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      handleAddToCart(activeMenuDetail, detailQuantity);
+                      closeFoodDetail();
+                    }}
+                    className="btn-interactive btn-lift"
+                    style={{
+                      width: "100%",
+                      padding: "14px",
+                      borderRadius: "var(--radius-pill)",
+                      border: "none",
+                      backgroundColor: "var(--orange)",
+                      color: "#FFFFFF",
+                      fontSize: 15,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 10,
+                      boxShadow: "0 4px 14px rgba(248, 163, 75, 0.4)",
+                    }}
+                  >
+                    <ShoppingBag size={18} />
+                    <span>Add to cart · {formatRupiah(activeMenuDetail.harga * detailQuantity)}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 18 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 12,
+                }}
+              >
+                <h4 style={{ fontSize: 16, fontWeight: 800, color: "var(--maroon)" }}>
+                  You might also like
+                </h4>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(6, 1fr)",
+                  gap: 12,
+                  overflowX: "auto",
+                }}
+              >
+                {menusList
+                  .filter((m) => m.id_menu !== activeMenuDetail.id_menu && m.available !== false)
+                  .slice(0, 6)
+                  .map((rec) => (
+                    <div
+                      key={rec.id_menu}
+                      onClick={() => openFoodDetail(rec)}
+                      className="card-hover img-zoom-parent"
+                      style={{
+                        cursor: "pointer",
+                        borderRadius: "var(--radius-md)",
+                        padding: 6,
+                        backgroundColor: "#FAF6F2",
+                        border: "1px solid var(--border-light)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: 75,
+                          borderRadius: 8,
+                          backgroundColor: "#E2E3E2",
+                          overflow: "hidden",
+                          marginBottom: 6,
+                        }}
+                      >
+                        <img
+                          src={rec.gambar}
+                          alt={rec.nama_menu}
+                          className="img-zoom-child"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                        />
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "var(--maroon)",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {rec.nama_menu}
+                      </div>
+                      <div
+                        className="tabular"
+                        style={{
+                          fontSize: 11,
+                          color: "var(--text-muted)",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {formatRupiah(rec.harga)}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+        </>
+      )}
+
+      {(!currentUser || isAuthOpen) && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1200,
+            backgroundColor: "#FAF6F2",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "16px 20px",
+            overflow: "hidden",
+          }}
+          className="animate-fade"
+        >
+          <div style={{ position: "absolute", top: 16, right: 20, zIndex: 10 }}>
+            <button
+              type="button"
+              onClick={() => changeLanguage(lang === "ID" ? "EN" : "ID")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                minWidth: 74,
+                justifyContent: "center",
+                padding: "7px 12px",
+                borderRadius: "var(--radius-pill)",
+                border: "1px solid var(--border-light)",
+                backgroundColor: "#FFFFFF",
+                color: "var(--maroon)",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "var(--shadow-sm)",
+              }}
+            >
+              <Globe size={14} color="var(--text-muted)" />
+              <span>{lang}</span>
+            </button>
+          </div>
+          <div style={{ textAlign: "center", marginBottom: 14, flexShrink: 0 }}>
+            <div style={{ display: "inline-block", marginBottom: 6 }}>
+              <svg width="54" height="54" viewBox="0 0 100 100" fill="none">
+                <circle cx="50" cy="50" r="46" stroke="#D49354" strokeWidth="3" />
+                <circle cx="50" cy="50" r="41" stroke="#E5B888" strokeWidth="1.5" />
+                <path
+                  d="M33 26V40C33 44 36 46 39 46V74H43V46C46 46 49 44 49 40V26H46V38H44V26H38V38H36V26H33Z"
+                  fill="#522A28"
+                />
+                <path
+                  d="M51 32L78 50L51 68V32Z"
+                  fill="#F8A34B"
+                  stroke="#522A28"
+                  strokeWidth="3.5"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 800,
+                color: "var(--orange-tag)",
+                letterSpacing: "0.22em",
+                marginBottom: 2,
+              }}
+            >
+              E S T D &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 2 0 2 6
+            </div>
+
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 900,
+                color: "var(--maroon)",
+                letterSpacing: "-0.01em",
+                marginBottom: 2,
+              }}
+            >
+              LETSORDER.COM
+            </div>
+
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                color: "var(--text-muted)",
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+              }}
+            >
+              FROM OUR CANTEEN TO YOUR HANDS
+            </div>
+          </div>
+
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 436,
+              maxHeight: "calc(100vh - 170px)",
+              backgroundColor: "#FFFFFF",
+              borderRadius: "var(--radius-xl)",
+              padding: "24px 28px 20px",
+              boxShadow: "0 16px 44px rgba(82, 42, 40, 0.1), 0 2px 8px rgba(82, 42, 40, 0.04)",
+              border: "1px solid var(--border-light)",
+              position: "relative",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+            className="animate-modal-zoom"
+          >
+            {currentUser && (
+              <button
+                onClick={() => setIsAuthOpen(false)}
+                className="btn-interactive"
+                style={{
+                  position: "absolute",
+                  top: 18,
+                  right: 18,
+                  border: "none",
+                  background: "var(--bg-subtle)",
+                  width: 30,
+                  height: 30,
+                  borderRadius: "50%",
+                  cursor: "pointer",
+                  color: "var(--text-muted)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <X size={16} />
+              </button>
+            )}
+
+            <div style={{ textAlign: "center", marginBottom: 14, flexShrink: 0 }}>
+              <h2 style={{ fontSize: 24, fontWeight: 900, color: "var(--maroon)", marginBottom: 2 }}>
+                {authMode === "forgot"
+                  ? t.authForgot
+                  : authMode === "login"
+                  ? t.authWelcome
+                  : t.authCreate}
+              </h2>
+              <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {authMode === "forgot"
+                  ? lang === "EN"
+                    ? "Enter your username or email to set a new password."
+                    : "Masukkan username atau email Anda untuk membuat password baru."
+                  : authMode === "login"
+                  ? loginRoleTab === "Vendor"
+                    ? lang === "EN"
+                      ? "Log in to manage your canteen tenant & orders."
+                      : "Masuk untuk mengelola tenant kantin & pesanan."
+                    : lang === "EN"
+                    ? "Log in to pre-order and track your meals."
+                    : "Masuk untuk memesan dan memantau pesanan kantin."
+                  : loginRoleTab === "Vendor"
+                  ? lang === "EN"
+                    ? "Register your campus canteen tenant account."
+                    : "Daftarkan akun tenant kantin kampus Anda."
+                  : lang === "EN"
+                  ? "For students, lecturers and campus staff."
+                  : "Untuk mahasiswa, dosen, dan staf kampus."}
+              </p>
+            </div>
+
+            {authMode !== "forgot" && (
+              <div
+                style={{
+                  position: "relative",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  padding: 4,
+                  borderRadius: "var(--radius-pill)",
+                  backgroundColor: "var(--bg-subtle)",
+                  border: "1px solid var(--border-light)",
+                  marginBottom: 14,
+                  overflow: "hidden",
+                  flexShrink: 0,
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 4,
+                    bottom: 4,
+                    left: 4,
+                    width: "calc(50% - 4px)",
+                    borderRadius: "var(--radius-pill)",
+                    backgroundColor: "var(--bg-cream)",
+                    border: "1.5px solid var(--maroon)",
+                    boxShadow: "0 3px 10px rgba(82, 42, 40, 0.12)",
+                    transform: loginRoleTab === "Vendor" ? "translateX(100%)" : "translateX(0%)",
+                    transition: "transform 0.38s cubic-bezier(0.22, 1, 0.36, 1)",
+                    pointerEvents: "none",
+                    zIndex: 1,
+                  }}
+                />
+                {[
+                  { role: "Customer", label: "Pengguna (Customer)" },
+                  { role: "Vendor", label: "Tenant (Vendor)" },
+                ].map((r) => {
+                  const active = loginRoleTab === r.role;
+                  return (
+                    <button
+                      key={r.role}
+                      type="button"
+                      onClick={() => {
+                        setLoginRoleTab(r.role);
+                        setAuthError("");
+                        setAuthSuccess("");
                         setAuthForm({
-                          ...authForm,
-                          password: e.target.value,
-                          password_confirmation: e.target.value,
-                        })
-                      }
-                      style={styles.input}
-                    />
+                          username: "",
+                          nama: "",
+                          password: "",
+                          email: "",
+                          nama_tenant: "",
+                          new_password: "",
+                        });
+                      }}
+                      style={{
+                        position: "relative",
+                        zIndex: 2,
+                        padding: "8px 12px",
+                        borderRadius: "var(--radius-pill)",
+                        border: "none",
+                        backgroundColor: "transparent",
+                        color: "var(--maroon)",
+                        fontSize: 12,
+                        fontWeight: active ? 800 : 600,
+                        cursor: "pointer",
+                        transition: "color 0.25s ease, transform 0.2s ease",
+                      }}
+                    >
+                      {r.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {authError && (
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  backgroundColor: "#FEF2F2",
+                  border: "1px solid #FECACA",
+                  color: "#991B1B",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  marginBottom: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexShrink: 0,
+                }}
+              >
+                <AlertCircle size={15} />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            {authSuccess && (
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  backgroundColor: "#ECFDF5",
+                  border: "1px solid #A7F3D0",
+                  color: "#065F46",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  marginBottom: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexShrink: 0,
+                }}
+              >
+                <CheckCircle2 size={15} />
+                <span>{authSuccess}</span>
+              </div>
+            )}
+
+            <form
+              key={`${authMode}-${loginRoleTab}`}
+              onSubmit={handleAuthSubmit}
+              className="animate-fade"
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+                overflowY: "auto",
+                paddingRight: 4,
+              }}
+            >
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
+                  {authMode === "forgot" ? "Username atau Email" : "Username"}
+                </label>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "10px 14px",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid var(--border-input)",
+                  }}
+                >
+                  <User size={16} color="var(--text-muted)" />
+                  <input
+                    type="text"
+                    required
+                    autoComplete="off"
+                    placeholder={
+                      loginRoleTab === "Vendor"
+                        ? "Masukkan username tenant"
+                        : "Masukkan username Anda"
+                    }
+                    value={authForm.username}
+                    onChange={(e) => setAuthForm({ ...authForm, username: e.target.value })}
+                    style={{
+                      border: "none",
+                      outline: "none",
+                      background: "transparent",
+                      fontSize: 14,
+                      color: "var(--maroon)",
+                      width: "100%",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {authMode === "register" && (
+                <>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
+                      {loginRoleTab === "Vendor" ? "Nama Kantin / Tenant" : "Nama Lengkap"}
+                    </label>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "10px 14px",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--border-input)",
+                      }}
+                    >
+                      <Store size={16} color="var(--text-muted)" />
+                      <input
+                        type="text"
+                        required
+                        autoComplete="off"
+                        placeholder={
+                          loginRoleTab === "Vendor"
+                            ? "Contoh: Kantin Nusantara"
+                            : "Masukkan nama lengkap Anda"
+                        }
+                        value={loginRoleTab === "Vendor" ? authForm.nama_tenant : authForm.nama}
+                        onChange={(e) =>
+                          setAuthForm({
+                            ...authForm,
+                            nama: e.target.value,
+                            nama_tenant: e.target.value,
+                          })
+                        }
+                        style={{
+                          border: "none",
+                          outline: "none",
+                          background: "transparent",
+                          fontSize: 14,
+                          color: "var(--maroon)",
+                          width: "100%",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
+                      Email
+                    </label>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "10px 14px",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--border-input)",
+                      }}
+                    >
+                      <Mail size={16} color="var(--text-muted)" />
+                      <input
+                        type="email"
+                        required
+                        autoComplete="off"
+                        placeholder="nama@email.com"
+                        value={authForm.email}
+                        onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                        style={{
+                          border: "none",
+                          outline: "none",
+                          background: "transparent",
+                          fontSize: 14,
+                          color: "var(--maroon)",
+                          width: "100%",
+                        }}
+                      />
+                    </div>
                   </div>
                 </>
+              )}
+
+              {authMode === "forgot" ? (
+                forgotStep === 1 ? (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--text-muted)",
+                      backgroundColor: "var(--bg-subtle)",
+                      borderRadius: "var(--radius-md)",
+                      padding: "10px 12px",
+                    }}
+                  >
+                    {lang === "EN"
+                      ? "We will generate a 6-digit verification code on the server before allowing a password change."
+                      : "Server akan menerbitkan kode verifikasi 6 digit terlebih dahulu sebelum Anda membuat password baru."}
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
+                        {lang === "EN" ? "6-Digit Verification Code" : "Kode Verifikasi (6 Digit)"}
+                      </label>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "10px 14px",
+                          borderRadius: "var(--radius-md)",
+                          border: "1px solid var(--border-input)",
+                        }}
+                      >
+                        <Lock size={16} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                        <input
+                          type="text"
+                          required
+                          autoComplete="one-time-code"
+                          placeholder="123456"
+                          value={authForm.reset_token || ""}
+                          onChange={(e) => setAuthForm({ ...authForm, reset_token: e.target.value })}
+                          style={{
+                            border: "none",
+                            outline: "none",
+                            background: "transparent",
+                            fontSize: 14,
+                            color: "var(--maroon)",
+                            width: "100%",
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
+                        Password Baru
+                      </label>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "10px 14px",
+                          borderRadius: "var(--radius-md)",
+                          border: "1px solid var(--border-input)",
+                        }}
+                      >
+                        <Lock size={16} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          required
+                          autoComplete="new-password"
+                          placeholder="Minimal 6 karakter"
+                          value={authForm.new_password}
+                          onChange={(e) => setAuthForm({ ...authForm, new_password: e.target.value })}
+                          style={{
+                            border: "none",
+                            outline: "none",
+                            background: "transparent",
+                            fontSize: 14,
+                            color: "var(--maroon)",
+                            width: "100%",
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            cursor: "pointer",
+                            color: "var(--text-muted)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: 0,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )
+              ) : (
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
+                    Password
+                  </label>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "10px 14px",
+                      borderRadius: "var(--radius-md)",
+                      border: "1px solid var(--border-input)",
+                    }}
+                  >
+                    <Lock size={16} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      required
+                      autoComplete={authMode === "login" ? "current-password" : "new-password"}
+                      placeholder={authMode === "register" ? "Minimal 6 karakter" : "••••••••"}
+                      value={authForm.password}
+                      onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                      style={{
+                        border: "none",
+                        outline: "none",
+                        background: "transparent",
+                        fontSize: 14,
+                        color: "var(--maroon)",
+                        width: "100%",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                        color: "var(--text-muted)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 0,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
               )}
 
               <button
                 type="submit"
                 disabled={authLoading}
-                style={styles.primaryBtn}
+                className="btn-interactive btn-lift"
+                style={{
+                  width: "100%",
+                  padding: "13px",
+                  borderRadius: "var(--radius-pill)",
+                  border: "none",
+                  backgroundColor: "var(--orange)",
+                  color: "var(--maroon)",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  marginTop: 2,
+                  boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
+                  opacity: authLoading ? 0.7 : 1,
+                }}
               >
                 {authLoading
-                  ? "Memproses..."
+                  ? "Processing..."
+                  : authMode === "forgot"
+                  ? forgotStep === 1
+                    ? lang === "EN"
+                      ? "Send Reset Code"
+                      : "Kirim Kode Reset"
+                    : lang === "EN"
+                    ? "Save New Password"
+                    : "Simpan Password Baru"
                   : authMode === "login"
-                    ? "Masuk Sekarang"
-                    : "Daftar Akun"}
+                  ? "Log in"
+                  : "Sign up"}
               </button>
-            </form>
 
-            <div style={styles.demoAccountBox}>
-              <strong>Akun Seeder Pengujian (Password: password123):</strong>
-              <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-                <li>Customer: <code>customer01</code></li>
-                <li>Vendor 1: <code>vendor01</code> (Kantin Sejahtera)</li>
-                <li>Vendor 2: <code>vendor02</code> (Warung Nusantara)</li>
-                <li>Admin: <code>admin</code></li>
-              </ul>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* TAB: CART */}
-      {activeTab === "cart" && (
-        <section style={styles.section}>
-          <div style={styles.sectionHeader}>
-            <h2 style={styles.sectionTitle}>Keranjang Belanja (Self-Pickup)</h2>
-            {cart?.items?.length > 0 && (
-              <button
-                type="button"
-                onClick={handleClearCart}
-                style={styles.dangerBtn}
-              >
-                Kosongkan Keranjang
-              </button>
-            )}
-          </div>
-
-          {!cart?.items || cart.items.length === 0 ? (
-            <div style={styles.emptyBox}>
-              Keranjang belanja Anda masih kosong. Silakan pilih menu dari
-              katalog.
-            </div>
-          ) : (
-            <div style={styles.twoColGrid}>
-              <div style={styles.formStack}>
-                {cart.tenant && (
-                  <div style={styles.infoBox}>
-                    <strong>Tenant Tujuan: {cart.tenant.nama_tenant}</strong>
-                    <span>
-                      Satu pesanan hanya berlaku untuk satu tenant yang sama.
-                    </span>
+              {authMode !== "forgot" &&
+                Boolean(
+                  (googleClientId || import.meta.env.VITE_GOOGLE_CLIENT_ID || "")
+                    .trim()
+                    .includes(".apps.googleusercontent.com")
+                ) && (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "2px 0" }}>
+                    <div style={{ flex: 1, height: 1, backgroundColor: "var(--border-light)" }} />
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700 }}>OR</span>
+                    <div style={{ flex: 1, height: 1, backgroundColor: "var(--border-light)" }} />
                   </div>
-                )}
 
-                {cart.items.map((item) => (
-                  <div key={item.id_item_keranjang} style={styles.cartItemCard}>
-                    <div>
-                      <h4 style={{ margin: "0 0 4px" }}>{item.nama_menu}</h4>
-                      <div style={{ fontSize: 14, color: "#475569" }}>
-                        {formatRupiah(item.harga)} x {item.jumlah} ={" "}
-                        <strong>{formatRupiah(item.subtotal)}</strong>
-                      </div>
-                      {item.catatan && (
-                        <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>
-                          Catatan: {item.catatan}
-                        </div>
-                      )}
-                    </div>
-                    <div style={styles.actionGroup}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleUpdateCartItem(item, item.jumlah - 1)
-                        }
-                        style={styles.secondaryBtn}
-                      >
-                        -
-                      </button>
-                      <span style={{ fontWeight: 700, padding: "0 8px" }}>
-                        {item.jumlah}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleUpdateCartItem(item, item.jumlah + 1)
-                        }
-                        style={styles.secondaryBtn}
-                      >
-                        +
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateCartItem(item, 0)}
-                        style={styles.dangerBtn}
-                      >
-                        Hapus
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <form onSubmit={handleCreateOrder} style={styles.summaryCard}>
-                <h3 style={{ marginTop: 0 }}>Ringkasan Pesanan</h3>
-                <div style={styles.summaryRow}>
-                  <span>Total Item</span>
-                  <strong>{cart.total_item || cart.items.length}</strong>
-                </div>
-                <div style={styles.summaryRow}>
-                  <span>Total Harga</span>
-                  <strong style={styles.priceLarge}>
-                    {formatRupiah(cart.total_harga)}
-                  </strong>
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Catatan Pesanan</label>
-                  <textarea
-                    rows={3}
-                    placeholder="Contoh: Diambil saat jam istirahat siang"
-                    value={orderNotes}
-                    onChange={(e) => setOrderNotes(e.target.value)}
-                    style={styles.input}
-                  />
-                </div>
-
-                <button type="submit" style={styles.primaryBtn}>
-                  Buat Pesanan & Dapatkan Nomor Antrean
-                </button>
-              </form>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* TAB: CUSTOMER ORDERS & PAYMENT SIMULATION */}
-      {activeTab === "orders" && (
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>
-            Pesanan Saya & Pelacakan Self-Pickup
-          </h2>
-
-          {orders.length === 0 ? (
-            <div style={styles.emptyBox}>Belum ada riwayat pesanan.</div>
-          ) : (
-            <div style={styles.twoColGrid}>
-              <div style={styles.formStack}>
-                {orders.map((ord) => (
-                  <div
-                    key={ord.id_pesanan}
-                    onClick={() => handleOpenOrderDetail(ord)}
+                  <button
+                    type="button"
+                    onClick={handleGoogleSignIn}
+                    className="btn-interactive"
                     style={{
-                      ...styles.tenantCard,
-                      borderColor:
-                        selectedOrder?.id_pesanan === ord.id_pesanan
-                          ? "#2563eb"
-                          : "#e2e8f0",
+                      width: "100%",
+                      padding: "11px 16px",
+                      borderRadius: "var(--radius-pill)",
+                      border: "1px solid var(--border-input)",
+                      backgroundColor: "#FFFFFF",
+                      color: "var(--maroon)",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 10,
                     }}
                   >
-                    <div style={styles.cardTopRow}>
-                      <span style={styles.queueBadge}>
-                        Antrean #{ord.nomor_antrean}
-                      </span>
-                      <span style={styles.badge}>{ord.status_pesanan}</span>
-                    </div>
-                    <h4 style={{ margin: "8px 0 4px" }}>
-                      {ord.tenant?.nama_tenant || `Tenant #${ord.id_tenant}`}
-                    </h4>
-                    <div style={styles.cardTopRow}>
-                      <span style={{ fontSize: 13, color: "#64748b" }}>
-                        {ord.waktu_pesan}
-                      </span>
-                      <strong>{formatRupiah(ord.total_harga)}</strong>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {selectedOrder && (
-                <div style={styles.summaryCard}>
-                  <div style={styles.cardTopRow}>
-                    <h3 style={{ margin: 0 }}>
-                      Detail Pesanan #{selectedOrder.id_pesanan}
-                    </h3>
-                    <span style={styles.queueBadge}>
-                      Nomor Antrean: {selectedOrder.nomor_antrean}
+                    <svg width="18" height="18" viewBox="0 0 24 24">
+                      <path
+                        fill="#EA4335"
+                        d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.4 1 3.5 3.6 1.6 7.4l3.7 2.8C6.2 7.2 8.9 5 12 5z"
+                      />
+                      <path
+                        fill="#4285F4"
+                        d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6l3.7 2.9c2.2-2 3.7-5 3.7-8.7z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.3 14.8c-.2-.8-.4-1.6-.4-2.5s.2-1.7.4-2.5L1.6 7C.6 9 0 11.2 0 13.5s.6 4.5 1.6 6.5l3.7-2.9z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3.1 0-5.8-2.1-6.7-5l-3.7 2.9C3.5 20.4 7.4 23 12 23z"
+                      />
+                    </svg>
+                    <span>
+                      Continue with Google ({loginRoleTab === "Vendor" ? "Tenant" : "Pengguna"})
                     </span>
-                  </div>
-
-                  <p style={{ color: "#475569", fontSize: 14 }}>
-                    Status Saat Ini:{" "}
-                    <strong>{selectedOrder.status_pesanan}</strong> • Tenant:{" "}
-                    <strong>{selectedOrder.tenant?.nama_tenant}</strong>
-                  </p>
-
-                  <h4>Rincian Menu:</h4>
-                  <ul style={{ paddingLeft: 18, margin: "8px 0 16px" }}>
-                    {(selectedOrder.details || []).map((det) => (
-                      <li key={det.id_detail} style={{ marginBottom: 4 }}>
-                        {det.nama_menu || `Menu #${det.id_menu}`} x {det.jumlah}{" "}
-                        — <strong>{formatRupiah(det.subtotal)}</strong>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <div style={styles.summaryRow}>
-                    <span>Total Pembayaran</span>
-                    <strong style={styles.priceText}>
-                      {formatRupiah(selectedOrder.total_harga)}
-                    </strong>
-                  </div>
-
-                  {/* Bagian Simulasi Pembayaran */}
-                  <div style={styles.paymentBox}>
-                    <h4 style={{ marginTop: 0 }}>
-                      Simulasi Pembayaran Digital
-                    </h4>
-                    {!activePayment ? (
-                      <div style={styles.formStack}>
-                        <div style={styles.formGroup}>
-                          <label style={styles.label}>
-                            Pilih Metode Pembayaran Simulasi
-                          </label>
-                          <select
-                            value={paymentMethod}
-                            onChange={(e) => setPaymentMethod(e.target.value)}
-                            style={styles.input}
-                          >
-                            <option value="QRIS">QRIS Simulasi</option>
-                            <option value="Dompet Digital">
-                              Dompet Digital Simulasi
-                            </option>
-                          </select>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleCreatePayment(selectedOrder.id_pesanan)
-                          }
-                          style={styles.primaryBtn}
-                        >
-                          Buat Kode Pembayaran Simulasi
-                        </button>
-                      </div>
-                    ) : (
-                      <div style={styles.formStack}>
-                        <div>
-                          Metode:{" "}
-                          <strong>{activePayment.metode_pembayaran}</strong>
-                        </div>
-                        <div>
-                          Kode Referensi Simulasi:{" "}
-                          <code>{activePayment.kode_qris}</code>
-                        </div>
-                        <div>
-                          Status Verifikasi:{" "}
-                          <strong>{activePayment.status_verifikasi}</strong>
-                        </div>
-                        <div>
-                          Batas Waktu: {activePayment.batas_waktu || "-"}
-                        </div>
-                        {activePayment.status_verifikasi !==
-                          "Terverifikasi" && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleSimulateVerifyPayment(activePayment)
-                            }
-                            style={styles.primaryBtn}
-                          >
-                            Simulasikan Pembayaran Berhasil (Verifikasi)
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Riwayat Status */}
-                  <h4>Riwayat Status Pesanan:</h4>
-                  <ul style={{ paddingLeft: 18, fontSize: 13 }}>
-                    {orderHistoryList.map((hist) => (
-                      <li key={hist.id_riwayat}>
-                        <strong>{hist.status}</strong> — {hist.waktu}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                  </button>
+                </>
               )}
-            </div>
-          )}
-        </section>
-      )}
 
-      {/* TAB: NOTIFICATIONS */}
-      {activeTab === "notifications" && (
-        <section style={styles.section}>
-          <div style={styles.sectionHeader}>
-            <h2 style={styles.sectionTitle}>Notifikasi Pesanan</h2>
-            {unreadCount > 0 && (
-              <button
-                type="button"
-                onClick={async () => {
-                  await api.markAllNotificationsRead();
-                  const res = await api.getNotifications();
-                  if (Array.isArray(res?.data)) setNotifications(res.data);
-                }}
-                style={styles.secondaryBtn}
-              >
-                Tandai Semua Sudah Dibaca
-              </button>
-            )}
-          </div>
-
-          {notifications.length === 0 ? (
-            <div style={styles.emptyBox}>Belum ada notifikasi.</div>
-          ) : (
-            <div style={styles.formStack}>
-              {notifications.map((notif) => (
+              {authMode === "login" ? (
+                <div style={{ textAlign: "center", marginTop: 2 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("forgot");
+                      setForgotStep(1);
+                      setAuthError("");
+                      setAuthSuccess("");
+                      setAuthForm({
+                        username: "",
+                        nama: "",
+                        password: "",
+                        email: "",
+                        nama_tenant: "",
+                        new_password: "",
+                        reset_token: "",
+                      });
+                    }}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      fontSize: 13,
+                      color: "var(--maroon)",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              ) : authMode === "forgot" ? (
+                <div style={{ textAlign: "center", marginTop: 2 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("login");
+                      setForgotStep(1);
+                      setAuthError("");
+                      setAuthForm({
+                        username: "",
+                        nama: "",
+                        password: "",
+                        email: "",
+                        nama_tenant: "",
+                        new_password: "",
+                        reset_token: "",
+                      });
+                    }}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      fontSize: 13,
+                      color: "var(--maroon)",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                    }}
+                  >
+                    ← Kembali ke halaman Log in
+                  </button>
+                </div>
+              ) : (
                 <div
-                  key={notif.id_notifikasi}
                   style={{
-                    ...styles.cartItemCard,
-                    background: notif.status_baca ? "#ffffff" : "#eff6ff",
+                    textAlign: "center",
+                    marginTop: 2,
+                    fontSize: 11,
+                    color: "var(--text-muted)",
                   }}
                 >
-                  <div>
-                    <p style={{ margin: "0 0 4px", fontWeight: notif.status_baca ? 400 : 700 }}>
-                      {notif.pesan}
-                    </p>
-                    <small style={{ color: "#64748b" }}>
-                      Pesanan #{notif.id_pesanan}
-                    </small>
-                  </div>
-                  {!notif.status_baca && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleMarkNotificationRead(notif.id_notifikasi)
-                      }
-                      style={styles.secondaryBtn}
-                    >
-                      Tandai Dibaca
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* TAB: VENDOR PORTAL */}
-      {activeTab === "vendor" && user?.peran === "Vendor" && (
-        <section style={styles.section}>
-          <div style={styles.sectionHeader}>
-            <div>
-              <h2 style={styles.sectionTitle}>
-                Portal Vendor — {vendorTenant?.nama_tenant || "Tenant Anda"}
-              </h2>
-              <p style={{ margin: 0, color: "#64748b" }}>
-                {vendorTenant?.deskripsi}
-              </p>
-            </div>
-            {vendorTenant && (
-              <button
-                type="button"
-                onClick={handleToggleTenantOpen}
-                style={
-                  vendorTenant.status_buka
-                    ? styles.dangerBtn
-                    : styles.primaryBtn
-                }
-              >
-                {vendorTenant.status_buka
-                  ? "Tutup Sementara Tenant"
-                  : "Buka Tenant Sekarang"}
-              </button>
-            )}
-          </div>
-
-          <div style={styles.twoColGrid}>
-            {/* Pengelolaan Menu Vendor */}
-            <div style={styles.summaryCard}>
-              <h3 style={{ marginTop: 0 }}>
-                {vendorMenuForm.id_menu ? "Edit Menu" : "Tambah Menu Baru"}
-              </h3>
-              <form onSubmit={handleSaveVendorMenu} style={styles.formStack}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Nama Menu</label>
-                  <input
-                    type="text"
-                    required
-                    value={vendorMenuForm.nama_menu}
-                    onChange={(e) =>
-                      setVendorMenuForm({
-                        ...vendorMenuForm,
-                        nama_menu: e.target.value,
-                      })
-                    }
-                    style={styles.input}
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Kategori</label>
-                  <select
-                    value={vendorMenuForm.id_kategori}
-                    onChange={(e) =>
-                      setVendorMenuForm({
-                        ...vendorMenuForm,
-                        id_kategori: e.target.value,
-                      })
-                    }
-                    style={styles.input}
-                  >
-                    {categories.map((cat) => (
-                      <option key={cat.id_kategori} value={cat.id_kategori}>
-                        {cat.nama_kategori}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Harga (Rp)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    value={vendorMenuForm.harga}
-                    onChange={(e) =>
-                      setVendorMenuForm({
-                        ...vendorMenuForm,
-                        harga: e.target.value,
-                      })
-                    }
-                    style={styles.input}
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Estimasi Penyajian (Menit)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={vendorMenuForm.estimasi_menit}
-                    onChange={(e) =>
-                      setVendorMenuForm({
-                        ...vendorMenuForm,
-                        estimasi_menit: e.target.value,
-                      })
-                    }
-                    style={styles.input}
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Deskripsi</label>
-                  <textarea
-                    rows={2}
-                    value={vendorMenuForm.deskripsi}
-                    onChange={(e) =>
-                      setVendorMenuForm({
-                        ...vendorMenuForm,
-                        deskripsi: e.target.value,
-                      })
-                    }
-                    style={styles.input}
-                  />
-                </div>
-                <div style={styles.actionGroup}>
-                  <button type="submit" style={styles.primaryBtn}>
-                    {vendorMenuForm.id_menu ? "Simpan Perubahan" : "+ Tambah Menu"}
-                  </button>
-                  {vendorMenuForm.id_menu && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setVendorMenuForm({
-                          id_menu: null,
-                          id_kategori: categories[0]?.id_kategori || 1,
-                          nama_menu: "",
-                          deskripsi: "",
-                          gambar: "menu/default.png",
-                          harga: "",
-                          estimasi_menit: 5,
-                          status_tersedia: true,
-                        })
-                      }
-                      style={styles.secondaryBtn}
-                    >
-                      Batal
-                    </button>
-                  )}
-                </div>
-              </form>
-
-              <h4>Daftar Menu Tenant ({vendorMenus.length})</h4>
-              <div style={styles.formStack}>
-                {vendorMenus.map((m) => (
-                  <div key={m.id_menu} style={styles.cartItemCard}>
-                    <div>
-                      <strong>{m.nama_menu}</strong> — {formatRupiah(m.harga)}
-                      <div style={{ fontSize: 12, color: "#64748b" }}>
-                        Status:{" "}
-                        {m.status_tersedia ? "Tersedia" : "Tidak Tersedia"}
-                      </div>
-                    </div>
-                    <div style={styles.actionGroup}>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleMenuAvailability(m)}
-                        style={styles.secondaryBtn}
-                      >
-                        {m.status_tersedia ? "Set Habis" : "Set Tersedia"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setVendorMenuForm({
-                            id_menu: m.id_menu,
-                            id_kategori: m.id_kategori,
-                            nama_menu: m.nama_menu,
-                            deskripsi: m.deskripsi,
-                            gambar: m.gambar,
-                            harga: m.harga,
-                            estimasi_menit: m.estimasi_menit,
-                            status_tersedia: m.status_tersedia,
-                          })
-                        }
-                        style={styles.secondaryBtn}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteVendorMenu(m.id_menu)}
-                        style={styles.dangerBtn}
-                      >
-                        Hapus
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Pesanan Masuk Vendor */}
-            <div style={styles.summaryCard}>
-              <h3 style={{ marginTop: 0 }}>
-                Pesanan Masuk ({vendorOrders.length})
-              </h3>
-              {vendorOrders.length === 0 ? (
-                <p style={{ color: "#64748b" }}>Belum ada pesanan masuk.</p>
-              ) : (
-                <div style={styles.formStack}>
-                  {vendorOrders.map((ord) => (
-                    <div key={ord.id_pesanan} style={styles.cartItemCard}>
-                      <div>
-                        <div style={styles.actionGroup}>
-                          <span style={styles.queueBadge}>
-                            {ord.nomor_antrean}
-                          </span>
-                          <strong>{ord.user?.nama || "Customer"}</strong>
-                          <span style={styles.badge}>{ord.status_pesanan}</span>
-                        </div>
-                        <div style={{ fontSize: 13, marginTop: 6 }}>
-                          {(ord.details || []).map((d) => (
-                            <div key={d.id_detail}>
-                              • {d.nama_menu} x {d.jumlah}
-                            </div>
-                          ))}
-                        </div>
-                        <div style={{ fontSize: 13, color: "#475569", marginTop: 4 }}>
-                          Total: <strong>{formatRupiah(ord.total_harga)}</strong>{" "}
-                          • Pembayaran:{" "}
-                          <strong>
-                            {ord.payment?.status_verifikasi || "Belum Dibuat"}
-                          </strong>
-                        </div>
-                      </div>
-                      <div style={styles.formStack}>
-                        {ord.status_pesanan !== "Selesai" &&
-                          ord.status_pesanan !== "Dibatalkan" && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleVendorOrderStatus(
-                                    ord.id_pesanan,
-                                    "Sedang Diproses"
-                                  )
-                                }
-                                style={styles.secondaryBtn}
-                              >
-                                Diproses
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleVendorOrderStatus(
-                                    ord.id_pesanan,
-                                    "Siap Diambil"
-                                  )
-                                }
-                                style={styles.primaryBtn}
-                              >
-                                Siap Diambil
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleVendorOrderStatus(
-                                    ord.id_pesanan,
-                                    "Selesai"
-                                  )
-                                }
-                                style={styles.secondaryBtn}
-                              >
-                                Selesai Diambil
-                              </button>
-                            </>
-                          )}
-                      </div>
-                    </div>
-                  ))}
+                  By signing up you agree to the canteen's terms of service.
                 </div>
               )}
-            </div>
+            </form>
           </div>
-        </section>
-      )}
 
-      {/* TAB: ADMINISTRATOR PORTAL */}
-      {activeTab === "admin" && user?.peran === "Administrator" && (
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>
-            Portal Administrator — Pengelolaan Pengguna & Tenant
-          </h2>
-          <div style={styles.twoColGrid}>
-            <div style={styles.summaryCard}>
-              <h3 style={{ marginTop: 0 }}>
-                Daftar Pengguna ({adminUsers.length})
-              </h3>
-              <div style={styles.formStack}>
-                {adminUsers.map((u) => (
-                  <div key={u.id_user} style={styles.cartItemCard}>
-                    <div>
-                      <strong>{u.nama}</strong> (@{u.username})
-                      <div style={{ fontSize: 13, color: "#64748b" }}>
-                        {u.email}
-                      </div>
-                    </div>
-                    <select
-                      value={u.peran}
-                      onChange={(e) => handleAdminRoleChange(u, e.target.value)}
-                      style={{ ...styles.input, width: "auto" }}
-                    >
-                      <option value="Customer">Customer</option>
-                      <option value="Vendor">Vendor</option>
-                      <option value="Administrator">Administrator</option>
-                    </select>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={styles.summaryCard}>
-              <h3 style={{ marginTop: 0 }}>Tambah Tenant Baru</h3>
-              <form onSubmit={handleAdminCreateTenant} style={styles.formStack}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Pemilik Tenant (User Vendor)</label>
-                  <select
-                    required
-                    value={adminNewTenant.id_user}
-                    onChange={(e) =>
-                      setAdminNewTenant({
-                        ...adminNewTenant,
-                        id_user: e.target.value,
-                      })
-                    }
-                    style={styles.input}
-                  >
-                    <option value="">-- Pilih Pengguna --</option>
-                    {adminUsers.map((u) => (
-                      <option key={u.id_user} value={u.id_user}>
-                        {u.nama} ({u.peran})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Nama Tenant</label>
-                  <input
-                    type="text"
-                    required
-                    value={adminNewTenant.nama_tenant}
-                    onChange={(e) =>
-                      setAdminNewTenant({
-                        ...adminNewTenant,
-                        nama_tenant: e.target.value,
-                      })
-                    }
-                    style={styles.input}
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Deskripsi</label>
-                  <input
-                    type="text"
-                    value={adminNewTenant.deskripsi}
-                    onChange={(e) =>
-                      setAdminNewTenant({
-                        ...adminNewTenant,
-                        deskripsi: e.target.value,
-                      })
-                    }
-                    style={styles.input}
-                  />
-                </div>
-                <button type="submit" style={styles.primaryBtn}>
-                  + Simpan Tenant
+          <div
+            style={{
+              textAlign: "center",
+              marginTop: 14,
+              fontSize: 13,
+              color: "var(--text-muted)",
+              flexShrink: 0,
+            }}
+          >
+            {authMode === "login" ? (
+              <span>
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("register");
+                    setAuthError("");
+                    setAuthSuccess("");
+                    setAuthForm({
+                      username: "",
+                      nama: "",
+                      password: "",
+                      email: "",
+                      nama_tenant: "",
+                      new_password: "",
+                    });
+                  }}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--maroon)",
+                    fontWeight: 800,
+                    textDecoration: "underline",
+                    cursor: "pointer",
+                  }}
+                >
+                  Sign up here
                 </button>
-              </form>
-
-              <h4>Daftar Tenant ({adminTenants.length})</h4>
-              <div style={styles.formStack}>
-                {adminTenants.map((t) => (
-                  <div key={t.id_tenant} style={styles.cartItemCard}>
-                    <div>
-                      <strong>{t.nama_tenant}</strong>
-                      <div style={{ fontSize: 12, color: "#64748b" }}>
-                        Pengelola: {t.user?.nama || `User #${t.id_user}`} •{" "}
-                        {t.status_buka ? "Buka" : "Tutup"}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+              </span>
+            ) : (
+              <span>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("login");
+                    setAuthError("");
+                    setAuthSuccess("");
+                    setAuthForm({
+                      username: "",
+                      nama: "",
+                      password: "",
+                      email: "",
+                      nama_tenant: "",
+                      new_password: "",
+                    });
+                  }}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--maroon)",
+                    fontWeight: 800,
+                    textDecoration: "underline",
+                    cursor: "pointer",
+                  }}
+                >
+                  Log in here
+                </button>
+              </span>
+            )}
           </div>
-        </section>
+        </div>
       )}
-
-      <footer style={styles.footer}>
-        <p>
-          LetsOrder.com — Sistem Pemesanan dan Self-Pickup Digital untuk Kantin
-          UPNVJ. Pembayaran QRIS & dompet digital bersifat simulasi.
-        </p>
-      </footer>
     </div>
   );
 }
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    padding: "0 5vw 48px",
-    color: "#0f172a",
-    background: "#f8fafc",
-    fontFamily:
-      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  },
-  header: {
-    minHeight: 74,
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 16,
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderBottom: "1px solid #e2e8f0",
-    padding: "12px 0",
-  },
-  brandRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-  },
-  brand: {
-    color: "#0f172a",
-    fontSize: 22,
-    fontWeight: 800,
-    letterSpacing: "-0.8px",
-    textDecoration: "none",
-  },
-  brandAccent: { color: "#2563eb" },
-  tag: {
-    color: "#1e40af",
-    background: "#dbeafe",
-    padding: "5px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 600,
-  },
-  nav: {
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 8,
-  },
-  navBtn: {
-    padding: "8px 14px",
-    borderRadius: 8,
-    border: "1px solid transparent",
-    background: "transparent",
-    color: "#475569",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  navBtnActive: {
-    padding: "8px 14px",
-    borderRadius: 8,
-    border: "1px solid #bfdbfe",
-    background: "#eff6ff",
-    color: "#1d4ed8",
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-  userBadge: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    paddingLeft: 8,
-    fontSize: 13,
-  },
-  statusBar: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "10px 0",
-    fontSize: 13,
-    color: "#475569",
-  },
-  statusDot: { width: 8, height: 8, borderRadius: "50%" },
-  alertBanner: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "12px 16px",
-    borderRadius: 10,
-    border: "1px solid",
-    marginBottom: 16,
-    fontSize: 14,
-  },
-  closeAlertBtn: {
-    background: "transparent",
-    border: "none",
-    fontSize: 16,
-    cursor: "pointer",
-  },
-  heroCompact: {
-    padding: "28px 0 16px",
-    maxWidth: 740,
-  },
-  eyebrow: {
-    color: "#2563eb",
-    fontSize: 12,
-    fontWeight: 800,
-    letterSpacing: "1.4px",
-    margin: 0,
-  },
-  heroTitle: {
-    margin: "8px 0 10px",
-    fontSize: "clamp(26px, 4vw, 40px)",
-    letterSpacing: "-1px",
-  },
-  heroSubtitle: {
-    margin: 0,
-    color: "#475569",
-    lineHeight: 1.6,
-  },
-  section: {
-    marginTop: 24,
-  },
-  sectionHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-  sectionTitle: {
-    margin: 0,
-    fontSize: 20,
-  },
-  tenantGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-    gap: 14,
-  },
-  tenantCard: {
-    padding: 18,
-    borderRadius: 14,
-    border: "2px solid #e2e8f0",
-    background: "#ffffff",
-    cursor: "pointer",
-  },
-  cardTopRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  cardTitle: {
-    margin: 0,
-    fontSize: 17,
-  },
-  cardDesc: {
-    margin: "8px 0 0",
-    color: "#475569",
-    fontSize: 14,
-    lineHeight: 1.5,
-  },
-  badge: {
-    padding: "4px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 700,
-    background: "#f1f5f9",
-    color: "#334155",
-  },
-  queueBadge: {
-    padding: "4px 10px",
-    borderRadius: 8,
-    fontSize: 13,
-    fontWeight: 800,
-    background: "#dbeafe",
-    color: "#1e40af",
-  },
-  filterBar: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 12,
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 18,
-  },
-  categoryPills: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  pill: {
-    padding: "8px 14px",
-    borderRadius: 999,
-    border: "1px solid #cbd5e1",
-    background: "#ffffff",
-    color: "#334155",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  pillActive: {
-    padding: "8px 14px",
-    borderRadius: 999,
-    border: "1px solid #2563eb",
-    background: "#2563eb",
-    color: "#ffffff",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  searchInput: {
-    minWidth: 260,
-    padding: "9px 14px",
-    borderRadius: 10,
-    border: "1px solid #cbd5e1",
-    fontSize: 14,
-  },
-  menuGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))",
-    gap: 16,
-  },
-  menuCard: {
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-    padding: 18,
-    borderRadius: 14,
-    border: "1px solid #e2e8f0",
-    background: "#ffffff",
-  },
-  categoryTag: {
-    fontSize: 12,
-    fontWeight: 700,
-    color: "#2563eb",
-    background: "#eff6ff",
-    padding: "3px 8px",
-    borderRadius: 6,
-  },
-  timeTag: {
-    fontSize: 12,
-    color: "#64748b",
-  },
-  menuTitle: {
-    margin: "10px 0 4px",
-    fontSize: 17,
-  },
-  tenantLabel: {
-    margin: 0,
-    fontSize: 13,
-    color: "#64748b",
-    fontWeight: 600,
-  },
-  menuFooter: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 16,
-    paddingTop: 12,
-    borderTop: "1px solid #f1f5f9",
-  },
-  priceText: {
-    fontSize: 16,
-    color: "#0f172a",
-  },
-  priceLarge: {
-    fontSize: 20,
-    fontWeight: 800,
-    color: "#2563eb",
-  },
-  actionGroup: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-  },
-  primaryBtn: {
-    padding: "9px 14px",
-    borderRadius: 9,
-    border: "none",
-    background: "#2563eb",
-    color: "#ffffff",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  secondaryBtn: {
-    padding: "8px 12px",
-    borderRadius: 9,
-    border: "1px solid #cbd5e1",
-    background: "#ffffff",
-    color: "#334155",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  dangerBtn: {
-    padding: "8px 12px",
-    borderRadius: 9,
-    border: "1px solid #fecaca",
-    background: "#fef2f2",
-    color: "#b91c1c",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  logoutBtn: {
-    padding: "6px 10px",
-    borderRadius: 8,
-    border: "1px solid #cbd5e1",
-    background: "#ffffff",
-    cursor: "pointer",
-    fontSize: 12,
-  },
-  disabledBtn: {
-    padding: "9px 14px",
-    borderRadius: 9,
-    border: "none",
-    background: "#cbd5e1",
-    color: "#64748b",
-    fontWeight: 600,
-    cursor: "not-allowed",
-  },
-  linkBtn: {
-    background: "none",
-    border: "none",
-    color: "#2563eb",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  emptyBox: {
-    padding: 32,
-    textAlign: "center",
-    background: "#ffffff",
-    borderRadius: 14,
-    border: "1px dashed #cbd5e1",
-    color: "#64748b",
-  },
-  modalOverlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(15, 23, 42, 0.5)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
-    zIndex: 50,
-  },
-  modalCard: {
-    width: "100%",
-    maxWidth: 460,
-    background: "#ffffff",
-    borderRadius: 16,
-    padding: 24,
-    display: "grid",
-    gap: 12,
-  },
-  authContainer: {
-    display: "flex",
-    justifyContent: "center",
-    padding: "32px 0",
-  },
-  authCard: {
-    width: "100%",
-    maxWidth: 440,
-    background: "#ffffff",
-    padding: 24,
-    borderRadius: 16,
-    border: "1px solid #e2e8f0",
-  },
-  tabSwitch: {
-    display: "flex",
-    gap: 8,
-    marginBottom: 18,
-  },
-  formStack: {
-    display: "grid",
-    gap: 12,
-  },
-  formGroup: {
-    display: "grid",
-    gap: 6,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: "#334155",
-  },
-  input: {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: "9px 12px",
-    borderRadius: 8,
-    border: "1px solid #cbd5e1",
-    fontSize: 14,
-  },
-  demoAccountBox: {
-    marginTop: 18,
-    padding: 12,
-    background: "#f8fafc",
-    borderRadius: 10,
-    border: "1px solid #e2e8f0",
-    fontSize: 13,
-    color: "#475569",
-  },
-  twoColGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-    gap: 20,
-    alignItems: "start",
-  },
-  cartItemCard: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: 14,
-    background: "#ffffff",
-    borderRadius: 12,
-    border: "1px solid #e2e8f0",
-  },
-  summaryCard: {
-    padding: 20,
-    background: "#ffffff",
-    borderRadius: 14,
-    border: "1px solid #e2e8f0",
-    display: "grid",
-    gap: 14,
-  },
-  summaryRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  infoBox: {
-    display: "grid",
-    gap: 4,
-    padding: 12,
-    borderRadius: 10,
-    background: "#eff6ff",
-    border: "1px solid #bfdbfe",
-    color: "#1e3a8a",
-    fontSize: 13,
-  },
-  paymentBox: {
-    padding: 14,
-    borderRadius: 12,
-    background: "#f8fafc",
-    border: "1px solid #e2e8f0",
-  },
-  footer: {
-    marginTop: 48,
-    paddingTop: 20,
-    borderTop: "1px solid #e2e8f0",
-    color: "#64748b",
-    fontSize: 13,
-  },
-};
