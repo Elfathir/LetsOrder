@@ -28,6 +28,10 @@ class User extends Authenticatable
         'email',
         'password',
         'peran',
+        'no_telp',
+        'jenis_kelamin',
+        'tanggal_lahir',
+        'avatar',
     ];
 
     protected $hidden = [

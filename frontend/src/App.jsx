@@ -360,6 +360,26 @@ function readAndCompressImageFile(file, maxDim = 900, quality = 0.82) {
   });
 }
 
+function normalizeCategoryName(rawName) {
+  const name = String(rawName || "").trim();
+  if (!name || name === "Makanan") return "Rice & Mains";
+  if (name === "Camilan") return "Snacks";
+  if (name === "Minuman") return "Drinks";
+  return name;
+}
+
+function normalizeMenuRecord(m) {
+  return {
+    ...m,
+    available: Boolean(m.status_tersedia ?? m.available ?? true),
+    kategori_nama: normalizeCategoryName(m.kategori_nama || m.category?.nama_kategori),
+    tenant_name: m.tenant_name || m.tenant?.nama_tenant || "Canteen Tenant",
+    sold_today: Number(m.sold_today || 0),
+    rating: m.rating || "5.0",
+    reviews: m.reviews || 1,
+  };
+}
+
 function formatRupiah(num) {
   return "Rp" + Number(num || 0).toLocaleString("id-ID");
 }
@@ -372,6 +392,46 @@ function getInitials(name) {
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
   return clean.slice(0, 2).toUpperCase();
+}
+
+function SafeImage({ src, alt, className = "", style = {}, fallbackType = "food", iconSize = 28 }) {
+  const [failed, setFailed] = useState(false);
+  const cleanSrc = typeof src === "string" ? src.trim() : "";
+
+  useEffect(() => {
+    setFailed(false);
+  }, [cleanSrc]);
+
+  if (!cleanSrc || failed) {
+    return (
+      <div
+        aria-label={alt}
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "var(--bg-warm-img)",
+          color: "var(--maroon)",
+          opacity: 0.45,
+          ...style,
+        }}
+      >
+        {fallbackType === "store" ? <Store size={iconSize} /> : <ShoppingBag size={iconSize} />}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={cleanSrc}
+      alt={alt}
+      className={className}
+      style={{ width: "100%", height: "100%", objectFit: "cover", ...style }}
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 export default function App() {
@@ -477,6 +537,8 @@ export default function App() {
 
   const [checkoutStep, setCheckoutStep] = useState(1);
   const [activeOrderId, setActiveOrderId] = useState(null);
+  const [activeOrder, setActiveOrder] = useState(null);
+  const [checkoutError, setCheckoutError] = useState("");
   const [activeQueueCode, setActiveQueueCode] = useState("A-001");
   const [paymentTimerSeconds, setPaymentTimerSeconds] = useState(899);
   const [prepTimerSeconds, setPrepTimerSeconds] = useState(525);
@@ -485,7 +547,19 @@ export default function App() {
   const [ordersHistory, setOrdersHistory] = useState([]);
   const [historyFilter, setHistoryFilter] = useState("All");
 
-  const [favoriteIds, setFavoriteIds] = useState([]);
+  const [favoriteIds, setFavoriteIds] = useState(() => {
+    try {
+      const uid = getStoredUser()?.id_user || "guest";
+      const raw = localStorage.getItem(`letsorder_favs_${uid}`);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const [tenantMenuQuery, setTenantMenuQuery] = useState("");
+  const [toastAlert, setToastAlert] = useState(null);
+  const toastTimerRef = useRef(null);
   const [notificationsList, setNotificationsList] = useState([]);
   const [activeDrawerModal, setActiveDrawerModal] = useState(null);
   const [profileForm, setProfileForm] = useState({
@@ -645,7 +719,49 @@ export default function App() {
     }
   }, []);
 
-  const notify = useCallback(() => {}, []);
+  const notify = useCallback((text, type = "info") => {
+    if (!text) return;
+    setToastAlert({ id: Date.now(), text: String(text), type });
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      setToastAlert(null);
+    }, 3600);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const uid = currentUser?.id_user || "guest";
+      const raw = localStorage.getItem(`letsorder_favs_${uid}`);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setFavoriteIds(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setFavoriteIds([]);
+    }
+  }, [currentUser?.id_user]);
+
+  const toggleFavorite = useCallback(
+    (idMenu) => {
+      const targetId = Number(idMenu);
+      setFavoriteIds((prev) => {
+        const exists = prev.includes(targetId);
+        const next = exists ? prev.filter((id) => id !== targetId) : [...prev, targetId];
+        try {
+          const uid = currentUser?.id_user || "guest";
+          localStorage.setItem(`letsorder_favs_${uid}`, JSON.stringify(next));
+        } catch {
+          // Ignore storage quota errors
+        }
+        return next;
+      });
+    },
+    [currentUser?.id_user]
+  );
 
   const displayName =
     portalMode === "tenant"
@@ -705,28 +821,26 @@ export default function App() {
       }
 
       if (menusRes?.data) {
-        setMenusList(
-          menusRes.data.map((m) => ({
-            ...m,
-            available: Boolean(m.status_tersedia ?? m.available ?? true),
-            rating: m.rating || "5.0",
-            reviews: m.reviews || 1,
-          }))
-        );
+        setMenusList(menusRes.data.map(normalizeMenuRecord));
       }
 
       if (vendorMenusRes?.data) {
-        setTenantMenus(
-          vendorMenusRes.data.map((m) => ({
-            ...m,
-            available: Boolean(m.status_tersedia ?? m.available ?? true),
-            sold_today: Number(m.sold_today || 0),
-          }))
-        );
+        setTenantMenus(vendorMenusRes.data.map(normalizeMenuRecord));
       }
 
       if (cartRes?.data?.items) {
-        setCartItems(cartRes.data.items);
+        setCartItems(
+          cartRes.data.items.map((ci) => ({
+            ...ci,
+            id_item_keranjang: ci.id_item_keranjang || ci.id_menu,
+            id_menu: Number(ci.id_menu),
+            id_tenant: Number(ci.id_tenant || ci.menu?.id_tenant || 0),
+            tenant_name:
+              ci.tenant_name || ci.nama_tenant || ci.menu?.tenant?.nama_tenant || "Canteen Tenant",
+            harga: Number(ci.harga || 0),
+            jumlah: Number(ci.jumlah || 1),
+          }))
+        );
       }
 
       if (notifRes?.data) {
@@ -734,6 +848,26 @@ export default function App() {
       }
 
       if (ordersRes?.data) {
+        if (!isVendor && activeOrderId) {
+          const live = ordersRes.data.find(
+            (o) => Number(o.id_pesanan) === Number(activeOrderId)
+          );
+          if (live) {
+            const firstItem = live.details?.[0]?.nama_menu || "Canteen Order";
+            const extra =
+              (live.details?.length || 0) > 1
+                ? ` + ${live.details.length - 1} more`
+                : "";
+            setActiveOrder((prev) => ({
+              ...(prev || {}),
+              ...live,
+              items_summary: `${firstItem}${extra}`,
+              tenant_name:
+                live.tenant?.nama_tenant || prev?.tenant_name || "Canteen Tenant",
+              booth: live.tenant?.booth || prev?.booth || "",
+            }));
+          }
+        }
         const mappedHistory = ordersRes.data.map((o) => {
           const firstItem = o.details?.[0]?.nama_menu || "Canteen Order";
           const extra =
@@ -741,10 +875,10 @@ export default function App() {
               ? ` + ${o.details.length - 1} more`
               : "";
           const statusMap = {
-            "Menunggu Pembayaran": "Preparing",
+            "Menunggu Pembayaran": "Awaiting payment",
             "Sedang Diproses": "Preparing",
             Diproses: "Preparing",
-            "Siap Diambil": "Ready",
+            "Siap Diambil": "Ready for pickup",
             Selesai: "Completed",
             Dibatalkan: "Cancelled",
           };
@@ -753,9 +887,13 @@ export default function App() {
             nomor_antrean: o.nomor_antrean,
             items_summary: `${firstItem}${extra}`,
             tenant_name: o.tenant?.nama_tenant || "Canteen Tenant",
+            booth: o.tenant?.booth || "",
             tanggal: o.waktu_pesan ? o.waktu_pesan.slice(11, 16) : "Just now",
             total: o.total_harga,
+            total_harga: Number(o.total_harga || 0),
             status: statusMap[o.status_pesanan] || "Preparing",
+            status_pesanan: o.status_pesanan,
+            raw_status: o.status_pesanan,
             details: o.details || [],
           };
         });
@@ -794,11 +932,19 @@ export default function App() {
     } catch {
       // Keep current state when offline
     }
-  }, [currentUser]);
+  }, [currentUser, activeOrderId]);
 
   useEffect(() => {
     syncFromApi();
   }, [syncFromApi]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const pollId = setInterval(() => {
+      syncFromApi();
+    }, 6000);
+    return () => clearInterval(pollId);
+  }, [currentUser, syncFromApi]);
 
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
@@ -1064,94 +1210,351 @@ export default function App() {
     return cartItems.reduce((acc, item) => acc + item.jumlah, 0);
   }, [cartItems]);
 
+  const normalizeCartPayload = useCallback(
+    (items) =>
+      (items || []).map((ci) => ({
+        ...ci,
+        id_item_keranjang: ci.id_item_keranjang || ci.id_menu,
+        id_menu: Number(ci.id_menu),
+        id_tenant: Number(ci.id_tenant || ci.menu?.id_tenant || 0),
+        tenant_name:
+          ci.tenant_name || ci.nama_tenant || ci.menu?.tenant?.nama_tenant || "Canteen Tenant",
+        harga: Number(ci.harga || 0),
+        jumlah: Number(ci.jumlah || 1),
+      })),
+    []
+  );
+
   const handleAddToCart = async (item, qty = 1) => {
-    setCartItems((prev) => {
-      const idx = prev.findIndex((i) => i.id_menu === item.id_menu);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = { ...copy[idx], jumlah: copy[idx].jumlah + qty };
-        return copy;
-      }
-      return [
-        ...prev,
-        {
-          id_menu: item.id_menu,
-          nama_menu: item.nama_menu,
-          tenant_name: item.tenant_name,
-          harga: item.harga,
-          jumlah: qty,
-          gambar: item.gambar,
-        },
-      ];
-    });
-    api.addCartItem({ id_menu: item.id_menu, jumlah: qty }).catch(() => {});
-  };
+    if (!currentUser) {
+      setIsAuthOpen(true);
+      notify(
+        lang === "EN"
+          ? "Please sign in first to add items to your cart."
+          : "Silakan login terlebih dahulu untuk memesan.",
+        "error"
+      );
+      return false;
+    }
 
-  const handleUpdateQty = (id_menu, delta) => {
-    setCartItems((prev) =>
-      prev
-        .map((item) => {
-          if (item.id_menu === id_menu) {
-            const next = item.jumlah + delta;
-            if (next > 0) {
-              api.updateCartItem(id_menu, { jumlah: next }).catch(() => {});
-              return { ...item, jumlah: next };
-            }
-            api.deleteCartItem(id_menu).catch(() => {});
-            return null;
-          }
-          return item;
-        })
-        .filter(Boolean)
+    const itemTenantId = Number(item.id_tenant || 0);
+    const existingTenantId = Number(
+      cartItems[0]?.id_tenant ||
+        menusList.find((m) => m.id_menu === cartItems[0]?.id_menu)?.id_tenant ||
+        0
     );
-  };
+    if (cartItems.length > 0 && itemTenantId && existingTenantId && itemTenantId !== existingTenantId) {
+      notify(
+        lang === "EN"
+          ? "Your cart contains items from another tenant. Clear your cart first to switch."
+          : "Keranjang sudah berisi menu dari tenant lain. Kosongkan keranjang dahulu untuk ganti tenant.",
+        "error"
+      );
+      return false;
+    }
 
-  const handleRemoveItem = (id_menu) => {
-    setCartItems((prev) => prev.filter((item) => item.id_menu !== id_menu));
-    api.deleteCartItem(id_menu).catch(() => {});
-  };
-
-  const handleCompletePayment = async () => {
-    setIsPaying(true);
     try {
-      const created = await api
-        .createOrder({
-          items: cartItems,
-          promo_code: selectedPromo?.code || null,
-        })
-        .catch(() => null);
-      const oid = created?.data?.id_pesanan || activeOrderId;
-      setActiveOrderId(oid);
-      await api.verifyPaymentByOrder(oid, "Terverifikasi").catch(() => {});
-      await syncFromApi();
-    } finally {
-      setTimeout(() => {
-        setIsPaying(false);
-        setCheckoutStep(3);
-        setPrepTimerSeconds(525);
-      }, 600);
+      await api.addCartItem({ id_menu: item.id_menu, jumlah: qty });
+      const freshCart = await api.getCart().catch(() => null);
+      if (freshCart?.data?.items) {
+        setCartItems(normalizeCartPayload(freshCart.data.items));
+      } else {
+        setCartItems((prev) => {
+          const idx = prev.findIndex((i) => i.id_menu === item.id_menu);
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = { ...copy[idx], jumlah: copy[idx].jumlah + qty };
+            return copy;
+          }
+          return [
+            ...prev,
+            {
+              id_menu: item.id_menu,
+              id_tenant: item.id_tenant,
+              nama_menu: item.nama_menu,
+              tenant_name: item.tenant_name,
+              harga: item.harga,
+              jumlah: qty,
+              gambar: item.gambar,
+            },
+          ];
+        });
+      }
+      setCheckoutError("");
+      notify(
+        lang === "EN"
+          ? `Added ${item.nama_menu} to cart`
+          : `${item.nama_menu} ditambahkan ke keranjang`,
+        "success"
+      );
+      return true;
+    } catch (err) {
+      notify(err?.message || "Failed to add item to cart.", "error");
+      return false;
     }
   };
 
-  const handleFinishOrder = async () => {
-    await api.updateOrderStatus(activeOrderId, "Selesai").catch(() => {});
-    const newRecord = {
-      id_pesanan: Date.now(),
-      nomor_antrean: "A-108",
-      items_summary:
-        cartItems.length > 0
-          ? `${cartItems[0].nama_menu}${cartItems.length > 1 ? ` + ${cartItems.length - 1} more` : ""}`
-          : "Campus Meal Order",
-      tenant_name: cartItems[0]?.tenant_name || "Kantin Sejahtera",
-      tanggal: "Just now",
-      total: orderTotal,
-      status: "Completed",
-    };
-    setOrdersHistory((prev) => [newRecord, ...prev]);
+  const handleUpdateQty = async (id_menu, delta) => {
+    const existing = cartItems.find((i) => i.id_menu === id_menu);
+    if (!existing) return;
+    const cartTargetId = existing.id_item_keranjang || id_menu;
+    const next = existing.jumlah + delta;
+
+    setCartItems((prev) =>
+      prev
+        .map((item) => {
+          if (item.id_menu !== id_menu) return item;
+          return next > 0 ? { ...item, jumlah: next } : null;
+        })
+        .filter(Boolean)
+    );
+
+    try {
+      if (next > 0) {
+        await api.updateCartItem(cartTargetId, { jumlah: next });
+      } else {
+        await api.deleteCartItem(cartTargetId);
+      }
+    } catch (err) {
+      notify(err?.message || "Failed to update cart.", "error");
+      await syncFromApi();
+    }
+  };
+
+  const handleRemoveItem = async (id_menu) => {
+    const existing = cartItems.find((i) => i.id_menu === id_menu);
+    const cartTargetId = existing?.id_item_keranjang || id_menu;
+    setCartItems((prev) => prev.filter((item) => item.id_menu !== id_menu));
+    try {
+      await api.deleteCartItem(cartTargetId);
+    } catch (err) {
+      notify(err?.message || "Failed to remove item.", "error");
+      await syncFromApi();
+    }
+  };
+
+  const handleClearCart = async () => {
     setCartItems([]);
+    setCheckoutError("");
+    try {
+      await api.clearCart();
+      notify(lang === "EN" ? "Cart cleared" : "Keranjang dikosongkan", "info");
+    } catch {
+      // Keep cleared client state when empty
+    }
+  };
+
+  const handleCompletePayment = async () => {
+    const resumingExistingOrder = Boolean(activeOrder?.id_pesanan && cartItems.length === 0);
+    if (!resumingExistingOrder && cartItems.length === 0) {
+      setCheckoutError(
+        lang === "EN" ? "Your cart is empty." : "Keranjang belanja kosong."
+      );
+      return;
+    }
+    setCheckoutError("");
+    setIsPaying(true);
+
+    const summarySnapshot = resumingExistingOrder
+      ? activeOrder.items_summary || "Campus Meal Order"
+      : cartItems.length > 0
+      ? `${cartItems[0].nama_menu}${cartItems.length > 1 ? ` + ${cartItems.length - 1} more` : ""}`
+      : "Campus Meal Order";
+    const tenantSnapshot = resumingExistingOrder
+      ? activeOrder.tenant_name || "Canteen Tenant"
+      : cartItems[0]?.tenant_name || "Canteen Tenant";
+    const totalSnapshot = resumingExistingOrder
+      ? Number(activeOrder.total_harga ?? activeOrder.total ?? 0)
+      : orderTotal;
+
+    try {
+      let createdOrder = resumingExistingOrder ? activeOrder : null;
+      let oid = createdOrder?.id_pesanan;
+
+      if (!resumingExistingOrder) {
+        // Ensure DB cart has any local-only items before Laravel OrderController::store reads it
+        const unsynced = cartItems.filter((ci) => !ci.id_item_keranjang);
+        if (unsynced.length > 0) {
+          for (const u of unsynced) {
+            await api.addCartItem({ id_menu: u.id_menu, jumlah: u.jumlah });
+          }
+        }
+
+        const created = await api.createOrder({
+          items: cartItems,
+          promo_code: selectedPromo?.code || null,
+        });
+        createdOrder = created?.data;
+        oid = createdOrder?.id_pesanan;
+      }
+
+      if (!oid) {
+        throw new Error(
+          lang === "EN"
+            ? "Order could not be created."
+            : "Pesanan gagal dibuat."
+        );
+      }
+
+      try {
+        await api.createPayment(oid, { metode_pembayaran: "QRIS" });
+      } catch (payErr) {
+        if (payErr?.status !== 409) throw payErr;
+      }
+
+      let verifiedOrder = createdOrder;
+      let awaitingTenantConfirm = false;
+      try {
+        const verifRes = await api.verifyPaymentByOrder(oid, "Terverifikasi");
+        if (verifRes?.data?.id_pesanan) {
+          verifiedOrder = verifRes.data;
+        } else if (verifRes?.data?.order) {
+          verifiedOrder = verifRes.data.order;
+        } else {
+          verifiedOrder = { ...createdOrder, status_pesanan: "Sedang Diproses" };
+        }
+      } catch (verifErr) {
+        if (verifErr?.status === 403) {
+          awaitingTenantConfirm = true;
+        } else {
+          throw verifErr;
+        }
+      }
+
+      const orderSummaryObj = {
+        ...verifiedOrder,
+        id_pesanan: oid,
+        nomor_antrean: verifiedOrder.nomor_antrean || createdOrder.nomor_antrean || `A-${oid}`,
+        items_summary: summarySnapshot,
+        tenant_name: verifiedOrder.tenant?.nama_tenant || tenantSnapshot,
+        booth: verifiedOrder.tenant?.booth || createdOrder?.booth || "",
+        total_harga: Number(verifiedOrder.total_harga ?? totalSnapshot),
+        status_pesanan: awaitingTenantConfirm
+          ? "Menunggu Pembayaran"
+          : verifiedOrder.status_pesanan || "Sedang Diproses",
+      };
+
+      setActiveOrder(orderSummaryObj);
+      setActiveOrderId(oid);
+      setActiveQueueCode(orderSummaryObj.nomor_antrean);
+      setCartItems([]);
+      setPrepTimerSeconds(525);
+      setCheckoutStep(3);
+      notify(
+        awaitingTenantConfirm
+          ? lang === "EN"
+            ? `Order #${orderSummaryObj.nomor_antrean} created! Show QRIS proof at the counter.`
+            : `Pesanan #${orderSummaryObj.nomor_antrean} dibuat! Tunjukkan bukti ke kasir tenant.`
+          : lang === "EN"
+          ? `Payment verified! Queue #${orderSummaryObj.nomor_antrean}`
+          : `Pembayaran berhasil! Nomor antrean #${orderSummaryObj.nomor_antrean}`,
+        "success"
+      );
+      await syncFromApi();
+    } catch (err) {
+      const msg =
+        err?.message ||
+        (lang === "EN"
+          ? "Failed to submit order. Please try again."
+          : "Gagal memproses pesanan. Silakan coba lagi.");
+      setCheckoutError(msg);
+      notify(msg, "error");
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
+  const handleResumeOrder = (order) => {
+    if (!order?.id_pesanan) return;
+    setActiveOrder({
+      ...order,
+      total_harga: Number(order.total_harga ?? order.total ?? 0),
+      status_pesanan: order.raw_status || order.status_pesanan || "Sedang Diproses",
+    });
+    setActiveOrderId(order.id_pesanan);
+    setActiveQueueCode(order.nomor_antrean || `A-${order.id_pesanan}`);
+    setCheckoutError("");
+    setCheckoutStep(
+      order.status === "Awaiting payment" || order.raw_status === "Menunggu Pembayaran"
+        ? 2
+        : 3
+    );
+    setNavTab("orders");
+  };
+
+  const handleFinishOrder = async () => {
+    setActiveOrderId(null);
+    setActiveOrder(null);
+    setCheckoutError("");
     setCheckoutStep(1);
     setNavTab("history");
-    syncFromApi();
+    await syncFromApi();
+  };
+
+  const handleVendorAdvanceOrder = async (orderId, nextStatus, verifyPaymentFirst = false) => {
+    try {
+      if (verifyPaymentFirst) {
+        await api.verifyPaymentByOrder(orderId, "Terverifikasi");
+        notify(
+          lang === "EN" ? "QRIS payment verified" : "Pembayaran QRIS terverifikasi",
+          "success"
+        );
+      } else {
+        await api.updateOrderStatus(orderId, nextStatus);
+        notify(
+          lang === "EN"
+            ? `Order status updated to ${nextStatus}`
+            : `Status pesanan diperbarui ke ${nextStatus}`,
+          "success"
+        );
+      }
+      await syncFromApi();
+    } catch (err) {
+      notify(err?.message || "Failed to update order status.", "error");
+      await syncFromApi();
+    }
+  };
+
+  const handleReorder = async (order) => {
+    if (!order?.details || order.details.length === 0) {
+      notify(
+        lang === "EN"
+          ? "No menu details available to reorder."
+          : "Detail menu tidak tersedia untuk dipesan ulang.",
+        "error"
+      );
+      return;
+    }
+    try {
+      if (cartItems.length > 0) {
+        await api.clearCart().catch(() => {});
+      }
+      let addedCount = 0;
+      for (const d of order.details) {
+        try {
+          await api.addCartItem({ id_menu: d.id_menu, jumlah: d.jumlah || 1 });
+          addedCount += 1;
+        } catch {
+          // Skip unavailable items
+        }
+      }
+      await syncFromApi();
+      setCheckoutStep(1);
+      setCheckoutError("");
+      setNavTab("orders");
+      notify(
+        addedCount > 0
+          ? lang === "EN"
+            ? "Items added back to your cart!"
+            : "Menu berhasil dimasukkan ke keranjang!"
+          : lang === "EN"
+          ? "Selected menu items are currently unavailable."
+          : "Menu pada pesanan tersebut sedang tidak tersedia.",
+        addedCount > 0 ? "success" : "error"
+      );
+    } catch (err) {
+      notify(err?.message || "Failed to reorder items.", "error");
+    }
   };
 
   const filteredMenus = useMemo(() => {
@@ -1179,10 +1582,14 @@ export default function App() {
 
   const tenantMenuItems = useMemo(() => {
     if (!activeTenantView) return [];
+    const q = tenantMenuQuery.trim().toLowerCase();
     return menusList.filter(
-      (m) => m.id_tenant === activeTenantView.id_tenant && m.available !== false
+      (m) =>
+        m.id_tenant === activeTenantView.id_tenant &&
+        m.available !== false &&
+        (!q || m.nama_menu.toLowerCase().includes(q))
     );
-  }, [menusList, activeTenantView]);
+  }, [menusList, activeTenantView, tenantMenuQuery]);
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "var(--bg-page)", color: "var(--maroon)" }}>
@@ -1951,16 +2358,7 @@ export default function App() {
 
                               {isPrep && (
                                 <button
-                                  onClick={() => {
-                                    setIncomingOrders((prev) =>
-                                      prev.map((o) =>
-                                        o.id === ord.id
-                                          ? { ...o, status: "Ready for pickup" }
-                                          : o
-                                      )
-                                    );
-                                    api.updateOrderStatus(ord.id, "Siap Diambil").catch(() => {});
-                                  }}
+                                  onClick={() => handleVendorAdvanceOrder(ord.id, "Siap Diambil")}
                                   className="btn-interactive btn-lift"
                                   style={{
                                     padding: "8px 18px",
@@ -1979,30 +2377,7 @@ export default function App() {
 
                               {isReady && (
                                 <button
-                                  onClick={() => {
-                                    setIncomingOrders((prev) =>
-                                      prev.filter((o) => o.id !== ord.id)
-                                    );
-                                    setOrdersTodayCount((c) => c + 1);
-                                    setRevenueTodayTotal((r) => r + ord.total);
-                                    setOrdersHistory((prev) => [
-                                      {
-                                        id_pesanan: Date.now(),
-                                        nomor_antrean: ord.code,
-                                        items_summary: `${ord.item_name}${
-                                          ord.items_count > 1
-                                            ? ` + ${ord.items_count - 1} more`
-                                            : ""
-                                        }`,
-                                        tenant_name: displayName,
-                                        tanggal: "Just now",
-                                        total: ord.total,
-                                        status: "Completed",
-                                      },
-                                      ...prev,
-                                    ]);
-                                    api.updateOrderStatus(ord.id, "Selesai").catch(() => {});
-                                  }}
+                                  onClick={() => handleVendorAdvanceOrder(ord.id, "Selesai")}
                                   className="btn-interactive"
                                   style={{
                                     padding: "8px 16px",
@@ -2426,14 +2801,11 @@ export default function App() {
                                 marginBottom: 12,
                               }}
                             >
-                              <img
+                              <SafeImage
                                 src={dish.gambar}
                                 alt={dish.nama_menu}
                                 className="img-zoom-child"
                                 style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
                                   opacity: dish.available ? 1 : 0.35,
                                   transition: "opacity 0.25s ease, transform 0.45s ease",
                                 }}
@@ -2721,6 +3093,7 @@ export default function App() {
                     }}
                   >
                     {incomingOrders.map((ord) => {
+                      const isAwaiting = ord.status === "Awaiting payment";
                       const isPrep = ord.status === "Preparing";
                       const isReady = ord.status === "Ready for pickup";
                       return (
@@ -2783,16 +3156,28 @@ export default function App() {
                               {ord.status}
                             </span>
 
+                            {isAwaiting && (
+                              <button
+                                onClick={() => handleVendorAdvanceOrder(ord.id, "Sedang Diproses", true)}
+                                className="btn-interactive"
+                                style={{
+                                  padding: "8px 16px",
+                                  borderRadius: "var(--radius-pill)",
+                                  border: "none",
+                                  backgroundColor: "var(--maroon)",
+                                  color: "#FFFFFF",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {lang === "EN" ? "Verify QRIS" : "Verifikasi QRIS"}
+                              </button>
+                            )}
+
                             {isPrep && (
                               <button
-                                onClick={() => {
-                                  setIncomingOrders((prev) =>
-                                    prev.map((o) =>
-                                      o.id === ord.id ? { ...o, status: "Ready for pickup" } : o
-                                    )
-                                  );
-                                  api.updateOrderStatus(ord.id, "Siap Diambil").catch(() => {});
-                                }}
+                                onClick={() => handleVendorAdvanceOrder(ord.id, "Siap Diambil")}
                                 className="btn-interactive btn-lift"
                                 style={{
                                   padding: "8px 18px",
@@ -2811,24 +3196,7 @@ export default function App() {
 
                             {isReady && (
                               <button
-                                onClick={() => {
-                                  setIncomingOrders((prev) => prev.filter((o) => o.id !== ord.id));
-                                  setOrdersTodayCount((c) => c + 1);
-                                  setRevenueTodayTotal((r) => r + ord.total);
-                                  setOrdersHistory((prev) => [
-                                    {
-                                      id_pesanan: Date.now(),
-                                      nomor_antrean: ord.code,
-                                      items_summary: ord.item_name,
-                                      tenant_name: displayName,
-                                      tanggal: "Just now",
-                                      total: ord.total,
-                                      status: "Completed",
-                                    },
-                                    ...prev,
-                                  ]);
-                                  api.updateOrderStatus(ord.id, "Selesai").catch(() => {});
-                                }}
+                                onClick={() => handleVendorAdvanceOrder(ord.id, "Selesai")}
                                 className="btn-interactive"
                                 style={{
                                   padding: "8px 16px",
@@ -3469,16 +3837,41 @@ export default function App() {
                         overflow: "hidden",
                       }}
                     >
-                      <img
+                      <SafeImage
                         src={item.gambar}
                         alt={item.nama_menu}
                         className="img-zoom-child"
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                        }}
+                        iconSize={36}
                       />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFavorite(item.id_menu);
+                        }}
+                        aria-label="Toggle favorite"
+                        style={{
+                          position: "absolute",
+                          top: 12,
+                          left: 12,
+                          width: 30,
+                          height: 30,
+                          borderRadius: "50%",
+                          border: "none",
+                          backgroundColor: "rgba(255,255,255,0.92)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+                        }}
+                      >
+                        <Heart
+                          size={14}
+                          color={favoriteIds.includes(item.id_menu) ? "#C84336" : "var(--maroon)"}
+                          fill={favoriteIds.includes(item.id_menu) ? "#C84336" : "none"}
+                        />
+                      </button>
                       <div
                         style={{
                           position: "absolute",
@@ -3560,7 +3953,7 @@ export default function App() {
                           {formatRupiah(item.harga)}
                         </div>
                         <button
-                          onClick={() => handleAddToCart(item, 1)}
+                          onClick={() => openFoodDetail(item)}
                           className="btn-interactive"
                           style={{
                             width: 36,
@@ -3575,7 +3968,7 @@ export default function App() {
                             cursor: "pointer",
                             boxShadow: "0 3px 8px rgba(248, 163, 75, 0.4)",
                           }}
-                          title="Add to cart"
+                          title={lang === "EN" ? "View menu & add" : "Lihat menu & pesan"}
                         >
                           <Plus size={18} strokeWidth={2.6} />
                         </button>
@@ -3837,6 +4230,8 @@ export default function App() {
               >
                 <input
                   type="text"
+                  value={tenantMenuQuery}
+                  onChange={(e) => setTenantMenuQuery(e.target.value)}
                   placeholder={t.searchFoodPlaceholder}
                   style={{
                     border: "none",
@@ -3890,16 +4285,41 @@ export default function App() {
                         cursor: "pointer",
                       }}
                     >
-                      <img
+                      <SafeImage
                         src={item.gambar}
                         alt={item.nama_menu}
                         className="img-zoom-child"
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                        }}
+                        iconSize={36}
                       />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFavorite(item.id_menu);
+                        }}
+                        aria-label="Toggle favorite"
+                        style={{
+                          position: "absolute",
+                          top: 8,
+                          left: 8,
+                          width: 28,
+                          height: 28,
+                          borderRadius: "50%",
+                          border: "none",
+                          backgroundColor: "rgba(255,255,255,0.92)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+                        }}
+                      >
+                        <Heart
+                          size={13}
+                          color={favoriteIds.includes(item.id_menu) ? "#C84336" : "var(--maroon)"}
+                          fill={favoriteIds.includes(item.id_menu) ? "#C84336" : "none"}
+                        />
+                      </button>
                       <div
                         style={{
                           position: "absolute",
@@ -3965,7 +4385,7 @@ export default function App() {
                   </div>
 
                   <button
-                    onClick={() => handleAddToCart(item, 1)}
+                    onClick={() => openFoodDetail(item)}
                     className="btn-interactive"
                     style={{
                       width: 48,
@@ -3980,11 +4400,33 @@ export default function App() {
                       cursor: "pointer",
                       boxShadow: "0 4px 12px rgba(248, 163, 75, 0.4)",
                     }}
+                    title={lang === "EN" ? "View menu & add" : "Lihat menu & pesan"}
                   >
                     <Plus size={22} strokeWidth={2.8} />
                   </button>
                 </div>
               ))}
+              {tenantMenuItems.length === 0 && (
+                <div
+                  style={{
+                    padding: "40px 24px",
+                    borderRadius: "var(--radius-xl)",
+                    backgroundColor: "#FFFFFF",
+                    border: "1px dashed var(--border-input)",
+                    textAlign: "center",
+                    color: "var(--text-muted)",
+                    fontSize: 14,
+                  }}
+                >
+                  {tenantMenuQuery
+                    ? lang === "EN"
+                      ? `No menu found matching "${tenantMenuQuery}".`
+                      : `Menu dengan kata kunci "${tenantMenuQuery}" tidak ditemukan.`
+                    : lang === "EN"
+                    ? "This tenant hasn't published available menu items yet."
+                    : "Tenant ini belum mempublikasikan menu yang tersedia."}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -4225,19 +4667,37 @@ export default function App() {
                     <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--maroon)" }}>
                       {t.cartTitle} ({cartItems.length} {t.itemsUnit})
                     </h3>
-                    <button
-                      onClick={() => setNavTab("home")}
-                      style={{
-                        border: "none",
-                        background: "transparent",
-                        color: "var(--maroon)",
-                        fontSize: 14,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {t.addMore}
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      {cartItems.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleClearCart}
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            color: "var(--text-muted)",
+                            fontSize: 13,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {lang === "EN" ? "Clear" : "Kosongkan"}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setNavTab("home")}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          color: "var(--maroon)",
+                          fontSize: 14,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {t.addMore}
+                      </button>
+                    </div>
                   </div>
 
                   {cartItems.length === 0 ? (
@@ -4280,14 +4740,10 @@ export default function App() {
                                 overflow: "hidden",
                               }}
                             >
-                              <img
+                              <SafeImage
                                 src={item.gambar}
                                 alt={item.nama_menu}
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
-                                }}
+                                iconSize={20}
                               />
                             </div>
 
@@ -4486,7 +4942,21 @@ export default function App() {
                     </div>
                   </div>
                   <button
-                    onClick={() => setCheckoutStep(2)}
+                    onClick={() => {
+                      if (!currentUser) {
+                        setIsAuthOpen(true);
+                        notify(
+                          lang === "EN"
+                            ? "Please sign in first to continue payment."
+                            : "Silakan login terlebih dahulu untuk melanjutkan pembayaran.",
+                          "error"
+                        );
+                        return;
+                      }
+                      setCheckoutError("");
+                      setPaymentTimerSeconds(899);
+                      setCheckoutStep(2);
+                    }}
                     disabled={cartItems.length === 0}
                     style={{
                       width: "100%",
@@ -4527,63 +4997,70 @@ export default function App() {
                   </h3>
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
-                    {cartItems.map((item) => (
-                      <div
-                        key={item.id_menu}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <div
-                            style={{
-                              width: 48,
-                              height: 48,
-                              borderRadius: 10,
-                              backgroundColor: "var(--bg-warm-img)",
-                              overflow: "hidden",
-                            }}
-                          >
-                            <img
-                              src={item.gambar}
-                              alt={item.nama_menu}
+                    {(activeOrder?.id_pesanan && cartItems.length === 0
+                      ? activeOrder.details || []
+                      : cartItems
+                    ).map((item) => {
+                      const unitPrice = Number(item.harga ?? item.menu?.harga ?? 0);
+                      const qty = Number(item.jumlah || 1);
+                      return (
+                        <div
+                          key={item.id_menu || item.id_detail}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <div
                               style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
+                                width: 48,
+                                height: 48,
+                                borderRadius: 10,
+                                backgroundColor: "var(--bg-warm-img)",
+                                overflow: "hidden",
                               }}
-                            />
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 14, fontWeight: 800, color: "var(--maroon)" }}>
-                              {item.nama_menu}
+                            >
+                              <SafeImage
+                                src={item.gambar || item.menu?.gambar}
+                                alt={item.nama_menu || item.menu?.nama_menu}
+                                iconSize={18}
+                              />
                             </div>
-                            <div className="tabular" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                              {formatRupiah(item.harga)} each · × {item.jumlah}
+                            <div>
+                              <div style={{ fontSize: 14, fontWeight: 800, color: "var(--maroon)" }}>
+                                {item.nama_menu || item.menu?.nama_menu}
+                              </div>
+                              <div className="tabular" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                {formatRupiah(unitPrice)} each · × {qty}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <div className="tabular font-bold" style={{ fontSize: 15, color: "var(--maroon)" }}>
-                          {formatRupiah(item.harga * item.jumlah)}
+                          <div className="tabular font-bold" style={{ fontSize: 15, color: "var(--maroon)" }}>
+                            {formatRupiah(unitPrice * qty)}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
 
                     <div style={{ borderTop: "1px dashed var(--border-light)", margin: "6px 0" }} />
 
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--text-muted)" }}>
-                      <span>Subtotal</span>
-                      <span className="tabular font-medium">{formatRupiah(subtotal)}</span>
-                    </div>
+                    {!(activeOrder?.id_pesanan && cartItems.length === 0) && (
+                      <>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--text-muted)" }}>
+                          <span>Subtotal</span>
+                          <span className="tabular font-medium">{formatRupiah(subtotal)}</span>
+                        </div>
 
-                    {selectedPromo && (
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--orange-tag)" }}>
-                        <span>Promo {selectedPromo.code}</span>
-                        <span className="tabular font-medium">-{formatRupiah(promoDiscount)}</span>
-                      </div>
+                        {selectedPromo && (
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--orange-tag)" }}>
+                            <span>Promo {selectedPromo.code}</span>
+                            <span className="tabular font-medium">-{formatRupiah(promoDiscount)}</span>
+                          </div>
+                        )}
+                      </>
                     )}
 
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--text-muted)" }}>
@@ -4601,13 +5078,26 @@ export default function App() {
                     >
                       <span style={{ fontSize: 16, fontWeight: 800, color: "var(--maroon)" }}>Total</span>
                       <span className="tabular" style={{ fontSize: 19, fontWeight: 900, color: "var(--maroon)" }}>
-                        {formatRupiah(orderTotal)}
+                        {formatRupiah(
+                          activeOrder?.id_pesanan && cartItems.length === 0
+                            ? Number(activeOrder.total_harga ?? activeOrder.total ?? 0)
+                            : orderTotal
+                        )}
                       </span>
                     </div>
                   </div>
 
                   <button
-                    onClick={() => setCheckoutStep(1)}
+                    onClick={() => {
+                      if (activeOrder?.id_pesanan && cartItems.length === 0) {
+                        setActiveOrderId(null);
+                        setActiveOrder(null);
+                        setCheckoutStep(1);
+                        setNavTab("history");
+                      } else {
+                        setCheckoutStep(1);
+                      }
+                    }}
                     style={{
                       width: "100%",
                       padding: "11px",
@@ -4651,7 +5141,11 @@ export default function App() {
                       marginBottom: 20,
                     }}
                   >
-                    {formatRupiah(orderTotal)}
+                    {formatRupiah(
+                      activeOrder?.id_pesanan && cartItems.length === 0
+                        ? Number(activeOrder.total_harga ?? activeOrder.total ?? 0)
+                        : orderTotal
+                    )}
                   </div>
                   <div
                     style={{
@@ -4744,6 +5238,30 @@ export default function App() {
                     </div>
                   </div>
 
+                  {checkoutError && (
+                    <div
+                      role="alert"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        textAlign: "left",
+                        padding: "11px 14px",
+                        borderRadius: "var(--radius-md)",
+                        backgroundColor: "#FDF0EE",
+                        border: "1px solid #F2CCC7",
+                        color: "#C84336",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        marginBottom: 14,
+                        width: "100%",
+                      }}
+                    >
+                      <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                      <span>{checkoutError}</span>
+                    </div>
+                  )}
+
                   <button
                     onClick={handleCompletePayment}
                     disabled={isPaying}
@@ -4795,19 +5313,43 @@ export default function App() {
                       gap: 6,
                       padding: "4px 14px",
                       borderRadius: "var(--radius-pill)",
-                      backgroundColor: "var(--status-preparing-bg)",
-                      color: "var(--status-preparing-text)",
+                      backgroundColor:
+                        activeOrder?.status_pesanan === "Siap Diambil" ||
+                        activeOrder?.status_pesanan === "Selesai"
+                          ? "var(--orange)"
+                          : "var(--status-preparing-bg)",
+                      color:
+                        activeOrder?.status_pesanan === "Siap Diambil" ||
+                        activeOrder?.status_pesanan === "Selesai"
+                          ? "var(--maroon)"
+                          : "var(--status-preparing-text)",
                       fontSize: 12,
                       fontWeight: 700,
                       marginBottom: 16,
                     }}
                   >
                     <span>●</span>
-                    <span>Preparing</span>
+                    <span>
+                      {activeOrder?.status_pesanan === "Siap Diambil"
+                        ? lang === "EN"
+                          ? "Ready for pickup!"
+                          : "Siap diambil!"
+                        : activeOrder?.status_pesanan === "Selesai"
+                        ? lang === "EN"
+                          ? "Completed"
+                          : "Selesai"
+                        : activeOrder?.status_pesanan === "Menunggu Pembayaran"
+                        ? lang === "EN"
+                          ? "Awaiting confirmation"
+                          : "Menunggu konfirmasi"
+                        : lang === "EN"
+                        ? "Preparing"
+                        : "Sedang disiapkan"}
+                    </span>
                   </div>
 
                   <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 8 }}>
-                    Your queue number
+                    {lang === "EN" ? "Your queue number" : "Nomor antrean Anda"}
                   </div>
                   <div
                     className="tabular"
@@ -4820,11 +5362,11 @@ export default function App() {
                       marginBottom: 14,
                     }}
                   >
-                    A-108
+                    {activeOrder?.nomor_antrean || activeQueueCode}
                   </div>
 
                   <div style={{ fontSize: 16, fontWeight: 800, color: "var(--maroon)", marginBottom: 16 }}>
-                    Ayam Geprek Sambal + 1 more
+                    {activeOrder?.items_summary || "Campus Meal Order"}
                   </div>
                   <div
                     style={{
@@ -4840,7 +5382,11 @@ export default function App() {
                     }}
                   >
                     <MapPin size={15} color="var(--orange)" />
-                    <span>Pick up at Kantin Sejahtera, Canteen Hall A</span>
+                    <span>
+                      {lang === "EN" ? "Pick up at " : "Ambil di "}
+                      {activeOrder?.tenant_name || "Campus Canteen"}
+                      {activeOrder?.booth ? `, ${activeOrder.booth}` : ""}
+                    </span>
                   </div>
                 </div>
                 <div
@@ -4910,10 +5456,11 @@ export default function App() {
                   }}
                 >
                   <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 4 }}>
-                    Pickup code
+                    {lang === "EN" ? "Pickup code" : "Kode pengambilan"}
                   </div>
                   <div style={{ fontSize: 24, fontWeight: 900, color: "var(--maroon)", marginBottom: 20 }}>
-                    Queue A-108
+                    {lang === "EN" ? "Queue " : "Antrean "}
+                    {activeOrder?.nomor_antrean || activeQueueCode}
                   </div>
                   <div
                     style={{
@@ -4950,9 +5497,9 @@ export default function App() {
                   <div style={{ borderTop: "1px dashed var(--border-light)", margin: "16px 0" }} />
 
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 15, color: "var(--text-muted)" }}>Order</span>
+                    <span style={{ fontSize: 15, color: "var(--text-muted)" }}>Total</span>
                     <span className="tabular font-bold" style={{ fontSize: 16, color: "var(--maroon)" }}>
-                      {formatRupiah(orderTotal)}
+                      {formatRupiah(activeOrder?.total_harga ?? orderTotal)}
                     </span>
                   </div>
                 </div>
@@ -5044,99 +5591,215 @@ export default function App() {
                 overflow: "hidden",
               }}
             >
-              {ordersHistory
-                .filter((order) => {
+              {(() => {
+                const filteredHistory = ordersHistory.filter((order) => {
+                  const isInProgress =
+                    ["Awaiting payment", "Preparing", "Ready for pickup", "Ready"].includes(
+                      order.status
+                    ) ||
+                    ["Menunggu Pembayaran", "Sedang Diproses", "Diproses", "Siap Diambil"].includes(
+                      order.raw_status
+                    );
                   if (historyFilter === "All") return true;
-                  if (historyFilter === "In progress")
-                    return order.status === "Preparing" || order.status === "Ready for pickup";
+                  if (historyFilter === "In progress") return isInProgress;
                   return order.status === historyFilter;
-                })
-                .map((order, idx, arr) => (
-                  <div
-                    key={order.id_pesanan}
-                    style={{
-                      padding: "20px 24px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      borderBottom: idx !== arr.length - 1 ? "1px solid var(--border-light)" : "none",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                });
+
+                if (filteredHistory.length === 0) {
+                  return (
+                    <div
+                      style={{
+                        padding: "44px 24px",
+                        textAlign: "center",
+                        color: "var(--text-muted)",
+                      }}
+                    >
                       <div
                         style={{
-                          width: 52,
-                          height: 52,
-                          borderRadius: "var(--radius-md)",
-                          backgroundColor: "#E2E3E2",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
+                          fontSize: 16,
+                          fontWeight: 800,
+                          color: "var(--maroon)",
+                          marginBottom: 4,
                         }}
                       >
-                        <Store size={22} color="var(--maroon)" />
+                        {lang === "EN" ? "No orders found" : "Belum ada riwayat pesanan"}
                       </div>
+                      <div style={{ fontSize: 13 }}>
+                        {historyFilter === "All"
+                          ? lang === "EN"
+                            ? "Your past and active canteen orders will appear here."
+                            : "Pesanan aktif maupun selesai akan tampil di sini."
+                          : lang === "EN"
+                          ? "There are no orders with this status right now."
+                          : "Tidak ada pesanan dengan status ini saat ini."}
+                      </div>
+                    </div>
+                  );
+                }
 
-                      <div>
-                        <div style={{ fontSize: 16, fontWeight: 800, color: "var(--maroon)" }}>
-                          {order.items_summary}
-                        </div>
+                const statusLabelMap = {
+                  "Awaiting payment": lang === "EN" ? "Awaiting payment" : "Menunggu bayar",
+                  Preparing: lang === "EN" ? "Preparing" : "Diproses",
+                  "Ready for pickup": lang === "EN" ? "Ready for pickup" : "Siap diambil",
+                  Ready: lang === "EN" ? "Ready for pickup" : "Siap diambil",
+                  Completed: lang === "EN" ? "Completed" : "Selesai",
+                  Cancelled: lang === "EN" ? "Cancelled" : "Dibatalkan",
+                };
+
+                return filteredHistory.map((order, idx, arr) => {
+                  const isInProgress =
+                    ["Awaiting payment", "Preparing", "Ready for pickup", "Ready"].includes(
+                      order.status
+                    ) ||
+                    ["Menunggu Pembayaran", "Sedang Diproses", "Diproses", "Siap Diambil"].includes(
+                      order.raw_status
+                    );
+                  const isReadyStatus =
+                    order.status === "Ready for pickup" || order.status === "Ready";
+
+                  return (
+                    <div
+                      key={order.id_pesanan}
+                      onClick={() => {
+                        if (isInProgress) handleResumeOrder(order);
+                      }}
+                      className="order-row-card"
+                      style={{
+                        padding: "18px 24px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 14,
+                        borderBottom: idx !== arr.length - 1 ? "1px solid var(--border-light)" : "none",
+                        cursor: isInProgress ? "pointer" : "default",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                         <div
-                          className="tabular"
-                          style={{ fontSize: 13, color: "var(--text-muted)" }}
+                          style={{
+                            width: 52,
+                            height: 52,
+                            borderRadius: "var(--radius-md)",
+                            backgroundColor: isInProgress ? "var(--maroon)" : "#F3ECE8",
+                            color: isInProgress ? "#FFFFFF" : "var(--maroon)",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
                         >
-                          {order.tanggal} · {formatRupiah(order.total)}
+                          {order.nomor_antrean ? (
+                            <span style={{ fontSize: 12, fontWeight: 900 }}>
+                              {order.nomor_antrean}
+                            </span>
+                          ) : (
+                            <Store size={20} color="var(--maroon)" />
+                          )}
+                        </div>
+
+                        <div>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: "var(--maroon)" }}>
+                            {order.items_summary}
+                          </div>
+                          <div
+                            className="tabular"
+                            style={{ fontSize: 13, color: "var(--text-muted)" }}
+                          >
+                            {order.tenant_name} · {order.tanggal} · {formatRupiah(order.total)}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                          padding: "5px 14px",
-                          borderRadius: "var(--radius-pill)",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          backgroundColor:
-                            order.status === "Completed"
-                              ? "var(--maroon)"
-                              : order.status === "Cancelled"
-                              ? "var(--status-cancelled-bg)"
-                              : "var(--status-preparing-bg)",
-                          color:
-                            order.status === "Completed"
-                              ? "#FFFFFF"
-                              : order.status === "Cancelled"
-                              ? "var(--text-muted)"
-                              : "var(--status-preparing-text)",
-                        }}
+                      <div
+                        className="order-row-actions"
+                        style={{ display: "flex", alignItems: "center", gap: 12 }}
                       >
-                        <span>●</span>
-                        <span>{order.status}</span>
-                      </span>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "5px 14px",
+                            borderRadius: "var(--radius-pill)",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            backgroundColor:
+                              order.status === "Completed"
+                                ? "var(--maroon)"
+                                : order.status === "Cancelled"
+                                ? "var(--status-cancelled-bg)"
+                                : isReadyStatus
+                                ? "var(--orange)"
+                                : "var(--status-preparing-bg)",
+                            color:
+                              order.status === "Completed"
+                                ? "#FFFFFF"
+                                : order.status === "Cancelled"
+                                ? "var(--text-muted)"
+                                : isReadyStatus
+                                ? "var(--maroon)"
+                                : "var(--status-preparing-text)",
+                          }}
+                        >
+                          <span>●</span>
+                          <span>{statusLabelMap[order.status] || order.status}</span>
+                        </span>
 
-                      <button
-                        onClick={() => {
-                          setCheckoutStep(1);
-                          setNavTab("orders");
-                          notify("Reordering items into your cart.");
-                        }}
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          cursor: "pointer",
-                          color: "var(--text-muted)",
-                          padding: 4,
-                        }}
-                      >
-                        <ChevronRight size={18} />
-                      </button>
+                        {isInProgress ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleResumeOrder(order);
+                            }}
+                            style={{
+                              border: "1px solid var(--border-input)",
+                              backgroundColor: "#FFFFFF",
+                              color: "var(--maroon)",
+                              borderRadius: "var(--radius-pill)",
+                              padding: "6px 12px",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                            }}
+                          >
+                            <span>{lang === "EN" ? "Track" : "Lihat"}</span>
+                            <ChevronRight size={14} />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleReorder(order);
+                            }}
+                            title={lang === "EN" ? "Reorder items" : "Pesan ulang"}
+                            style={{
+                              border: "none",
+                              background: "transparent",
+                              cursor: "pointer",
+                              color: "var(--text-muted)",
+                              padding: 4,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              fontSize: 12,
+                              fontWeight: 700,
+                            }}
+                          >
+                            <RotateCcw size={14} />
+                            <ChevronRight size={16} />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                });
+              })()}
             </div>
           </div>
         )}
@@ -5236,10 +5899,10 @@ export default function App() {
                   flexShrink: 0,
                 }}
               >
-                <img
+                <SafeImage
                   src={editingDish.gambar}
                   alt={editingDish.nama_menu}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  iconSize={18}
                 />
               </div>
 
@@ -5642,13 +6305,7 @@ export default function App() {
                   const res = await api.createVendorMenu(payload);
                   const created = res?.data;
                   if (created) {
-                    const normalized = {
-                      ...created,
-                      available: Boolean(created.status_tersedia ?? created.available ?? true),
-                      sold_today: Number(created.sold_today || 0),
-                      rating: created.rating || "5.0",
-                      reviews: created.reviews || 1,
-                    };
+                    const normalized = normalizeMenuRecord(created);
                     setTenantMenus((prev) =>
                       prev.some((m) => m.id_menu === normalized.id_menu)
                         ? prev
@@ -6681,7 +7338,9 @@ export default function App() {
               <div>
                 {menusList.filter((m) => favoriteIds.includes(m.id_menu)).length === 0 ? (
                   <div style={{ textAlign: "center", padding: "24px 12px", color: "var(--text-muted)", fontSize: 14 }}>
-                    Belum ada menu favorit yang disimpan.
+                    {lang === "EN"
+                      ? "No saved favorite dishes yet. Tap the heart icon on any menu item!"
+                      : "Belum ada menu favorit yang disimpan."}
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -6690,6 +7349,10 @@ export default function App() {
                       .map((fav) => (
                         <div
                           key={fav.id_menu}
+                          onClick={() => {
+                            openFoodDetail(fav);
+                            setActiveDrawerModal(null);
+                          }}
                           style={{
                             display: "flex",
                             alignItems: "center",
@@ -6697,12 +7360,35 @@ export default function App() {
                             padding: "10px 12px",
                             borderRadius: 12,
                             border: "1px solid var(--border-light)",
+                            cursor: "pointer",
                           }}
                         >
-                          <span style={{ fontWeight: 700, color: "var(--maroon)" }}>{fav.nama_menu}</span>
-                          <span className="tabular" style={{ fontWeight: 800, color: "var(--maroon)" }}>
-                            {formatRupiah(fav.harga)}
-                          </span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                            <span style={{ fontWeight: 700, color: "var(--maroon)" }}>{fav.nama_menu}</span>
+                            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{fav.tenant_name}</span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <span className="tabular" style={{ fontWeight: 800, color: "var(--maroon)" }}>
+                              {formatRupiah(fav.harga)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFavorite(fav.id_menu);
+                              }}
+                              aria-label="Remove favorite"
+                              style={{
+                                border: "none",
+                                background: "transparent",
+                                cursor: "pointer",
+                                padding: 4,
+                                display: "flex",
+                              }}
+                            >
+                              <Heart size={15} color="#C84336" fill="#C84336" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                   </div>
@@ -6712,23 +7398,68 @@ export default function App() {
 
             {activeDrawerModal === "notifications" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {notificationsList.some((n) => !n.status_baca) && (
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setNotificationsList((prev) =>
+                          prev.map((n) => ({ ...n, status_baca: true }))
+                        );
+                        await api.markAllNotificationsRead().catch(() => {});
+                      }}
+                      style={{
+                        border: "1px solid var(--border-input)",
+                        backgroundColor: "#FFFFFF",
+                        color: "var(--maroon)",
+                        borderRadius: "var(--radius-pill)",
+                        padding: "5px 12px",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {lang === "EN" ? "Mark all as read" : "Tandai semua sudah dibaca"}
+                    </button>
+                  </div>
+                )}
                 {notificationsList.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "24px 12px", color: "var(--text-muted)", fontSize: 14 }}>
-                    Belum ada notifikasi baru saat ini.
+                    {lang === "EN" ? "No notifications yet." : "Belum ada notifikasi baru saat ini."}
                   </div>
                 ) : (
                   notificationsList.map((n, idx) => (
                     <div
-                      key={idx}
+                      key={n.id_notifikasi || idx}
+                      onClick={async () => {
+                        if (!n.status_baca && n.id_notifikasi) {
+                          setNotificationsList((prev) =>
+                            prev.map((item) =>
+                              item.id_notifikasi === n.id_notifikasi
+                                ? { ...item, status_baca: true }
+                                : item
+                            )
+                          );
+                          await api.markNotificationRead(n.id_notifikasi).catch(() => {});
+                        }
+                      }}
                       style={{
                         padding: "12px 14px",
                         borderRadius: 12,
-                        backgroundColor: "var(--bg-cream)",
+                        backgroundColor: n.status_baca ? "#FFFFFF" : "var(--bg-cream)",
+                        border: n.status_baca ? "1px solid var(--border-light)" : "1px solid #EDD1B4",
                         fontSize: 13,
+                        fontWeight: n.status_baca ? 500 : 700,
                         color: "var(--maroon)",
+                        cursor: n.id_notifikasi && !n.status_baca ? "pointer" : "default",
                       }}
                     >
-                      {n.pesan || n.title}
+                      <div>{n.pesan || n.title}</div>
+                      {n.waktu && (
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, fontWeight: 500 }}>
+                          {n.waktu}
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
@@ -6770,6 +7501,7 @@ export default function App() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
+            className="food-detail-sheet"
             style={{
               width: "100%",
               maxWidth: 820,
@@ -6821,16 +7553,14 @@ export default function App() {
             </button>
 
             <div
+              className="grid-detail-split"
               style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1.25fr",
-                gap: 32,
                 marginTop: 8,
                 marginBottom: 28,
               }}
             >
               <div
-                className="img-zoom-parent"
+                className="img-zoom-parent food-detail-media"
                 style={{
                   height: 290,
                   borderRadius: "var(--radius-xl)",
@@ -6840,16 +7570,38 @@ export default function App() {
                   boxShadow: "var(--shadow-sm)",
                 }}
               >
-                <img
+                <SafeImage
                   src={activeMenuDetail.gambar}
                   alt={activeMenuDetail.nama_menu}
                   className="img-zoom-child"
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                  }}
+                  iconSize={48}
                 />
+                <button
+                  type="button"
+                  onClick={() => toggleFavorite(activeMenuDetail.id_menu)}
+                  aria-label="Toggle favorite"
+                  style={{
+                    position: "absolute",
+                    top: 14,
+                    left: 14,
+                    width: 34,
+                    height: 34,
+                    borderRadius: "50%",
+                    border: "none",
+                    backgroundColor: "rgba(255,255,255,0.92)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                  }}
+                >
+                  <Heart
+                    size={16}
+                    color={favoriteIds.includes(activeMenuDetail.id_menu) ? "#C84336" : "var(--maroon)"}
+                    fill={favoriteIds.includes(activeMenuDetail.id_menu) ? "#C84336" : "none"}
+                  />
+                </button>
                 <div
                   style={{
                     position: "absolute",
@@ -7000,9 +7752,9 @@ export default function App() {
                   </div>
 
                   <button
-                    onClick={() => {
-                      handleAddToCart(activeMenuDetail, detailQuantity);
-                      closeFoodDetail();
+                    onClick={async () => {
+                      const ok = await handleAddToCart(activeMenuDetail, detailQuantity);
+                      if (ok) closeFoodDetail();
                     }}
                     className="btn-interactive btn-lift"
                     style={{
@@ -7045,10 +7797,12 @@ export default function App() {
 
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(6, 1fr)",
+                  display: "flex",
                   gap: 12,
                   overflowX: "auto",
+                  paddingBottom: 6,
+                  scrollSnapType: "x proximity",
+                  WebkitOverflowScrolling: "touch",
                 }}
               >
                 {menusList
@@ -7060,6 +7814,9 @@ export default function App() {
                       onClick={() => openFoodDetail(rec)}
                       className="card-hover img-zoom-parent"
                       style={{
+                        flex: "0 0 132px",
+                        minWidth: 132,
+                        scrollSnapAlign: "start",
                         cursor: "pointer",
                         borderRadius: "var(--radius-md)",
                         padding: 6,
@@ -7076,15 +7833,11 @@ export default function App() {
                           marginBottom: 6,
                         }}
                       >
-                        <img
+                        <SafeImage
                           src={rec.gambar}
                           alt={rec.nama_menu}
                           className="img-zoom-child"
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                          }}
+                          iconSize={22}
                         />
                       </div>
                       <div
@@ -7938,6 +8691,51 @@ export default function App() {
               </span>
             )}
           </div>
+        </div>
+      )}
+
+      {toastAlert && (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 2500,
+            maxWidth: "calc(100% - 32px)",
+            padding: "12px 18px",
+            borderRadius: "var(--radius-pill)",
+            backgroundColor:
+              toastAlert.type === "error"
+                ? "#C84336"
+                : toastAlert.type === "success"
+                ? "#276749"
+                : "var(--maroon)",
+            color: "#FFFFFF",
+            fontSize: 13,
+            fontWeight: 700,
+            boxShadow: "0 10px 28px rgba(0, 0, 0, 0.22)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <span>{toastAlert.text}</span>
+          <button
+            type="button"
+            onClick={() => setToastAlert(null)}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "#FFFFFF",
+              cursor: "pointer",
+              display: "flex",
+              padding: 2,
+            }}
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
     </div>

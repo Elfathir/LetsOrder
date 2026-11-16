@@ -550,4 +550,10 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
     width: 100%;
     justify-content: space-between;
   }
+  .food-detail-sheet {
+    padding: 14px 18px 24px !important;
+  }
+  .food-detail-media {
+    height: 210px !important;
+  }
 }

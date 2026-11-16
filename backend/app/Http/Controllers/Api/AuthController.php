@@ -44,13 +44,14 @@ class AuthController extends Controller
         ]);
 
         if ($peran === 'Vendor') {
-            \App\Models\Tenant::create([
+            $tenant = \App\Models\Tenant::create([
                 'id_user' => $user->id_user,
                 'nama_tenant' => $request->input('nama_tenant') ?: $nama,
                 'deskripsi' => 'Tenant Kantin Kampus UPNVJ',
                 'logo' => 'tenant/default.png',
                 'status_buka' => true,
             ]);
+            $user->setRelation('tenant', $tenant);
         }
 
         $token = $user->createToken('letsorder-api')->plainTextToken;
@@ -95,6 +96,18 @@ class AuthController extends Controller
             ]);
         }
 
+        $expectedRole = $request->input('peran');
+        if ($expectedRole && $user->peran !== $expectedRole) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun ini terdaftar sebagai ' . ($user->peran === 'Vendor' ? 'Tenant' : 'Pengguna') . '.',
+            ], 422);
+        }
+
+        if ($user->peran === 'Vendor') {
+            $user->setRelation('tenant', \App\Models\Tenant::where('id_user', $user->id_user)->first());
+        }
+
         $token = $user->createToken('letsorder-api')->plainTextToken;
 
         return response()->json([
@@ -114,10 +127,14 @@ class AuthController extends Controller
      */
     public function me(Request $request)
     {
+        $user = $request->user();
+        if ($user && $user->peran === 'Vendor') {
+            $user->setRelation('tenant', \App\Models\Tenant::where('id_user', $user->id_user)->first());
+        }
         return response()->json([
             'success' => true,
             'message' => 'Data pengguna berhasil diambil.',
-            'data' => $request->user(),
+            'data' => $user,
         ], 200);
     }
 
@@ -421,6 +438,10 @@ class AuthController extends Controller
                 Rule::unique('users', 'email')->ignore($user->id_user, 'id_user'),
             ],
             'no_telp' => 'nullable|string|max:30',
+            'jenis_kelamin' => 'nullable|string|max:20',
+            'tanggal_lahir' => 'nullable|string|max:20',
+            'avatar' => 'nullable|string',
+            'nama_tenant' => 'nullable|string|max:100',
         ]);
 
         if (isset($validated['email']) && strtolower(trim($validated['email'])) !== strtolower((string) $user->email)) {
@@ -434,9 +455,30 @@ class AuthController extends Controller
         }
 
         if (array_key_exists('nama', $validated)) {
-            $user->nama = trim($validated['nama']);
+            $user->nama = trim((string) $validated['nama']);
+        }
+        if (array_key_exists('no_telp', $validated)) {
+            $user->no_telp = $nextPhone;
+        }
+        if (array_key_exists('jenis_kelamin', $validated)) {
+            $user->jenis_kelamin = $validated['jenis_kelamin'];
+        }
+        if (array_key_exists('tanggal_lahir', $validated)) {
+            $user->tanggal_lahir = $validated['tanggal_lahir'];
+        }
+        if (array_key_exists('avatar', $validated)) {
+            $user->avatar = $validated['avatar'];
         }
         $user->save();
+
+        if ($user->peran === 'Vendor') {
+            $tenant = \App\Models\Tenant::where('id_user', $user->id_user)->first();
+            if ($tenant && !empty($validated['nama_tenant'])) {
+                $tenant->nama_tenant = trim((string) $validated['nama_tenant']);
+                $tenant->save();
+            }
+            $user->setRelation('tenant', $tenant);
+        }
 
         return response()->json([
             'success' => true,

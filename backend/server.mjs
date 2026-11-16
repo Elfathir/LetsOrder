@@ -192,6 +192,7 @@ const INITIAL_DB = {
   menus: [],
   carts: {},
   orders: [],
+  payments: [],
   notifications: [],
   tokens: {},
   passwordResets: {},
@@ -209,6 +210,9 @@ function loadDb() {
       if (parsed && Array.isArray(parsed.users) && parsed.clean_project_v2) {
         if (!parsed.passwordResets || typeof parsed.passwordResets !== "object") {
           parsed.passwordResets = {};
+        }
+        if (!Array.isArray(parsed.payments)) {
+          parsed.payments = [];
         }
         let migrated = false;
         for (const u of parsed.users) {
@@ -231,6 +235,23 @@ function loadDb() {
 
 let db = loadDb();
 
+function formatDbTimestamp(date = new Date()) {
+  return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
+function pushNotification(idUser, idPesanan, pesan) {
+  if (!idUser) return;
+  const nextId = Math.max(0, ...db.notifications.map((n) => Number(n.id_notifikasi) || 0)) + 1;
+  db.notifications.unshift({
+    id_notifikasi: nextId,
+    id_user: idUser,
+    id_pesanan: idPesanan || null,
+    pesan,
+    status_baca: false,
+    waktu: formatDbTimestamp(),
+  });
+}
+
 function enrichMenu(menu) {
   const tenant = db.tenants.find((t) => t.id_tenant === menu.id_tenant) || null;
   const category = db.categories.find((c) => c.id_kategori === menu.id_kategori) || null;
@@ -247,6 +268,10 @@ function enrichMenu(menu) {
 function enrichOrder(order) {
   const tenant = db.tenants.find((t) => t.id_tenant === order.id_tenant) || null;
   const user = db.users.find((u) => u.id_user === order.id_user) || null;
+  const payment =
+    db.payments
+      .filter((p) => p.id_pesanan === order.id_pesanan)
+      .sort((a, b) => b.id_pembayaran - a.id_pembayaran)[0] || null;
   const details = (order.details || []).map((d) => {
     const m = db.menus.find((x) => x.id_menu === d.id_menu);
     return {
@@ -258,6 +283,7 @@ function enrichOrder(order) {
   return {
     ...order,
     tenant,
+    payment,
     user: user
       ? {
           id_user: user.id_user,
@@ -269,6 +295,9 @@ function enrichOrder(order) {
       : null,
     details,
     order_details: details,
+    status_history: order.status_history || [
+      { status: order.status_pesanan, waktu: order.waktu_pesan },
+    ],
   };
 }
 
@@ -1175,6 +1204,7 @@ const server = http.createServer(async (req, res) => {
         return {
           id_item_keranjang: ci.id_item_keranjang,
           id_menu: m.id_menu,
+          id_tenant: m.id_tenant,
           nama_menu: m.nama_menu,
           tenant_name: enriched.tenant_name,
           harga: m.harga,
@@ -1330,6 +1360,42 @@ const server = http.createServer(async (req, res) => {
     return sendJson(req, res, 200, { success: true, data: enrichOrder(ord) });
   }
 
+  const orderStatusReadMatch = pathname.match(/^\/orders\/(\d+)\/(status|status-history)$/);
+  if (orderStatusReadMatch && method === "GET") {
+    const user = requireAuth(req, res);
+    if (!user) return;
+    const orderId = Number(orderStatusReadMatch[1]);
+    const subRoute = orderStatusReadMatch[2];
+    const ord = db.orders.find((o) => o.id_pesanan === orderId);
+    if (!ord) {
+      return sendJson(req, res, 404, { success: false, message: "Pesanan tidak ditemukan." });
+    }
+    const vendorTenant = db.tenants.find((t) => t.id_user === user.id_user);
+    const isAdmin = String(user.peran).toLowerCase() === "administrator";
+    const allowed =
+      isAdmin ||
+      ord.id_user === user.id_user ||
+      (vendorTenant && ord.id_tenant === vendorTenant.id_tenant);
+    if (!allowed) {
+      return sendJson(req, res, 403, { success: false, message: "Akses ditolak." });
+    }
+    if (subRoute === "status") {
+      return sendJson(req, res, 200, {
+        success: true,
+        data: {
+          id_pesanan: ord.id_pesanan,
+          nomor_antrean: ord.nomor_antrean,
+          status_pesanan: ord.status_pesanan,
+          waktu_pesan: ord.waktu_pesan,
+        },
+      });
+    }
+    return sendJson(req, res, 200, {
+      success: true,
+      data: ord.status_history || [{ status: ord.status_pesanan, waktu: ord.waktu_pesan }],
+    });
+  }
+
   if (pathname === "/vendor/orders" && method === "GET") {
     const user = requireAuth(req, res);
     if (!user || !requireRole(req, res, user, "Vendor", "Administrator")) return;
@@ -1433,32 +1499,34 @@ const server = http.createServer(async (req, res) => {
       total_harga: totalHarga,
       promo_code: promoDiscount > 0 ? String(body.promo_code).toUpperCase() : null,
       catatan: String(body.catatan || "").slice(0, 500),
-      waktu_pesan: new Date().toISOString().slice(0, 19).replace("T", " "),
+      waktu_pesan: formatDbTimestamp(),
       user_name: user.nama || user.username,
       details,
+      sales_counted: false,
+      status_history: [
+        {
+          status: "Menunggu Pembayaran",
+          waktu: formatDbTimestamp(),
+          oleh: user.nama || user.username,
+        },
+      ],
     };
 
     db.orders.unshift(newOrder);
     db.carts[user.id_user] = [];
 
-    db.notifications.unshift({
-      id_notifikasi: Date.now(),
-      id_user: user.id_user,
-      id_pesanan: nextOrderId,
-      pesan: `Pesanan ${queueNum} berhasil dibuat. Silakan selesaikan pembayaran QRIS.`,
-      status_baca: false,
-      waktu: newOrder.waktu_pesan,
-    });
+    pushNotification(
+      user.id_user,
+      nextOrderId,
+      `Pesanan ${queueNum} berhasil dibuat. Silakan selesaikan pembayaran QRIS.`
+    );
 
     if (tenant.id_user && tenant.id_user !== user.id_user) {
-      db.notifications.unshift({
-        id_notifikasi: Date.now() + 1,
-        id_user: tenant.id_user,
-        id_pesanan: nextOrderId,
-        pesan: `Pesanan baru nomor antrean ${queueNum} telah dibuat oleh ${user.nama || user.username}.`,
-        status_baca: false,
-        waktu: newOrder.waktu_pesan,
-      });
+      pushNotification(
+        tenant.id_user,
+        nextOrderId,
+        `Pesanan baru nomor antrean ${queueNum} telah dibuat oleh ${user.nama || user.username}.`
+      );
     }
 
     saveDb(db);
@@ -1470,12 +1538,109 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
-  const orderPayVerifyMatch = pathname.match(/^\/orders\/(\d+)\/payment\/verify$/);
-  if (orderPayVerifyMatch && method === "POST") {
+  const orderPaymentMatch = pathname.match(/^\/orders\/(\d+)\/payment$/);
+  if (orderPaymentMatch && method === "GET") {
     const user = requireAuth(req, res);
     if (!user) return;
-    const orderId = Number(orderPayVerifyMatch[1]);
+    const orderId = Number(orderPaymentMatch[1]);
     const ord = db.orders.find((o) => o.id_pesanan === orderId);
+    if (!ord) {
+      return sendJson(req, res, 404, { success: false, message: "Pesanan tidak ditemukan." });
+    }
+    const vendorTenant = db.tenants.find((t) => t.id_user === user.id_user);
+    const isAdmin = String(user.peran).toLowerCase() === "administrator";
+    const allowed =
+      isAdmin ||
+      ord.id_user === user.id_user ||
+      (vendorTenant && ord.id_tenant === vendorTenant.id_tenant);
+    if (!allowed) {
+      return sendJson(req, res, 403, { success: false, message: "Akses ditolak." });
+    }
+    const payment =
+      db.payments
+        .filter((p) => p.id_pesanan === orderId)
+        .sort((a, b) => b.id_pembayaran - a.id_pembayaran)[0] || null;
+    if (!payment) {
+      return sendJson(req, res, 404, {
+        success: false,
+        message: "Data pembayaran untuk pesanan ini belum dibuat.",
+      });
+    }
+    return sendJson(req, res, 200, { success: true, data: payment });
+  }
+
+  if (orderPaymentMatch && method === "POST") {
+    const user = requireAuth(req, res);
+    if (!user) return;
+    const orderId = Number(orderPaymentMatch[1]);
+    const ord = db.orders.find((o) => o.id_pesanan === orderId);
+    if (!ord) {
+      return sendJson(req, res, 404, { success: false, message: "Pesanan tidak ditemukan." });
+    }
+    const isAdmin = String(user.peran).toLowerCase() === "administrator";
+    if (!isAdmin && ord.id_user !== user.id_user) {
+      return sendJson(req, res, 403, {
+        success: false,
+        message: "Anda tidak memiliki hak akses untuk membuat pembayaran pesanan ini.",
+      });
+    }
+    if (ord.status_pesanan === "Dibatalkan" || ord.status_pesanan === "Selesai") {
+      return sendJson(req, res, 422, {
+        success: false,
+        message: `Pesanan berstatus '${ord.status_pesanan}' tidak dapat dibayar.`,
+      });
+    }
+    const body = await parseBody(req);
+    const existing = db.payments.find(
+      (p) => p.id_pesanan === orderId && p.status_verifikasi === "Menunggu"
+    );
+    if (existing) {
+      return sendJson(req, res, 200, {
+        success: true,
+        message: "Data pembayaran sudah tersedia.",
+        data: existing,
+      });
+    }
+    const nextPaymentId =
+      Math.max(0, ...db.payments.map((p) => Number(p.id_pembayaran) || 0)) + 1;
+    const payment = {
+      id_pembayaran: nextPaymentId,
+      id_pesanan: orderId,
+      metode_pembayaran: body.metode_pembayaran || "QRIS",
+      kode_qris: `QRIS-LO-${ord.nomor_antrean}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
+      total_bayar: Number(ord.total_harga || 0),
+      status_verifikasi: "Menunggu",
+      batas_waktu: formatDbTimestamp(new Date(Date.now() + 15 * 60_000)),
+      dibuat_pada: formatDbTimestamp(),
+    };
+    db.payments.push(payment);
+    saveDb(db);
+    return sendJson(req, res, 201, {
+      success: true,
+      message: "Data pembayaran QRIS berhasil dibuat.",
+      data: payment,
+    });
+  }
+
+  const orderPayVerifyMatch = pathname.match(/^\/orders\/(\d+)\/payment\/verify$/);
+  const paymentDirectVerifyMatch = pathname.match(/^\/payments\/(\d+)\/verification$/);
+  if ((orderPayVerifyMatch && method === "POST") || (paymentDirectVerifyMatch && method === "PATCH")) {
+    const user = requireAuth(req, res);
+    if (!user) return;
+    let ord = null;
+    let payment = null;
+    if (orderPayVerifyMatch) {
+      const orderId = Number(orderPayVerifyMatch[1]);
+      ord = db.orders.find((o) => o.id_pesanan === orderId);
+      payment =
+        db.payments
+          .filter((p) => p.id_pesanan === orderId)
+          .sort((a, b) => b.id_pembayaran - a.id_pembayaran)[0] || null;
+    } else {
+      const paymentId = Number(paymentDirectVerifyMatch[1]);
+      payment = db.payments.find((p) => p.id_pembayaran === paymentId) || null;
+      ord = payment ? db.orders.find((o) => o.id_pesanan === payment.id_pesanan) : null;
+    }
     if (!ord) {
       return sendJson(req, res, 404, { success: false, message: "Pesanan tidak ditemukan." });
     }
@@ -1496,15 +1661,63 @@ const server = http.createServer(async (req, res) => {
         message: `Pesanan berstatus '${ord.status_pesanan}' tidak dapat diverifikasi.`,
       });
     }
-    ord.status_pesanan = "Sedang Diproses";
-    db.notifications.unshift({
-      id_notifikasi: Date.now(),
-      id_user: ord.id_user,
-      id_pesanan: ord.id_pesanan,
-      pesan: `Pembayaran pesanan ${ord.nomor_antrean} terverifikasi! Dapur sedang menyiapkan makanan Anda.`,
-      status_baca: false,
-      waktu: new Date().toISOString().slice(0, 19).replace("T", " "),
-    });
+    const body = await parseBody(req);
+    const nextStatusVerif = body.status_verifikasi || "Terverifikasi";
+    const allowedVerif = ["Menunggu", "Terverifikasi", "Gagal", "Kedaluwarsa"];
+    if (!allowedVerif.includes(nextStatusVerif)) {
+      return sendJson(req, res, 422, {
+        success: false,
+        message: "Status verifikasi pembayaran tidak valid.",
+      });
+    }
+    if (!payment) {
+      const nextPaymentId =
+        Math.max(0, ...db.payments.map((p) => Number(p.id_pembayaran) || 0)) + 1;
+      payment = {
+        id_pembayaran: nextPaymentId,
+        id_pesanan: ord.id_pesanan,
+        metode_pembayaran: "QRIS",
+        kode_qris: `QRIS-LO-${ord.nomor_antrean}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
+        total_bayar: Number(ord.total_harga || 0),
+        status_verifikasi: nextStatusVerif,
+        batas_waktu: formatDbTimestamp(new Date(Date.now() + 15 * 60_000)),
+        dibuat_pada: formatDbTimestamp(),
+      };
+      db.payments.push(payment);
+    } else {
+      payment.status_verifikasi = nextStatusVerif;
+      payment.diverifikasi_pada = formatDbTimestamp();
+    }
+
+    if (nextStatusVerif === "Terverifikasi") {
+      ord.status_pesanan = "Sedang Diproses";
+      ord.status_history = ord.status_history || [];
+      ord.status_history.push({
+        status: "Sedang Diproses",
+        waktu: formatDbTimestamp(),
+        oleh: user.nama || user.username,
+      });
+      pushNotification(
+        ord.id_user,
+        ord.id_pesanan,
+        `Pembayaran pesanan ${ord.nomor_antrean} terverifikasi! Dapur sedang menyiapkan makanan Anda.`
+      );
+      const orderTenant = db.tenants.find((t) => t.id_tenant === ord.id_tenant);
+      if (orderTenant?.id_user && orderTenant.id_user !== ord.id_user) {
+        pushNotification(
+          orderTenant.id_user,
+          ord.id_pesanan,
+          `Pembayaran pesanan ${ord.nomor_antrean} lunas! Segera siapkan pesanan.`
+        );
+      }
+    } else if (nextStatusVerif === "Gagal" || nextStatusVerif === "Kedaluwarsa") {
+      pushNotification(
+        ord.id_user,
+        ord.id_pesanan,
+        `Verifikasi pembayaran pesanan ${ord.nomor_antrean} berstatus '${nextStatusVerif}'. Silakan coba kembali.`
+      );
+    }
+
     saveDb(db);
     return sendJson(req, res, 200, {
       success: true,
@@ -1547,21 +1760,24 @@ const server = http.createServer(async (req, res) => {
       });
     }
     ord.status_pesanan = body.status_pesanan;
-    if (body.status_pesanan === "Siap Diambil") {
-      const firstMenu = ord.details?.[0];
-      if (firstMenu) {
-        const m = db.menus.find((x) => x.id_menu === firstMenu.id_menu);
-        if (m) m.sold_today = (m.sold_today || 0) + (firstMenu.jumlah || 1);
-      }
-    }
-    db.notifications.unshift({
-      id_notifikasi: Date.now(),
-      id_user: ord.id_user,
-      id_pesanan: ord.id_pesanan,
-      pesan: `Status pesanan ${ord.nomor_antrean} diperbarui menjadi: ${body.status_pesanan}.`,
-      status_baca: false,
-      waktu: new Date().toISOString().slice(0, 19).replace("T", " "),
+    ord.status_history = ord.status_history || [];
+    ord.status_history.push({
+      status: body.status_pesanan,
+      waktu: formatDbTimestamp(),
+      oleh: user.nama || user.username,
     });
+    if ((body.status_pesanan === "Siap Diambil" || body.status_pesanan === "Selesai") && !ord.sales_counted) {
+      for (const item of ord.details || []) {
+        const m = db.menus.find((x) => x.id_menu === item.id_menu);
+        if (m) m.sold_today = (m.sold_today || 0) + (item.jumlah || 1);
+      }
+      ord.sales_counted = true;
+    }
+    pushNotification(
+      ord.id_user,
+      ord.id_pesanan,
+      `Status pesanan ${ord.nomor_antrean} diperbarui menjadi: ${body.status_pesanan}.`
+    );
     saveDb(db);
     return sendJson(req, res, 200, {
       success: true,
@@ -1786,6 +2002,23 @@ const server = http.createServer(async (req, res) => {
       success: true,
       data: list,
     });
+  }
+
+  const notifReadMatch = pathname.match(/^\/notifications\/(\d+)\/read$/);
+  if (notifReadMatch && method === "PATCH") {
+    const user = requireAuth(req, res);
+    if (!user) return;
+    const notifId = Number(notifReadMatch[1]);
+    const notif = db.notifications.find((n) => n.id_notifikasi === notifId);
+    if (!notif) {
+      return sendJson(req, res, 404, { success: false, message: "Notifikasi tidak ditemukan." });
+    }
+    if (notif.id_user !== user.id_user) {
+      return sendJson(req, res, 403, { success: false, message: "Akses ditolak." });
+    }
+    notif.status_baca = true;
+    saveDb(db);
+    return sendJson(req, res, 200, { success: true, data: notif });
   }
 
   if (pathname === "/notifications/read-all" && method === "PATCH") {

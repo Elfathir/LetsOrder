@@ -124,12 +124,21 @@ class MenuController extends Controller
             'status_tersedia' => 'sometimes|boolean',
         ]);
 
-        $categoryId = $validated['id_kategori'] ?? null;
+        $categoryId = null;
+        if (!empty($validated['kategori_nama'])) {
+            $legacyMap = [
+                'Rice & Mains' => ['Rice & Mains', 'Makanan'],
+                'Snacks' => ['Snacks', 'Camilan'],
+                'Drinks' => ['Drinks', 'Minuman'],
+            ];
+            $names = $legacyMap[$validated['kategori_nama']] ?? [$validated['kategori_nama']];
+            $categoryId = \App\Models\Category::whereIn('nama_kategori', $names)->value('id_kategori');
+        }
+        if (!$categoryId && !empty($validated['id_kategori'])) {
+            $categoryId = $validated['id_kategori'];
+        }
         if (!$categoryId) {
-            $category = !empty($validated['kategori_nama'])
-                ? \App\Models\Category::where('nama_kategori', $validated['kategori_nama'])->first()
-                : null;
-            $categoryId = ($category ?? \App\Models\Category::first())?->id_kategori;
+            $categoryId = \App\Models\Category::value('id_kategori');
         }
         if (!$categoryId) {
             return response()->json([

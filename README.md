@@ -84,10 +84,10 @@ composer install
 php artisan key:generate
 ```
 
-Atur koneksi MySQL pada `backend/.env`, kemudian jalankan migrasi dan seeder untuk mengisi data awal kategori, akun contoh, tenant, dan menu:
+Atur koneksi database pada `backend/.env`, kemudian jalankan migrasi & seeder bersih (hanya mengisi kategori awal tanpa menu/tenant dummy; jika sebelumnya sudah menjalankan seeder lama, gunakan `migrate:fresh --seed` untuk mengosongkan data demo):
 
 ```bash
-php artisan migrate --seed
+php artisan migrate:fresh --seed
 php artisan serve
 ```
 

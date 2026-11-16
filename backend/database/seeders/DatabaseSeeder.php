@@ -11,11 +11,9 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // Only seed master categories so tenants & menus start empty until uploaded by real users.
         $this->call([
-            UserSeeder::class,
             CategorySeeder::class,
-            TenantSeeder::class,
-            MenuSeeder::class,
         ]);
     }
 }

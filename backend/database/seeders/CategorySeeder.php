@@ -14,16 +14,16 @@ class CategorySeeder extends Seeder
     {
         $categories = [
             [
-                'nama_kategori' => 'Makanan',
+                'nama_kategori' => 'Rice & Mains',
                 'icon' => 'categories/bowl.png',
             ],
             [
-                'nama_kategori' => 'Minuman',
-                'icon' => 'categories/cup.png',
+                'nama_kategori' => 'Snacks',
+                'icon' => 'categories/snack.png',
             ],
             [
-                'nama_kategori' => 'Camilan',
-                'icon' => 'categories/snack.png',
+                'nama_kategori' => 'Drinks',
+                'icon' => 'categories/cup.png',
             ],
         ];
 
