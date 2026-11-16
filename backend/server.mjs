@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.join(__dirname, "storage", "app", "db.json");
-const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2 MB limit per request body
+const MAX_BODY_BYTES = 6 * 1024 * 1024; // 6 MB limit per request body
 
 function loadEnvFile(filePath) {
   try {
@@ -92,13 +92,29 @@ function constantTimeEqualStr(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+function isAllowedOrigin(origin) {
+  if (!origin) return false;
+  if (ALLOWED_ORIGINS.has(origin)) return true;
+  if (process.env.NODE_ENV !== "production") {
+    try {
+      const parsed = new URL(origin);
+      if (
+        (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+        (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1")
+      ) {
+        return true;
+      }
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 function validateFrontendOrigin(candidate) {
   try {
     const parsed = new URL(String(candidate || ""));
-    if (
-      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
-      ALLOWED_ORIGINS.has(parsed.origin)
-    ) {
+    if (isAllowedOrigin(parsed.origin)) {
       return parsed.origin;
     }
   } catch {
@@ -142,8 +158,8 @@ function isSafeImageInput(value) {
   if (typeof value !== "string") return false;
   const trimmed = value.trim();
   if (!trimmed) return true;
-  if (trimmed.length > 1_600_000) return false;
-  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(trimmed)) {
+  if (trimmed.length > 5_000_000) return false;
+  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=\r\n]+$/i.test(trimmed)) {
     return true;
   }
   if (trimmed.startsWith("/")) return !trimmed.startsWith("//");
@@ -267,7 +283,7 @@ function getCorsHeaders(req) {
     "Referrer-Policy": "strict-origin-when-cross-origin",
     Vary: "Origin",
   };
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
+  if (origin && isAllowedOrigin(origin)) {
     headers["Access-Control-Allow-Origin"] = origin;
   }
   return headers;
@@ -1600,6 +1616,7 @@ const server = http.createServer(async (req, res) => {
     if (!user || !requireRole(req, res, user, "Vendor", "Administrator")) return;
     const isAdmin = String(user.peran).toLowerCase() === "administrator";
     const tenant = isAdmin ? null : ensureTenantForVendor(user);
+    if (tenant) saveDb(db);
     const menus = db.menus
       .filter((m) => (isAdmin ? true : m.id_tenant === tenant.id_tenant))
       .map(enrichMenu);

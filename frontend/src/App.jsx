@@ -309,6 +309,57 @@ const INITIAL_ORDERS = [];
 const INITIAL_TENANT_MENUS = [];
 const INITIAL_INCOMING_ORDERS = [];
 
+const CATEGORY_ID_MAP = {
+  "Rice & Mains": 1,
+  Snacks: 2,
+  Drinks: 3,
+};
+
+function readAndCompressImageFile(file, maxDim = 900, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    if (!file) return reject(new Error("File tidak ditemukan."));
+    if (file.type === "image/svg+xml" || !file.type.startsWith("image/")) {
+      return reject(new Error("Format gambar harus JPG, PNG, WEBP, atau GIF."));
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Gagal membaca file gambar."));
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : "";
+      if (!dataUrl) return reject(new Error("File gambar kosong."));
+      if (file.size <= 250 * 1024 && !file.type.includes("bmp")) {
+        return resolve(dataUrl);
+      }
+      const img = new Image();
+      img.onerror = () => resolve(dataUrl);
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width >= height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, width);
+          canvas.height = Math.max(1, height);
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return resolve(dataUrl);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        } catch {
+          resolve(dataUrl);
+        }
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function formatRupiah(num) {
   return "Rp" + Number(num || 0).toLocaleString("id-ID");
 }
@@ -354,6 +405,7 @@ export default function App() {
   const [tenantMenuSearch, setTenantMenuSearch] = useState("");
   const [incomingOrders, setIncomingOrders] = useState([]);
   const [editingDish, setEditingDish] = useState(null);
+  const [editMenuError, setEditMenuError] = useState("");
   const [editDishForm, setEditDishForm] = useState({
     nama_menu: "",
     harga: "",
@@ -364,6 +416,8 @@ export default function App() {
     available: true,
   });
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  const [addMenuError, setAddMenuError] = useState("");
+  const [isUploadingMenu, setIsUploadingMenu] = useState(false);
   const [newDishForm, setNewDishForm] = useState({
     nama_menu: "",
     kategori_nama: "Rice & Mains",
@@ -373,6 +427,20 @@ export default function App() {
     gambar: "",
     available: true,
   });
+
+  const openAddMenuModal = () => {
+    setAddMenuError("");
+    setNewDishForm({
+      nama_menu: "",
+      harga: "",
+      kategori_nama: "Rice & Mains",
+      estimasi_menit: "10",
+      deskripsi: "",
+      gambar: "",
+      available: true,
+    });
+    setIsAddMenuOpen(true);
+  };
 
   const [tenantOrderStep, setTenantOrderStep] = useState(1);
   const [tenantHistoryFilter, setTenantHistoryFilter] = useState("All");
@@ -606,10 +674,11 @@ export default function App() {
         }
       }
       const isVendor = currentUser?.peran === "Vendor";
-      const [tenantsRes, menusRes, vendorMenusRes, ordersRes, cartRes, notifRes] =
+      const [tenantsRes, menusRes, vendorTenantRes, vendorMenusRes, ordersRes, cartRes, notifRes] =
         await Promise.all([
           api.getTenants().catch(() => null),
           api.getMenus({ include_unavailable: true }).catch(() => null),
+          isVendor ? api.getVendorTenant().catch(() => null) : Promise.resolve(null),
           isVendor ? api.getVendorMenus().catch(() => null) : Promise.resolve(null),
           isVendor
             ? api.getVendorOrders().catch(() => null)
@@ -626,10 +695,13 @@ export default function App() {
             gambar: t.gambar || t.logo || "",
           }))
         );
-        const myTenant = tenantsRes.data.find((t) => t.id_user === currentUser?.id_user) || tenantsRes.data[0];
-        if (myTenant) {
-          setIsStoreOpen(Boolean(myTenant.status_buka ?? true));
-        }
+      }
+      const myTenant =
+        vendorTenantRes?.data ||
+        tenantsRes?.data?.find((t) => t.id_user === currentUser?.id_user) ||
+        null;
+      if (myTenant) {
+        setIsStoreOpen(Boolean(myTenant.status_buka ?? true));
       }
 
       if (menusRes?.data) {
@@ -2253,17 +2325,7 @@ export default function App() {
                     </div>
 
                     <button
-                      onClick={() => {
-                        setNewDishForm({
-                          nama_menu: "",
-                          harga: "",
-                          kategori_nama: "Rice & Mains",
-                          estimasi_menit: "10",
-                          deskripsi: "",
-                          gambar: "",
-                        });
-                        setIsAddMenuOpen(true);
-                      }}
+                      onClick={openAddMenuModal}
                       className="btn-interactive btn-lift"
                       style={{
                         display: "inline-flex",
@@ -2430,6 +2492,7 @@ export default function App() {
 
                               <button
                                 onClick={() => {
+                                  setEditMenuError("");
                                   setEditingDish(dish);
                                   setEditDishForm({
                                     nama_menu: dish.nama_menu,
@@ -2565,17 +2628,7 @@ export default function App() {
                             Upload menu makanan atau minuman kantin Anda agar pelanggan bisa langsung memesan.
                           </p>
                           <button
-                            onClick={() => {
-                              setNewDishForm({
-                                nama_menu: "",
-                                harga: "",
-                                kategori_nama: "Rice & Mains",
-                                estimasi_menit: "10",
-                                deskripsi: "",
-                                gambar: "",
-                              });
-                              setIsAddMenuOpen(true);
-                            }}
+                            onClick={openAddMenuModal}
                             className="btn-interactive btn-lift"
                             style={{
                               display: "inline-flex",
@@ -5209,48 +5262,68 @@ export default function App() {
             </div>
 
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
+                setEditMenuError("");
                 const parsedPrice =
                   Number(String(editDishForm.harga).replace(/\D/g, "")) ||
                   editingDish.harga;
                 const nextName = editDishForm.nama_menu || editingDish.nama_menu;
-                setTenantMenus((prev) =>
-                  prev.map((m) =>
-                    m.id_menu === editingDish.id_menu
-                      ? {
-                          ...m,
-                          nama_menu: nextName,
-                          harga: parsedPrice,
-                          available: editDishForm.available,
-                        }
-                      : m
-                  )
-                );
-                setMenusList((prev) =>
-                  prev.map((m) =>
-                    m.id_menu === editingDish.id_menu
-                      ? {
-                          ...m,
-                          nama_menu: nextName,
-                          harga: parsedPrice,
-                          available: editDishForm.available,
-                          status_tersedia: editDishForm.available,
-                        }
-                      : m
-                  )
-                );
-                api
-                  .updateVendorMenu(editingDish.id_menu, {
+                try {
+                  await api.updateVendorMenu(editingDish.id_menu, {
                     nama_menu: nextName,
                     harga: parsedPrice,
                     status_tersedia: editDishForm.available,
-                  })
-                  .catch(() => {});
-                setEditingDish(null);
+                  });
+                  setTenantMenus((prev) =>
+                    prev.map((m) =>
+                      m.id_menu === editingDish.id_menu
+                        ? {
+                            ...m,
+                            nama_menu: nextName,
+                            harga: parsedPrice,
+                            available: editDishForm.available,
+                            status_tersedia: editDishForm.available,
+                          }
+                        : m
+                    )
+                  );
+                  setMenusList((prev) =>
+                    prev.map((m) =>
+                      m.id_menu === editingDish.id_menu
+                        ? {
+                            ...m,
+                            nama_menu: nextName,
+                            harga: parsedPrice,
+                            available: editDishForm.available,
+                            status_tersedia: editDishForm.available,
+                          }
+                        : m
+                    )
+                  );
+                  setEditingDish(null);
+                  syncFromApi();
+                } catch (err) {
+                  setEditMenuError(err.message || "Gagal menyimpan perubahan menu.");
+                }
               }}
               style={{ display: "flex", flexDirection: "column", gap: 16 }}
             >
+              {editMenuError && (
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 12,
+                    backgroundColor: "#FEF2F2",
+                    border: "1px solid #FECACA",
+                    color: "#991B1B",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  {editMenuError}
+                </div>
+              )}
               <div>
                 <label
                   style={{
@@ -5549,11 +5622,15 @@ export default function App() {
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
+                setAddMenuError("");
+                setIsUploadingMenu(true);
+                const kategoriNama = newDishForm.kategori_nama || "Rice & Mains";
                 const parsedPrice = Number(String(newDishForm.harga).replace(/\D/g, "")) || 10000;
                 const payload = {
                   nama_menu: newDishForm.nama_menu,
                   harga: parsedPrice,
-                  kategori_nama: newDishForm.kategori_nama || "Rice & Mains",
+                  id_kategori: CATEGORY_ID_MAP[kategoriNama] || 1,
+                  kategori_nama: kategoriNama,
                   estimasi_menit: Number(newDishForm.estimasi_menit) || 10,
                   deskripsi: newDishForm.deskripsi || `Menu segar dari ${displayName}.`,
                   gambar:
@@ -5562,15 +5639,60 @@ export default function App() {
                   status_tersedia: true,
                 };
                 try {
-                  await api.createVendorMenu(payload);
+                  const res = await api.createVendorMenu(payload);
+                  const created = res?.data;
+                  if (created) {
+                    const normalized = {
+                      ...created,
+                      available: Boolean(created.status_tersedia ?? created.available ?? true),
+                      sold_today: Number(created.sold_today || 0),
+                      rating: created.rating || "5.0",
+                      reviews: created.reviews || 1,
+                    };
+                    setTenantMenus((prev) =>
+                      prev.some((m) => m.id_menu === normalized.id_menu)
+                        ? prev
+                        : [...prev, normalized]
+                    );
+                    setMenusList((prev) =>
+                      prev.some((m) => m.id_menu === normalized.id_menu)
+                        ? prev
+                        : [...prev, normalized]
+                    );
+                  }
+                  setTenantMenuFilter("All");
+                  setTenantMenuSearch("");
                   await syncFromApi();
                   setIsAddMenuOpen(false);
-                } catch {
-                  setIsAddMenuOpen(false);
+                } catch (err) {
+                  setAddMenuError(
+                    err.message || "Gagal menyimpan menu baru. Periksa koneksi backend atau ukuran foto."
+                  );
+                } finally {
+                  setIsUploadingMenu(false);
                 }
               }}
               style={{ display: "flex", flexDirection: "column", gap: 14 }}
             >
+              {addMenuError && (
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 12,
+                    backgroundColor: "#FEF2F2",
+                    border: "1px solid #FECACA",
+                    color: "#991B1B",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <AlertCircle size={15} />
+                  <span>{addMenuError}</span>
+                </div>
+              )}
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
                   Nama Menu
@@ -5672,16 +5794,16 @@ export default function App() {
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = () => {
-                        if (typeof reader.result === "string") {
-                          setNewDishForm((p) => ({ ...p, gambar: reader.result }));
-                        }
-                      };
-                      reader.readAsDataURL(file);
+                      setAddMenuError("");
+                      try {
+                        const compressed = await readAndCompressImageFile(file, 900, 0.82);
+                        setNewDishForm((p) => ({ ...p, gambar: compressed }));
+                      } catch (err) {
+                        setAddMenuError(err.message || "Gagal memproses foto menu.");
+                      }
                     }}
                     style={{
                       width: "100%",
@@ -5776,6 +5898,7 @@ export default function App() {
                 </button>
                 <button
                   type="submit"
+                  disabled={isUploadingMenu}
                   className="btn-interactive btn-lift"
                   style={{
                     padding: "12px",
@@ -5785,11 +5908,12 @@ export default function App() {
                     color: "var(--maroon)",
                     fontSize: 13,
                     fontWeight: 800,
-                    cursor: "pointer",
+                    cursor: isUploadingMenu ? "not-allowed" : "pointer",
+                    opacity: isUploadingMenu ? 0.7 : 1,
                     boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
                   }}
                 >
-                  Simpan & Upload
+                  {isUploadingMenu ? "Menyimpan..." : "Simpan & Upload"}
                 </button>
               </div>
             </form>
@@ -6527,24 +6651,19 @@ export default function App() {
                         type="file"
                         accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                         style={{ display: "none" }}
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (!file) return;
-                          if (file.size > 1024 * 1024) {
+                          try {
+                            const compressed = await readAndCompressImageFile(file, 512, 0.85);
+                            setProfileForm((p) => ({ ...p, avatar: compressed }));
+                            setProfileAlert({ type: "", text: "" });
+                          } catch (err) {
                             setProfileAlert({
                               type: "error",
-                              text: "Ukuran gambar terlalu besar! Maksimal 1 MB.",
+                              text: err.message || "Gagal memproses foto profil.",
                             });
-                            return;
                           }
-                          const reader = new FileReader();
-                          reader.onload = () => {
-                            if (typeof reader.result === "string") {
-                              setProfileForm((p) => ({ ...p, avatar: reader.result }));
-                              setProfileAlert({ type: "", text: "" });
-                            }
-                          };
-                          reader.readAsDataURL(file);
                         }}
                       />
                     </label>

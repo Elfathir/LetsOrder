@@ -114,14 +114,29 @@ class MenuController extends Controller
 
         $validated = $request->validate([
             'id_tenant' => 'nullable|integer|exists:tenants,id_tenant',
-            'id_kategori' => 'required|integer|exists:categories,id_kategori',
+            'id_kategori' => 'nullable|integer|exists:categories,id_kategori',
+            'kategori_nama' => 'nullable|string|max:100',
             'nama_menu' => 'required|string|max:100',
             'deskripsi' => 'nullable|string',
-            'gambar' => 'nullable|string|max:255',
+            'gambar' => 'nullable|string',
             'harga' => 'required|integer|min:0',
             'estimasi_menit' => 'required|integer|min:1',
             'status_tersedia' => 'sometimes|boolean',
         ]);
+
+        $categoryId = $validated['id_kategori'] ?? null;
+        if (!$categoryId) {
+            $category = !empty($validated['kategori_nama'])
+                ? \App\Models\Category::where('nama_kategori', $validated['kategori_nama'])->first()
+                : null;
+            $categoryId = ($category ?? \App\Models\Category::first())?->id_kategori;
+        }
+        if (!$categoryId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kategori menu tidak valid.',
+            ], 422);
+        }
 
         if (!empty($validated['id_tenant'])) {
             $tenant = Tenant::find($validated['id_tenant']);
@@ -145,7 +160,7 @@ class MenuController extends Controller
 
         $menu = Menu::create([
             'id_tenant' => $tenant->id_tenant,
-            'id_kategori' => $validated['id_kategori'],
+            'id_kategori' => $categoryId,
             'nama_menu' => $validated['nama_menu'],
             'deskripsi' => $validated['deskripsi'] ?? '',
             'gambar' => $validated['gambar'] ?? 'menu/default.png',
@@ -189,7 +204,7 @@ class MenuController extends Controller
             'id_kategori' => 'sometimes|required|integer|exists:categories,id_kategori',
             'nama_menu' => 'sometimes|required|string|max:100',
             'deskripsi' => 'nullable|string',
-            'gambar' => 'nullable|string|max:255',
+            'gambar' => 'nullable|string',
             'harga' => 'sometimes|required|integer|min:0',
             'estimasi_menit' => 'sometimes|required|integer|min:1',
             'status_tersedia' => 'sometimes|boolean',

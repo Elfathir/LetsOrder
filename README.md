@@ -46,6 +46,18 @@ Pastikan perangkat pengembangan telah memiliki:
 - MySQL
 - Browser modern
 
+## Menjalankan Backend Cepat (Node.js API Server)
+
+Untuk development lokal tanpa setup PHP/Composer/MySQL, backend dapat langsung dijalankan menggunakan Node.js (`>= 20`):
+
+```bash
+cd backend
+cp .env.example .env
+node server.mjs
+```
+
+Server API akan aktif di `http://127.0.0.1:8000/api` (wajib tetap berjalan di terminal terpisah agar login, register, menu, dan pesanan tidak menampilkan `Failed to fetch`).
+
 ## Menjalankan Frontend
 
 ```bash
@@ -55,9 +67,9 @@ npm install
 npm run dev
 ```
 
-Vite akan menampilkan alamat lokal pada terminal, biasanya `http://localhost:5173`.
+Vite akan aktif di `http://localhost:5173` dan otomatis meneruskan request `/api/*` ke backend (`http://127.0.0.1:8000`).
 
-Variabel `VITE_API_BASE_URL` pada `frontend/.env` menunjuk ke alamat API backend. Nilai contoh disediakan pada `.env.example`.
+Variabel `VITE_API_BASE_URL` pada `frontend/.env` default memakai `/api` agar tetap bekerja meski Vite berjalan di port lain atau diakses lewat jaringan lokal (LAN). Jika deploy terpisah, isi dengan URL backend lengkap pada `.env`.
 
 ## Menyiapkan Backend Laravel
 

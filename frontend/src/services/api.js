@@ -1,5 +1,6 @@
 export const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000/api"
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.DEV ? "/api" : "http://127.0.0.1:8000/api")
 ).replace(/\/$/, "");
 
 const TOKEN_STORAGE_KEY = "letsorder_auth_token";
@@ -41,10 +42,17 @@ async function request(endpoint, options = {}) {
     ...(options.headers || {}),
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
+  } catch {
+    throw new Error(
+      "Tidak dapat terhubung ke server backend. Pastikan API server sudah dijalankan (cd backend && node server.mjs) pada port 8000."
+    );
+  }
 
   let payload = null;
   try {
