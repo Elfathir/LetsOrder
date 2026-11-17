@@ -55,7 +55,7 @@ const HERO_SLIDES_BY_LANG = {
       tag: "ESTD 2026 · CAMPUS CANTEEN",
       title: "Skip The Line. Pre-Order Your Campus Meal.",
       desc: "Freshly prepared by your favorite campus canteen tenants. Grab it warm between lectures without waiting in queue.",
-      image: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1400&auto=format&fit=crop&q=80",
+      image: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1000&auto=format&fit=crop&q=80",
       primaryCta: "Order now",
       secondaryCta: "Explore tenants",
     },
@@ -63,7 +63,7 @@ const HERO_SLIDES_BY_LANG = {
       tag: "STUDENT SPECIAL PROMO",
       title: "10% Off Every Meal With Code STUDENT10",
       desc: "Enjoy 10% discount on all campus canteen menus for orders above Rp25.000. Apply coupon directly in your cart!",
-      image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1400&auto=format&fit=crop&q=80",
+      image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1000&auto=format&fit=crop&q=80",
       primaryCta: "Claim promo",
       secondaryCta: "View popular menu",
     },
@@ -71,7 +71,7 @@ const HERO_SLIDES_BY_LANG = {
       tag: "SELF-PICKUP DIGITAL",
       title: "Real-Time Cooking & Counter Pickup Tracker",
       desc: "Get your digital queue number directly on your phone and arrive just when your warm food is ready at the counter.",
-      image: "https://images.unsplash.com/photo-1498654896293-37aacf113fd9?w=1400&auto=format&fit=crop&q=80",
+      image: "https://images.unsplash.com/photo-1498654896293-37aacf113fd9?w=1000&auto=format&fit=crop&q=80",
       primaryCta: "Track orders",
       secondaryCta: "Explore menu",
     },
@@ -81,7 +81,7 @@ const HERO_SLIDES_BY_LANG = {
       tag: "ESTD 2026 · KANTIN KAMPUS",
       title: "Tanpa Antre. Pesan Makanan Kantin Lebih Awal.",
       desc: "Disiapkan langsung oleh tenant kantin favoritmu. Ambil hangat di sela jadwal kuliah tanpa perlu antre lama.",
-      image: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1400&auto=format&fit=crop&q=80",
+      image: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1000&auto=format&fit=crop&q=80",
       primaryCta: "Pesan sekarang",
       secondaryCta: "Lihat kantin",
     },
@@ -89,7 +89,7 @@ const HERO_SLIDES_BY_LANG = {
       tag: "PROMO SPESIAL MAHASISWA",
       title: "Diskon 10% Setiap Pesanan Dengan Kode STUDENT10",
       desc: "Nikmati potongan 10% untuk semua menu kantin dengan minimal belanja Rp25.000. Gunakan promo langsung di keranjang!",
-      image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1400&auto=format&fit=crop&q=80",
+      image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1000&auto=format&fit=crop&q=80",
       primaryCta: "Pakai promo",
       secondaryCta: "Lihat menu populer",
     },
@@ -97,7 +97,7 @@ const HERO_SLIDES_BY_LANG = {
       tag: "AMBIL MANDIRI DIGITAL",
       title: "Pantau Proses Masak & Antrean Secara Real-Time",
       desc: "Dapatkan nomor antrean digital langsung dari HP dan datang ke konter saat makananmu sudah siap.",
-      image: "https://images.unsplash.com/photo-1498654896293-37aacf113fd9?w=1400&auto=format&fit=crop&q=80",
+      image: "https://images.unsplash.com/photo-1498654896293-37aacf113fd9?w=1000&auto=format&fit=crop&q=80",
       primaryCta: "Lacak pesanan",
       secondaryCta: "Jelajahi menu",
     },
@@ -324,7 +324,7 @@ async function waitForThemeTransitionIdle() {
   if (!isThemeAnimating()) return;
   await new Promise((resolve) => {
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const waitMs = Math.min(1380, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
+    const waitMs = Math.min(960, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
     setTimeout(resolve, waitMs);
   });
 }
@@ -359,8 +359,8 @@ function toggleAppTheme(event) {
   const x = Math.round(rawX);
   const y = Math.round(rawY);
   const cornerDist = Math.hypot(Math.max(x, vw - x), Math.max(y, vh - y));
-  // Overshoot 15% beyond farthest corner so expo ease-out never stalls on a corner sliver
-  const endRadius = Math.ceil(cornerDist * 1.15);
+  // Overshoot 12% beyond farthest corner so ease-out completes cleanly off-screen
+  const endRadius = Math.ceil(cornerDist * 1.12);
 
   const prefersReduced =
     typeof window !== "undefined" &&
@@ -382,7 +382,7 @@ function toggleAppTheme(event) {
   }
 
   themeAnimatingUntil =
-    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 1300;
+    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 880;
 
   let transition;
   try {
@@ -411,8 +411,8 @@ function toggleAppTheme(event) {
           ],
         },
         {
-          duration: 1200,
-          easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+          duration: 780,
+          easing: "cubic-bezier(0.25, 0.85, 0.35, 1)",
           fill: "forwards",
           pseudoElement: "::view-transition-new(root)",
         }
@@ -1111,6 +1111,7 @@ export default function App() {
       ? currentUser?.tenant?.nama_tenant || currentUser?.nama || currentUser?.username || "Tenant"
       : currentUser?.nama || currentUser?.username || "Pengguna";
   const displayInitials = getInitials(displayName);
+  const lastSyncSigRef = useRef("");
 
   const syncFromApi = useCallback(async () => {
     try {
@@ -1172,6 +1173,36 @@ export default function App() {
 
       await waitForThemeTransitionIdle();
 
+      const myTenant =
+        vendorTenantRes?.data ||
+        tenantsRes?.data?.find((t) => t.id_user === currentUser?.id_user) ||
+        null;
+      const vendorRevRes =
+        isVendor && myTenant?.id_tenant
+          ? await api.getReviews({ id_tenant: myTenant.id_tenant }).catch(() => null)
+          : null;
+
+      await waitForThemeTransitionIdle();
+
+      const syncSig = JSON.stringify([
+        currentUser?.id_user || 0,
+        activeOrderId || 0,
+        tenantsRes?.data || null,
+        menusRes?.data || null,
+        vendorTenantRes?.data || null,
+        vendorMenusRes?.data || null,
+        ordersRes?.data || null,
+        cartRes?.data || null,
+        notifRes?.data || null,
+        promosRes?.data || null,
+        vendorPromosRes?.data || null,
+        vendorRevRes?.data || null,
+      ]);
+      if (lastSyncSigRef.current === syncSig) {
+        return;
+      }
+      lastSyncSigRef.current = syncSig;
+
       if (tenantsRes?.data) {
         setTenantsList(
           tenantsRes.data.map((t) => ({
@@ -1194,20 +1225,11 @@ export default function App() {
       if (Array.isArray(vendorPromosRes?.data)) {
         setVendorPromos(vendorPromosRes.data);
       }
-      const myTenant =
-        vendorTenantRes?.data ||
-        tenantsRes?.data?.find((t) => t.id_user === currentUser?.id_user) ||
-        null;
       if (myTenant) {
         setMyTenantInfo(myTenant);
         setIsStoreOpen(Boolean(myTenant.status_buka ?? true));
-        if (isVendor && myTenant.id_tenant) {
-          const vendorRevRes = await api
-            .getReviews({ id_tenant: myTenant.id_tenant })
-            .catch(() => null);
-          if (Array.isArray(vendorRevRes?.data)) {
-            setVendorReviews(vendorRevRes.data);
-          }
+        if (Array.isArray(vendorRevRes?.data)) {
+          setVendorReviews(vendorRevRes.data);
         }
       } else if (!isVendor) {
         setVendorReviews([]);
@@ -4546,7 +4568,7 @@ export default function App() {
                         marginBottom: 36,
                         boxShadow: "var(--shadow-card)",
                         backgroundColor: "var(--bg-banner)",
-                        border: "1px solid #EADBCE",
+                        border: "1px solid var(--border-light)",
                         minHeight: 310,
                       }}
                     >
@@ -4556,7 +4578,6 @@ export default function App() {
                           width: `${heroSlides.length * 100}%`,
                           transform: `translateX(-${heroSlide * (100 / heroSlides.length)}%)`,
                           transition: "transform 0.65s cubic-bezier(0.25, 1, 0.5, 1)",
-                          willChange: "transform",
                         }}
                       >
                         {heroSlides.map((slide, sIdx) => (
@@ -4699,7 +4720,6 @@ export default function App() {
                           borderRadius: "50%",
                           border: "1px solid rgba(82, 42, 40, 0.12)",
                           backgroundColor: "var(--bg-overlay-glass)",
-                          backdropFilter: "blur(6px)",
                           color: "var(--maroon)",
                           display: "flex",
                           alignItems: "center",
@@ -4725,7 +4745,6 @@ export default function App() {
                           borderRadius: "50%",
                           border: "1px solid rgba(82, 42, 40, 0.12)",
                           backgroundColor: "var(--bg-overlay-glass)",
-                          backdropFilter: "blur(6px)",
                           color: "var(--maroon)",
                           display: "flex",
                           alignItems: "center",
@@ -4747,7 +4766,6 @@ export default function App() {
                           padding: "5px 14px",
                           borderRadius: "var(--radius-pill)",
                           backgroundColor: "var(--bg-overlay-glass)",
-                          backdropFilter: "blur(6px)",
                           display: "flex",
                           alignItems: "center",
                           gap: 8,

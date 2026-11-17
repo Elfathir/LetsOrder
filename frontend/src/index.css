@@ -305,10 +305,6 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
   border: none !important;
 }
 
-::view-transition-image-pair(root) {
-  isolation: isolate;
-}
-
 ::view-transition-old(root) {
   z-index: 1;
   pointer-events: none;
@@ -317,9 +313,6 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
 ::view-transition-new(root) {
   z-index: 2;
   pointer-events: none;
-  will-change: clip-path;
-  transform: translateZ(0);
-  backface-visibility: hidden;
 }
 
 .theme-toggle-btn:hover {
@@ -615,8 +608,7 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
     left: 0;
     right: 0;
     z-index: 950;
-    background-color: var(--bg-header-glass);
-    backdrop-filter: blur(10px);
+    background-color: var(--bg-card);
     border-top: 1px solid var(--border-light);
     padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
     box-shadow: var(--shadow-float);
