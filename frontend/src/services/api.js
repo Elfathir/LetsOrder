@@ -196,6 +196,12 @@ export const api = {
   getOrder: (id) => request(`/orders/${id}`),
   getOrderStatus: (id) => request(`/orders/${id}/status`),
   getOrderStatusHistory: (id) => request(`/orders/${id}/status-history`),
+  getOrderMessages: (orderId) => request(`/orders/${orderId}/messages`),
+  sendOrderMessage: (orderId, data) =>
+    request(`/orders/${orderId}/messages`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   cancelOrder: (id, alasan = "") =>
     request(`/orders/${id}/cancel`, {
       method: "POST",

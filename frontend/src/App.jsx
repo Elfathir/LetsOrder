@@ -40,6 +40,9 @@ import {
   Users,
   Banknote,
   CheckCircle2,
+  MessageCircle,
+  Image as ImageIcon,
+  Send,
 } from "lucide-react";
 import {
   api,
@@ -733,6 +736,16 @@ function readAndCompressImageFile(file, maxDim = 900, quality = 0.82) {
   });
 }
 
+function isOrderChatEligible(ord) {
+  if (!ord) return false;
+  if (ord.is_paid) return true;
+  if (ord.payment?.status_verifikasi === "Terverifikasi") return true;
+  const raw = ord.status_pesanan || ord.raw_status || "";
+  if (["Sedang Diproses", "Diproses", "Siap Diambil", "Selesai"].includes(raw)) return true;
+  const uiStatus = ord.status || "";
+  return ["Preparing", "Ready for pickup", "Ready", "Completed"].includes(uiStatus);
+}
+
 function normalizeCategoryName(rawName) {
   const name = String(rawName || "").trim();
   if (!name || name === "Makanan") return "Rice & Mains";
@@ -1050,6 +1063,26 @@ export default function App() {
   const toastTimerRef = useRef(null);
   const [notificationsList, setNotificationsList] = useState([]);
   const [activeDrawerModal, setActiveDrawerModal] = useState(null);
+  const [chatOrder, setChatOrder] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatSending, setChatSending] = useState(false);
+  const [chatError, setChatError] = useState("");
+  const [chatText, setChatText] = useState("");
+  const [chatImage, setChatImage] = useState("");
+  const [chatPreviewImage, setChatPreviewImage] = useState("");
+  const [seenChatCounts, setSeenChatCounts] = useState(() => {
+    try {
+      const uid = getStoredUser()?.id_user || "guest";
+      const raw = localStorage.getItem(`letsorder_chat_seen_${uid}`);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+  const chatListRef = useRef(null);
+  const chatFileInputRef = useRef(null);
   const [profileForm, setProfileForm] = useState({
     nama: "",
     username: "",
@@ -1235,13 +1268,185 @@ export default function App() {
   useEffect(() => {
     try {
       const uid = currentUser?.id_user || "guest";
-      const raw = localStorage.getItem(`letsorder_favs_${uid}`);
-      const parsed = raw ? JSON.parse(raw) : [];
-      setFavoriteIds(Array.isArray(parsed) ? parsed : []);
+      const rawFavs = localStorage.getItem(`letsorder_favs_${uid}`);
+      const parsedFavs = rawFavs ? JSON.parse(rawFavs) : [];
+      setFavoriteIds(Array.isArray(parsedFavs) ? parsedFavs : []);
+      const rawSeen = localStorage.getItem(`letsorder_chat_seen_${uid}`);
+      const parsedSeen = rawSeen ? JSON.parse(rawSeen) : {};
+      setSeenChatCounts(parsedSeen && typeof parsedSeen === "object" ? parsedSeen : {});
     } catch {
       setFavoriteIds([]);
+      setSeenChatCounts({});
     }
   }, [currentUser?.id_user]);
+
+  const markOrderChatSeen = useCallback(
+    (orderId, count) => {
+      const oid = Number(orderId);
+      const nextCount = Number(count || 0);
+      if (!oid || nextCount <= 0) return;
+      setSeenChatCounts((prev) => {
+        if (Number(prev[oid] || 0) >= nextCount) return prev;
+        const next = { ...prev, [oid]: nextCount };
+        try {
+          const uid = currentUser?.id_user || "guest";
+          localStorage.setItem(`letsorder_chat_seen_${uid}`, JSON.stringify(next));
+        } catch {
+          // Ignore storage quota errors
+        }
+        return next;
+      });
+    },
+    [currentUser?.id_user]
+  );
+
+  const getOrderUnreadChatCount = useCallback(
+    (ord) => {
+      const oid = Number(ord?.id_pesanan || ord?.id || 0);
+      const total = Number(ord?.chat_count || 0);
+      if (!oid || total <= 0) return 0;
+      const seen = Number(seenChatCounts[oid] || 0);
+      const unread = Math.max(0, total - seen);
+      if (unread === 0) return 0;
+      if (
+        Number(ord?.last_chat?.id_pengirim) === Number(currentUser?.id_user) &&
+        unread <= 1
+      ) {
+        return 0;
+      }
+      return unread;
+    },
+    [seenChatCounts, currentUser?.id_user]
+  );
+
+  const handleOpenOrderChat = useCallback(
+    async (orderObj) => {
+      const oid = Number(orderObj?.id_pesanan || orderObj?.id || 0);
+      if (!oid) return;
+      if (!isOrderChatEligible(orderObj)) {
+        notify(
+          lang === "EN"
+            ? "Chat opens once your order payment is verified."
+            : "Fitur chat aktif setelah pesanan dibayar dan terverifikasi.",
+          "info"
+        );
+        return;
+      }
+      setChatOrder({
+        id_pesanan: oid,
+        nomor_antrean: orderObj.nomor_antrean || orderObj.code || `#${oid}`,
+        tenant_name: orderObj.tenant_name || orderObj.tenant?.nama_tenant || "Kantin",
+        booth: orderObj.booth || orderObj.tenant?.booth || "",
+        customer_name: orderObj.user_name || orderObj.user?.nama || orderObj.user?.username || "Pembeli",
+        items_summary: orderObj.items_breakdown || orderObj.items_summary || orderObj.item_name || "",
+        status_pesanan: orderObj.status_pesanan || orderObj.raw_status || orderObj.status || "",
+      });
+      setChatError("");
+      setChatLoading(true);
+      try {
+        const res = await api.getOrderMessages(oid);
+        const msgs = Array.isArray(res?.data?.messages) ? res.data.messages : [];
+        if (res?.data?.order) {
+          setChatOrder((prev) => ({ ...(prev || {}), ...res.data.order }));
+        }
+        setChatMessages(msgs);
+        markOrderChatSeen(oid, msgs.length);
+      } catch (err) {
+        setChatError(err?.message || (lang === "EN" ? "Failed to load chat." : "Gagal memuat percakapan."));
+      } finally {
+        setChatLoading(false);
+      }
+    },
+    [lang, markOrderChatSeen, notify]
+  );
+
+  const handleSelectChatImage = useCallback(
+    async (file) => {
+      if (!file) return;
+      setChatError("");
+      try {
+        const compressed = await readAndCompressImageFile(file, 960, 0.8);
+        setChatImage(compressed);
+      } catch (err) {
+        setChatError(err?.message || (lang === "EN" ? "Invalid image file." : "Gagal memproses gambar."));
+      }
+    },
+    [lang]
+  );
+
+  const handleSendChatMessage = useCallback(
+    async (e) => {
+      if (e?.preventDefault) e.preventDefault();
+      if (!chatOrder?.id_pesanan || chatSending) return;
+      const trimmed = chatText.trim();
+      if (!trimmed && !chatImage) {
+        setChatError(
+          lang === "EN"
+            ? "Write a message or attach an image first."
+            : "Tulis pesan teks atau pilih gambar terlebih dahulu."
+        );
+        return;
+      }
+      setChatSending(true);
+      setChatError("");
+      try {
+        const res = await api.sendOrderMessage(chatOrder.id_pesanan, {
+          teks: trimmed,
+          gambar: chatImage,
+        });
+        const created = res?.data;
+        if (created) {
+          setChatMessages((prev) => {
+            const next = [...prev, created];
+            markOrderChatSeen(chatOrder.id_pesanan, next.length);
+            return next;
+          });
+        }
+        setChatText("");
+        setChatImage("");
+        if (chatFileInputRef.current) chatFileInputRef.current.value = "";
+      } catch (err) {
+        setChatError(err?.message || (lang === "EN" ? "Failed to send message." : "Gagal mengirim pesan."));
+      } finally {
+        setChatSending(false);
+      }
+    },
+    [chatOrder?.id_pesanan, chatSending, chatText, chatImage, lang, markOrderChatSeen]
+  );
+
+  useEffect(() => {
+    if (!chatOrder?.id_pesanan || !currentUser) return;
+    let active = true;
+    const oid = chatOrder.id_pesanan;
+    const pollChat = async () => {
+      if (isThemeAnimating()) return;
+      try {
+        const res = await api.getOrderMessages(oid);
+        if (!active || !res?.data) return;
+        const msgs = Array.isArray(res.data.messages) ? res.data.messages : [];
+        setChatMessages((prev) => {
+          const prevLast = prev[prev.length - 1]?.id_pesan || 0;
+          const nextLast = msgs[msgs.length - 1]?.id_pesan || 0;
+          if (prev.length === msgs.length && prevLast === nextLast) return prev;
+          return msgs;
+        });
+        markOrderChatSeen(oid, msgs.length);
+      } catch {
+        // Keep current thread during transient errors
+      }
+    };
+    const timer = setInterval(pollChat, 2500);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [chatOrder?.id_pesanan, currentUser, markOrderChatSeen]);
+
+  useEffect(() => {
+    if (chatListRef.current) {
+      chatListRef.current.scrollTop = chatListRef.current.scrollHeight;
+    }
+  }, [chatMessages.length, chatOrder?.id_pesanan]);
 
   const toggleFavorite = useCallback(
     (idMenu) => {
@@ -1478,6 +1683,10 @@ export default function App() {
             status: statusMap[o.status_pesanan] || "Preparing",
             status_pesanan: o.status_pesanan,
             raw_status: o.status_pesanan,
+            is_paid: Boolean(o.is_paid || ["Sedang Diproses", "Diproses", "Siap Diambil", "Selesai"].includes(o.status_pesanan)),
+            chat_count: Number(o.chat_count || 0),
+            last_chat: o.last_chat || null,
+            payment: o.payment || null,
             details: detailsList,
           };
         });
@@ -1586,6 +1795,10 @@ export default function App() {
               catatan: o.catatan || "",
               promo_code: o.promo_code || null,
               status_pesanan: o.status_pesanan,
+              is_paid: Boolean(o.is_paid || ["Sedang Diproses", "Diproses", "Siap Diambil", "Selesai"].includes(o.status_pesanan)),
+              chat_count: Number(o.chat_count || 0),
+              last_chat: o.last_chat || null,
+              payment: o.payment || null,
               status:
                 o.status_pesanan === "Menunggu Pembayaran"
                   ? "Awaiting payment"
@@ -1789,6 +2002,12 @@ export default function App() {
     setVendorReviews([]);
     setTenantSearchQuery("");
     setOrdersHistory([]);
+    setChatOrder(null);
+    setChatMessages([]);
+    setChatText("");
+    setChatImage("");
+    setChatPreviewImage("");
+    setChatError("");
     setAuthForm({
       username: "",
       nama: "",
@@ -2295,6 +2514,58 @@ export default function App() {
     } catch (err) {
       setReviewError(err?.message || "Gagal menyimpan ulasan.");
     }
+  };
+
+  const renderOrderChatButton = (orderObj, labelText = "Chat") => {
+    if (!isOrderChatEligible(orderObj)) return null;
+    const unread = getOrderUnreadChatCount(orderObj);
+    return (
+      <button
+        type="button"
+        data-testid={`order-chat-btn-${orderObj.id_pesanan || orderObj.id}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleOpenOrderChat(orderObj);
+        }}
+        className="btn-interactive"
+        style={{
+          padding: "7px 12px",
+          borderRadius: "var(--radius-pill)",
+          border: unread > 0 ? "1px solid var(--orange)" : "1px solid var(--border-input)",
+          backgroundColor: unread > 0 ? "var(--orange-soft)" : "var(--bg-card)",
+          color: "var(--maroon)",
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
+          whiteSpace: "nowrap",
+        }}
+      >
+        <MessageCircle size={13} color={unread > 0 ? "var(--orange)" : "var(--maroon)"} />
+        <span>{labelText}</span>
+        {unread > 0 && (
+          <span
+            style={{
+              minWidth: 17,
+              height: 17,
+              padding: "0 5px",
+              borderRadius: 999,
+              backgroundColor: "var(--orange)",
+              color: "#FFFFFF",
+              fontSize: 10,
+              fontWeight: 800,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {unread}
+          </span>
+        )}
+      </button>
+    );
   };
 
   const openStoreSettingsModal = () => {
@@ -3379,6 +3650,8 @@ export default function App() {
                                       Complete pickup
                                     </button>
                                   )}
+
+                                  {renderOrderChatButton(ord, "Chat")}
 
                                   <button
                                     type="button"
@@ -4479,6 +4752,8 @@ export default function App() {
                                   </button>
                                 )}
 
+                                {renderOrderChatButton(ord, lang === "EN" ? "Chat Buyer" : "Chat Pembeli")}
+
                                 <button
                                   type="button"
                                   onClick={() => handleOpenCancelModal(ord)}
@@ -4699,6 +4974,7 @@ export default function App() {
                                 >
                                   <span>{statusLabels[order.status] || order.status}</span>
                                 </span>
+                                {renderOrderChatButton(order, "Chat")}
                               </div>
                             </div>
                           );
@@ -6901,6 +7177,54 @@ export default function App() {
                               <span>I'm at the counter</span>
                               <ArrowRight size={16} />
                             </button>
+                            {isOrderChatEligible(activeOrder) && (
+                              <button
+                                type="button"
+                                data-testid="active-order-chat-btn"
+                                onClick={() => handleOpenOrderChat(activeOrder)}
+                                className="btn-interactive"
+                                style={{
+                                  width: "100%",
+                                  marginTop: 10,
+                                  padding: "13px 16px",
+                                  borderRadius: "var(--radius-pill)",
+                                  border: "1px solid var(--orange-border)",
+                                  backgroundColor: "var(--bg-cream)",
+                                  color: "var(--maroon)",
+                                  fontSize: 14,
+                                  fontWeight: 800,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: 8,
+                                }}
+                              >
+                                <MessageCircle size={17} color="var(--orange)" />
+                                <span>
+                                  {lang === "EN" ? "Chat with Tenant" : "Chat dengan Tenant"}
+                                </span>
+                                {getOrderUnreadChatCount(activeOrder) > 0 && (
+                                  <span
+                                    style={{
+                                      minWidth: 20,
+                                      height: 20,
+                                      padding: "0 6px",
+                                      borderRadius: 999,
+                                      backgroundColor: "var(--orange)",
+                                      color: "#FFFFFF",
+                                      fontSize: 11,
+                                      fontWeight: 800,
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                    }}
+                                  >
+                                    {getOrderUnreadChatCount(activeOrder)}
+                                  </span>
+                                )}
+                              </button>
+                            )}
                             {activeOrder?.id_pesanan &&
                               activeOrder?.status_pesanan !== "Siap Diambil" &&
                               activeOrder?.status_pesanan !== "Selesai" && (
@@ -7012,6 +7336,34 @@ export default function App() {
                               <Check size={18} strokeWidth={2.8} />
                               <span>Finish order</span>
                             </button>
+                            {isOrderChatEligible(activeOrder) && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenOrderChat(activeOrder)}
+                                className="btn-interactive"
+                                style={{
+                                  width: "100%",
+                                  marginTop: 10,
+                                  padding: "12px 16px",
+                                  borderRadius: "var(--radius-pill)",
+                                  border: "1px solid var(--border-input)",
+                                  backgroundColor: "var(--bg-card)",
+                                  color: "var(--maroon)",
+                                  fontSize: 14,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: 8,
+                                }}
+                              >
+                                <MessageCircle size={16} color="var(--orange)" />
+                                <span>
+                                  {lang === "EN" ? "Chat with Tenant" : "Chat dengan Tenant"}
+                                </span>
+                              </button>
+                            )}
                           </div>
                         )}
                       </>
@@ -7242,6 +7594,8 @@ export default function App() {
                                   <span>●</span>
                                   <span>{statusLabelMap[order.status] || order.status}</span>
                                 </span>
+
+                                {renderOrderChatButton(order, "Chat")}
 
                                 {isInProgress ? (
                                   <>
@@ -9007,6 +9361,13 @@ export default function App() {
                               );
                               await api.markNotificationRead(n.id_notifikasi).catch(() => { });
                             }
+                            if (n.id_pesanan && /chat/i.test(String(n.pesan || ""))) {
+                              const linkedOrder =
+                                ordersHistory.find((o) => Number(o.id_pesanan) === Number(n.id_pesanan)) ||
+                                { id_pesanan: n.id_pesanan, nomor_antrean: `#${n.id_pesanan}`, is_paid: true };
+                              setActiveDrawerModal(null);
+                              handleOpenOrderChat(linkedOrder);
+                            }
                           }}
                           style={{
                             padding: "12px 14px",
@@ -10756,6 +11117,463 @@ export default function App() {
               </button>
             </form>
           </div>
+        </div>
+      )}
+
+      {chatOrder && (
+        <div
+          data-testid="order-chat-modal"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1400,
+            backgroundColor: "var(--backdrop)",
+            backdropFilter: "blur(5px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={() => {
+            setChatOrder(null);
+            setChatError("");
+            setChatImage("");
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="animate-modal-zoom"
+            style={{
+              width: "100%",
+              maxWidth: 480,
+              height: "min(84vh, 640px)",
+              backgroundColor: "var(--bg-card)",
+              borderRadius: "var(--radius-xl)",
+              border: "1px solid var(--border-light)",
+              boxShadow: "var(--shadow-float)",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "16px 20px",
+                borderBottom: "1px solid var(--border-light)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                flexShrink: 0,
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                  <MessageCircle size={17} color="var(--orange)" />
+                  <span
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 900,
+                      color: "var(--maroon)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {portalMode === "tenant" ? chatOrder.customer_name : chatOrder.tenant_name}
+                  </span>
+                  <span
+                    className="tabular"
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      padding: "2px 8px",
+                      borderRadius: "var(--radius-pill)",
+                      backgroundColor: "var(--bg-cream)",
+                      color: "var(--maroon)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {chatOrder.nomor_antrean}
+                  </span>
+                </div>
+                {chatOrder.items_summary && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--text-muted)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {chatOrder.items_summary}
+                    {chatOrder.booth ? ` · ${chatOrder.booth}` : ""}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                aria-label="Close chat"
+                onClick={() => {
+                  setChatOrder(null);
+                  setChatError("");
+                  setChatImage("");
+                }}
+                style={{
+                  border: "none",
+                  background: "var(--bg-cream)",
+                  borderRadius: "50%",
+                  width: 32,
+                  height: 32,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <X size={16} color="var(--maroon)" />
+              </button>
+            </div>
+
+            <div
+              ref={chatListRef}
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                padding: "16px 18px",
+                backgroundColor: "var(--bg-subtle)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              {chatLoading && chatMessages.length === 0 ? (
+                <div style={{ margin: "auto", fontSize: 13, color: "var(--text-muted)", fontWeight: 600 }}>
+                  {lang === "EN" ? "Loading messages..." : "Memuat percakapan..."}
+                </div>
+              ) : chatMessages.length === 0 ? (
+                <div
+                  style={{
+                    margin: "auto",
+                    textAlign: "center",
+                    padding: "20px 16px",
+                    color: "var(--text-muted)",
+                    maxWidth: 300,
+                  }}
+                >
+                  <MessageCircle size={32} color="var(--orange)" style={{ margin: "0 auto 10px", opacity: 0.85 }} />
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>
+                    {lang === "EN" ? "Start order chat" : "Mulai chat pesanan"}
+                  </div>
+                  <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+                    {lang === "EN"
+                      ? "Send text messages or photos about your paid order directly."
+                      : "Kirim pesan teks atau gambar terkait pesanan yang sudah dibayar."}
+                  </div>
+                </div>
+              ) : (
+                chatMessages.map((msg) => {
+                  const isMine = Number(msg.id_pengirim) === Number(currentUser?.id_user);
+                  const timeShort = msg.waktu ? String(msg.waktu).slice(11, 16) : "";
+                  return (
+                    <div
+                      key={msg.id_pesan}
+                      style={{
+                        alignSelf: isMine ? "flex-end" : "flex-start",
+                        maxWidth: "82%",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: isMine ? "flex-end" : "flex-start",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "var(--text-muted)",
+                          marginBottom: 3,
+                          padding: "0 4px",
+                        }}
+                      >
+                        {isMine ? (lang === "EN" ? "You" : "Anda") : msg.nama_pengirim}
+                      </div>
+                      <div
+                        style={{
+                          padding: msg.gambar && !msg.teks ? "6px" : "10px 13px",
+                          borderRadius: isMine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                          backgroundColor: isMine ? "var(--orange)" : "var(--bg-card)",
+                          color: isMine ? "#2B1615" : "var(--maroon)",
+                          border: isMine ? "none" : "1px solid var(--border-light)",
+                          boxShadow: "var(--shadow-sm)",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {msg.gambar && (
+                          <img
+                            src={msg.gambar}
+                            alt={lang === "EN" ? "Chat attachment" : "Lampiran gambar"}
+                            onClick={() => setChatPreviewImage(msg.gambar)}
+                            style={{
+                              display: "block",
+                              maxWidth: 220,
+                              maxHeight: 220,
+                              width: "100%",
+                              borderRadius: 10,
+                              objectFit: "cover",
+                              cursor: "pointer",
+                              marginBottom: msg.teks ? 8 : 0,
+                            }}
+                          />
+                        )}
+                        {msg.teks && (
+                          <div style={{ fontSize: 13.5, fontWeight: 500, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
+                            {msg.teks}
+                          </div>
+                        )}
+                      </div>
+                      {timeShort && (
+                        <div className="tabular" style={{ fontSize: 10, color: "var(--text-light)", marginTop: 3, padding: "0 4px" }}>
+                          {timeShort}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {chatError && (
+              <div
+                role="alert"
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "var(--alert-error-bg)",
+                  color: "var(--alert-error-text)",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  borderTop: "1px solid var(--alert-error-border)",
+                }}
+              >
+                {chatError}
+              </div>
+            )}
+
+            {chatImage && (
+              <div
+                style={{
+                  padding: "10px 16px 0",
+                  backgroundColor: "var(--bg-card)",
+                  borderTop: "1px solid var(--border-light)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <div style={{ position: "relative", width: 58, height: 58 }}>
+                  <img
+                    src={chatImage}
+                    alt="Preview"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: 10,
+                      objectFit: "cover",
+                      border: "1px solid var(--border-light)",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Remove image"
+                    onClick={() => {
+                      setChatImage("");
+                      if (chatFileInputRef.current) chatFileInputRef.current.value = "";
+                    }}
+                    style={{
+                      position: "absolute",
+                      top: -6,
+                      right: -6,
+                      width: 20,
+                      height: 20,
+                      borderRadius: "50%",
+                      border: "none",
+                      backgroundColor: "#C84336",
+                      color: "#FFFFFF",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+                <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>
+                  {lang === "EN" ? "Image ready to send" : "Gambar siap dikirim"}
+                </span>
+              </div>
+            )}
+
+            <form
+              onSubmit={handleSendChatMessage}
+              style={{
+                padding: "12px 14px",
+                borderTop: chatImage ? "none" : "1px solid var(--border-light)",
+                backgroundColor: "var(--bg-card)",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexShrink: 0,
+              }}
+            >
+              <input
+                ref={chatFileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                data-testid="chat-image-input"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleSelectChatImage(f);
+                }}
+              />
+              <button
+                type="button"
+                aria-label={lang === "EN" ? "Attach image" : "Kirim gambar"}
+                title={lang === "EN" ? "Attach image" : "Pilih gambar"}
+                onClick={() => chatFileInputRef.current?.click()}
+                className="btn-interactive"
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: "50%",
+                  border: "1px solid var(--border-input)",
+                  backgroundColor: "var(--bg-subtle)",
+                  color: "var(--maroon)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                <ImageIcon size={17} />
+              </button>
+              <input
+                type="text"
+                data-testid="chat-text-input"
+                value={chatText}
+                onChange={(e) => setChatText(e.target.value)}
+                onPaste={(e) => {
+                  const items = e.clipboardData?.items;
+                  if (!items) return;
+                  for (let i = 0; i < items.length; i += 1) {
+                    if (items[i].type?.startsWith("image/")) {
+                      const f = items[i].getAsFile();
+                      if (f) {
+                        e.preventDefault();
+                        handleSelectChatImage(f);
+                        break;
+                      }
+                    }
+                  }
+                }}
+                maxLength={1000}
+                placeholder={
+                  lang === "EN"
+                    ? "Type a message or paste an image..."
+                    : "Tulis pesan atau tempel gambar..."
+                }
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  padding: "10px 14px",
+                  borderRadius: "var(--radius-pill)",
+                  border: "1px solid var(--border-input)",
+                  backgroundColor: "var(--bg-subtle)",
+                  color: "var(--maroon)",
+                  fontSize: 13.5,
+                  outline: "none",
+                }}
+              />
+              <button
+                type="submit"
+                data-testid="chat-send-btn"
+                disabled={chatSending || (!chatText.trim() && !chatImage)}
+                aria-label={lang === "EN" ? "Send message" : "Kirim pesan"}
+                className="btn-interactive"
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: "50%",
+                  border: "none",
+                  backgroundColor:
+                    chatSending || (!chatText.trim() && !chatImage)
+                      ? "var(--dot-inactive)"
+                      : "var(--orange)",
+                  color: "#FFFFFF",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: chatSending || (!chatText.trim() && !chatImage) ? "not-allowed" : "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                <Send size={16} />
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {chatPreviewImage && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1500,
+            backgroundColor: "rgba(0, 0, 0, 0.84)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+          onClick={() => setChatPreviewImage("")}
+        >
+          <button
+            type="button"
+            aria-label="Close preview"
+            onClick={() => setChatPreviewImage("")}
+            style={{
+              position: "absolute",
+              top: 18,
+              right: 18,
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              border: "none",
+              backgroundColor: "rgba(255,255,255,0.2)",
+              color: "#FFFFFF",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+            }}
+          >
+            <X size={20} />
+          </button>
+          <img
+            src={chatPreviewImage}
+            alt="Zoomed attachment"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: "92vw",
+              maxHeight: "86vh",
+              borderRadius: 12,
+              objectFit: "contain",
+            }}
+          />
         </div>
       )}
 

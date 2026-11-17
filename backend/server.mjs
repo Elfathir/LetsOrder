@@ -259,6 +259,7 @@ const INITIAL_DB = {
   reviews: [],
   promos: [],
   notifications: [],
+  messages: [],
   tokens: {},
   passwordResets: {},
 };
@@ -313,6 +314,9 @@ function purgeDummySeedRecords(parsed) {
     parsed.notifications = (parsed.notifications || []).filter(
       (n) => !removedOrderIds.has(Number(n.id_pesanan)) && !removedUserIds.has(Number(n.id_user))
     );
+    parsed.messages = (parsed.messages || []).filter(
+      (m) => !removedOrderIds.has(Number(m.id_pesanan)) && !removedUserIds.has(Number(m.id_pengirim))
+    );
     parsed.users = (parsed.users || []).filter((u) => !removedUserIds.has(Number(u.id_user)));
     if (parsed.carts && typeof parsed.carts === "object") {
       for (const uid of removedUserIds) delete parsed.carts[String(uid)];
@@ -344,6 +348,9 @@ function loadDb() {
         }
         if (!Array.isArray(parsed.promos)) {
           parsed.promos = [];
+        }
+        if (!Array.isArray(parsed.messages)) {
+          parsed.messages = [];
         }
         let migrated = purgeDummySeedRecords(parsed);
         for (const u of parsed.users) {
@@ -479,6 +486,22 @@ function enrichMenu(menu) {
   };
 }
 
+function isOrderPaid(order, payment = null) {
+  if (!order) return false;
+  const latestPay =
+    payment ||
+    (db.payments || [])
+      .filter((p) => Number(p.id_pesanan) === Number(order.id_pesanan))
+      .sort((a, b) => Number(b.id_pembayaran) - Number(a.id_pembayaran))[0] ||
+    null;
+  return Boolean(
+    latestPay?.status_verifikasi === "Terverifikasi" ||
+      ["Sedang Diproses", "Diproses", "Siap Diambil", "Selesai"].includes(
+        order.status_pesanan
+      )
+  );
+}
+
 function enrichOrder(order) {
   const rawTenant = db.tenants.find((t) => t.id_tenant === order.id_tenant) || null;
   const tenant = rawTenant ? enrichTenant(rawTenant) : null;
@@ -490,6 +513,10 @@ function enrichOrder(order) {
   const orderReviews = (db.reviews || []).filter(
     (r) => Number(r.id_pesanan) === Number(order.id_pesanan)
   );
+  const orderMessages = (db.messages || [])
+    .filter((m) => Number(m.id_pesanan) === Number(order.id_pesanan))
+    .sort((a, b) => Number(a.id_pesan) - Number(b.id_pesan));
+  const lastChat = orderMessages[orderMessages.length - 1] || null;
   const details = (order.details || []).map((d) => {
     const m = db.menus.find((x) => x.id_menu === d.id_menu);
     return {
@@ -501,6 +528,19 @@ function enrichOrder(order) {
   });
   return {
     ...order,
+    is_paid: isOrderPaid(order, payment),
+    chat_count: orderMessages.length,
+    last_chat: lastChat
+      ? {
+          id_pesan: lastChat.id_pesan,
+          id_pengirim: lastChat.id_pengirim,
+          peran_pengirim: lastChat.peran_pengirim,
+          nama_pengirim: lastChat.nama_pengirim,
+          teks: lastChat.teks || "",
+          has_image: Boolean(lastChat.gambar),
+          waktu: lastChat.waktu,
+        }
+      : null,
     tenant,
     payment,
     reviews: orderReviews,
@@ -1755,6 +1795,142 @@ async function handleApiRequest(req, res) {
     return sendJson(req, res, 200, {
       success: true,
       data: ord.status_history || [{ status: ord.status_pesanan, waktu: ord.waktu_pesan }],
+    });
+  }
+
+  const orderMessagesMatch = pathname.match(/^\/(?:vendor\/)?orders\/(\d+)\/messages$/);
+  if (orderMessagesMatch && (method === "GET" || method === "POST")) {
+    const user = requireAuth(req, res);
+    if (!user) return;
+    const orderId = Number(orderMessagesMatch[1]);
+    const ord = db.orders.find((o) => Number(o.id_pesanan) === orderId);
+    if (!ord) {
+      return sendJson(req, res, 404, { success: false, message: "Pesanan tidak ditemukan." });
+    }
+    const vendorTenant = db.tenants.find((t) => Number(t.id_user) === Number(user.id_user));
+    const isAdmin = String(user.peran).toLowerCase() === "administrator";
+    const isCustomerOwner = Number(ord.id_user) === Number(user.id_user);
+    const isVendorOwner = Boolean(vendorTenant && Number(ord.id_tenant) === Number(vendorTenant.id_tenant));
+    if (!isAdmin && !isCustomerOwner && !isVendorOwner) {
+      logSecurityEvent("access_denied_order_chat", {
+        user_id: user.id_user,
+        id_pesanan: orderId,
+        ip: getClientIp(req),
+      });
+      return sendJson(req, res, 403, {
+        success: false,
+        message: "Anda tidak memiliki hak akses ke chat pesanan ini.",
+      });
+    }
+    if (!isOrderPaid(ord)) {
+      return sendJson(req, res, 422, {
+        success: false,
+        message: "Fitur chat hanya tersedia setelah pesanan dibayar dan terverifikasi.",
+      });
+    }
+
+    const orderTenant = db.tenants.find((t) => Number(t.id_tenant) === Number(ord.id_tenant)) || null;
+    const orderCustomer = db.users.find((u) => Number(u.id_user) === Number(ord.id_user)) || null;
+
+    if (method === "GET") {
+      const messages = (db.messages || [])
+        .filter((m) => Number(m.id_pesanan) === orderId)
+        .sort((a, b) => Number(a.id_pesan) - Number(b.id_pesan));
+      return sendJson(req, res, 200, {
+        success: true,
+        data: {
+          order: {
+            id_pesanan: ord.id_pesanan,
+            nomor_antrean: ord.nomor_antrean,
+            status_pesanan: ord.status_pesanan,
+            is_paid: true,
+            tenant_name: orderTenant?.nama_tenant || "Kantin",
+            booth: orderTenant?.booth || "",
+            customer_name: orderCustomer?.nama || orderCustomer?.username || "Pembeli",
+          },
+          messages,
+        },
+      });
+    }
+
+    const body = await parseBody(req);
+    if (body.__tooLarge) {
+      return sendJson(req, res, 413, {
+        success: false,
+        message: "Ukuran gambar/payload terlalu besar (maks. 5 MB).",
+      });
+    }
+    const teks = String(body.teks ?? body.message ?? "").trim();
+    const gambar = body.gambar ? String(body.gambar).trim() : "";
+    if (!teks && !gambar) {
+      return sendJson(req, res, 422, {
+        success: false,
+        message: "Pesan teks atau gambar wajib diisi.",
+      });
+    }
+    if (teks.length > 1000) {
+      return sendJson(req, res, 422, {
+        success: false,
+        message: "Pesan teks maksimal 1000 karakter.",
+      });
+    }
+    if (gambar && !isSafeImageInput(gambar)) {
+      return sendJson(req, res, 422, {
+        success: false,
+        message: "Format gambar tidak diizinkan (gunakan JPG, PNG, WEBP, atau GIF).",
+      });
+    }
+
+    const actingAsVendor = isVendorOwner && (String(user.peran).toLowerCase() === "vendor" || !isCustomerOwner);
+    const senderRole = actingAsVendor
+      ? "Vendor"
+      : isAdmin && !isCustomerOwner
+        ? "Administrator"
+        : "Customer";
+    const senderName = actingAsVendor
+      ? orderTenant?.nama_tenant || user.nama || user.username || "Tenant"
+      : user.nama || user.username || "Pembeli";
+
+    const nextMsgId =
+      Math.max(0, ...(db.messages || []).map((m) => Number(m.id_pesan) || 0)) + 1;
+    const msgRecord = {
+      id_pesan: nextMsgId,
+      id_pesanan: orderId,
+      id_pengirim: user.id_user,
+      peran_pengirim: senderRole,
+      nama_pengirim: senderName,
+      teks,
+      gambar,
+      waktu: formatDbTimestamp(),
+    };
+    db.messages.push(msgRecord);
+
+    const preview = teks
+      ? teks.length > 60
+        ? `${teks.slice(0, 60)}...`
+        : teks
+      : "[Mengirim gambar]";
+    if (actingAsVendor) {
+      if (orderCustomer?.id_user && orderCustomer.id_user !== user.id_user) {
+        pushNotification(
+          orderCustomer.id_user,
+          orderId,
+          `Chat baru dari ${senderName} (${ord.nomor_antrean}): ${preview}`
+        );
+      }
+    } else if (orderTenant?.id_user && orderTenant.id_user !== user.id_user) {
+      pushNotification(
+        orderTenant.id_user,
+        orderId,
+        `Chat baru dari ${senderName} (${ord.nomor_antrean}): ${preview}`
+      );
+    }
+
+    saveDb(db);
+    return sendJson(req, res, 201, {
+      success: true,
+      message: "Pesan chat berhasil dikirim.",
+      data: msgRecord,
     });
   }
 
