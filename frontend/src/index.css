@@ -300,6 +300,19 @@ html.theme-wave-active *::after {
   transition: none !important;
 }
 
+/* Cloned UI inside the expanding circle must not replay entrance animations (fade/zoom) */
+[data-theme-wave-host] *,
+[data-theme-wave-host] *::before,
+[data-theme-wave-host] *::after {
+  animation: none !important;
+}
+
+[data-theme-scope="light"] input,
+[data-theme-scope="light"] textarea,
+[data-theme-scope="light"] select {
+  color-scheme: light;
+}
+
 .theme-toggle-btn:hover {
   border-color: var(--border-input) !important;
   background-color: var(--bg-subtle) !important;

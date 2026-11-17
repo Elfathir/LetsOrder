@@ -398,8 +398,6 @@ function toggleAppTheme(event) {
   }
 
   const WAVE_DURATION = 420;
-  const scrollX = typeof window !== "undefined" ? window.scrollX || 0 : 0;
-  const scrollY = typeof window !== "undefined" ? window.scrollY || 0 : 0;
 
   document.documentElement.classList.add("theme-wave-active");
   rootEl.setAttribute("data-theme-scope", prevTheme);
@@ -408,16 +406,49 @@ function toggleAppTheme(event) {
     commitAppTheme(nextTheme, true);
   });
 
+  // Use the real layout box of #root (excludes scrollbar) so the clone lines up pixel-perfectly
+  const rootRect = rootEl.getBoundingClientRect();
+  const viewW = document.documentElement.clientWidth || vw;
+  const viewH = document.documentElement.clientHeight || vh;
+
   const clone = rootEl.cloneNode(true);
   clone.removeAttribute("id");
   clone.setAttribute("data-theme-scope", nextTheme);
   clone.setAttribute("aria-hidden", "true");
-  clone.style.cssText += `;position:absolute;left:${-scrollX}px;top:${-scrollY}px;width:${vw}px;min-height:${vh}px;pointer-events:none;margin:0;`;
+  clone.style.cssText += `;position:absolute;left:${rootRect.left}px;top:${rootRect.top}px;width:${rootRect.width}px;min-height:${Math.max(rootRect.height, viewH)}px;pointer-events:none;margin:0;`;
+
+  // Sticky header in the clone would scroll away (clone is offset by -scrollY); pin it to the viewport top instead
+  const origHeader = rootEl.querySelector("header");
+  const cloneHeader = clone.querySelector("header");
+  if (origHeader && cloneHeader) {
+    const hRect = origHeader.getBoundingClientRect();
+    const cs = window.getComputedStyle(origHeader);
+    if (cs.position === "sticky" || cs.position === "fixed") {
+      cloneHeader.style.position = "absolute";
+      cloneHeader.style.top = `${hRect.top - rootRect.top}px`;
+      cloneHeader.style.left = `${hRect.left - rootRect.left}px`;
+      cloneHeader.style.width = `${hRect.width}px`;
+    }
+  }
 
   const origFields = rootEl.querySelectorAll("input, textarea, select");
   const cloneFields = clone.querySelectorAll("input, textarea, select");
   for (let i = 0; i < origFields.length && i < cloneFields.length; i += 1) {
     cloneFields[i].value = origFields[i].value;
+  }
+  const cloneImgs = clone.querySelectorAll("img");
+  for (let i = 0; i < cloneImgs.length; i += 1) {
+    cloneImgs[i].setAttribute("decoding", "sync");
+    cloneImgs[i].setAttribute("loading", "eager");
+  }
+  // Preserve scroll positions of inner scrollable areas (e.g. horizontal lists)
+  const origAll = rootEl.querySelectorAll("*");
+  const cloneAll = clone.querySelectorAll("*");
+  const scrollFix = [];
+  for (let i = 0; i < origAll.length && i < cloneAll.length; i += 1) {
+    if (origAll[i].scrollTop || origAll[i].scrollLeft) {
+      scrollFix.push([cloneAll[i], origAll[i].scrollLeft, origAll[i].scrollTop]);
+    }
   }
 
   const host = document.createElement("div");
@@ -456,20 +487,25 @@ function toggleAppTheme(event) {
     "position:absolute",
     `left:${baseRadius - x}px`,
     `top:${baseRadius - y}px`,
-    `width:${vw}px`,
-    `height:${vh}px`,
+    `width:${viewW}px`,
+    `height:${viewH}px`,
     "overflow:hidden",
     "pointer-events:none",
     `transform-origin:${x}px ${y}px`,
-    `transform:translateZ(0) scale(${Number((1 / startScale).toFixed(4))})`,
+    `transform:translateZ(0) scale(${Number((1 / startScale).toFixed(5))})`,
   ].join(";");
 
   inner.appendChild(clone);
   circle.appendChild(inner);
   host.appendChild(circle);
   document.body.appendChild(host);
+  for (let i = 0; i < scrollFix.length; i += 1) {
+    const [el, sl, st] = scrollFix[i];
+    el.scrollLeft = sl;
+    el.scrollTop = st;
+  }
 
-  const STEPS = 64;
+  const STEPS = 120;
   const scaleRatio = endScale / startScale;
   const scaleSpan = endScale - startScale;
   const innerFrames = [];
@@ -490,11 +526,19 @@ function toggleAppTheme(event) {
     (typeof performance !== "undefined" ? performance.now() : Date.now()) + WAVE_DURATION + 40;
 
   const cleanup = () => {
+    const isCurrent = cancelActiveThemeWave === abortCurrent;
+    // 1. Switch the real UI to the new theme while transitions are still disabled,
+    //    and force a style flush so buttons with CSS transitions do NOT animate from old colors (white flash).
     rootEl.removeAttribute("data-theme-scope");
+    void rootEl.offsetWidth;
+    if (typeof window.getComputedStyle === "function") {
+      window.getComputedStyle(rootEl).color;
+    }
     if (host.parentNode) host.parentNode.removeChild(host);
-    if (cancelActiveThemeWave === abortCurrent) {
+    if (isCurrent) {
       cancelActiveThemeWave = null;
       themeAnimatingUntil = 0;
+      // 2. Re-enable transitions only after the new colors are committed.
       document.documentElement.classList.remove("theme-wave-active");
     }
   };
