@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   --font-main: "Outfit", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
 
@@ -11,12 +12,35 @@
   --bg-banner-alt: #EFE7DE;
   --bg-subtle: #FAF6F1;
   --bg-footer-drawer: #FBF4EE;
+  --bg-auth-page: #FAF6F2;
+  --bg-surface-muted: #F3ECE8;
+  --bg-inactive: #F9FAFB;
+  --bg-header-glass: rgba(255, 255, 255, 0.96);
+  --bg-overlay-glass: rgba(255, 255, 255, 0.92);
+  --bg-hero-fade-start: rgba(255, 255, 255, 0.96);
+  --bg-hero-fade-mid: rgba(255, 255, 255, 0.80);
+  --bg-hero-fade-end: rgba(255, 255, 255, 0.18);
 
   --maroon: #522A28;
   --maroon-dark: #3E1E1C;
   --maroon-light: #6E4543;
   --text-muted: #8A7875;
   --text-light: #B2A4A2;
+
+  --btn-solid-bg: #522A28;
+  --btn-solid-text: #FFFFFF;
+  --on-orange-text: #522A28;
+  --brand-cocoa: #522A28;
+  --dot-inactive: #D9CECA;
+  --switch-track-off: #D8D2CE;
+
+  --alert-error-bg: #FEF2F2;
+  --alert-error-border: #FECACA;
+  --alert-error-text: #991B1B;
+  --alert-success-bg: #ECFDF5;
+  --alert-success-border: #A7F3D0;
+  --alert-success-text: #065F46;
+  --backdrop: rgba(82, 42, 40, 0.38);
 
   --orange: #F8A34B;
   --orange-hover: #E79339;
@@ -185,6 +209,114 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
   animation: laserScan 2.4s ease-in-out infinite;
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-page: #171211;
+  --bg-card: #211A18;
+  --bg-cream: #2E231F;
+  --bg-warm-img: #2A201C;
+  --bg-banner: #271E1B;
+  --bg-banner-alt: #2F2420;
+  --bg-subtle: #1C1614;
+  --bg-footer-drawer: #1C1614;
+  --bg-auth-page: #171211;
+  --bg-surface-muted: #2C221F;
+  --bg-inactive: #241D1B;
+  --bg-header-glass: rgba(33, 26, 24, 0.96);
+  --bg-overlay-glass: rgba(33, 26, 24, 0.92);
+  --bg-hero-fade-start: rgba(39, 30, 27, 0.96);
+  --bg-hero-fade-mid: rgba(39, 30, 27, 0.84);
+  --bg-hero-fade-end: rgba(39, 30, 27, 0.25);
+
+  --maroon: #F2E6DF;
+  --maroon-dark: #FFF7F2;
+  --maroon-light: #DECBC2;
+  --text-muted: #B6A39D;
+  --text-light: #8B7670;
+
+  --orange: #FAA652;
+  --orange-hover: #F59638;
+  --orange-active: #E8862B;
+  --orange-soft: rgba(250, 166, 82, 0.16);
+  --orange-border: rgba(250, 166, 82, 0.38);
+  --orange-tag: #F5B26B;
+
+  --btn-solid-bg: #FAA652;
+  --btn-solid-text: #2B1615;
+  --on-orange-text: #2B1615;
+  --brand-cocoa: #3E1E1C;
+  --dot-inactive: #4B3C37;
+  --switch-track-off: #4B3C37;
+
+  --border-light: #382C28;
+  --border-input: #473833;
+
+  --status-preparing-bg: #3D2818;
+  --status-preparing-text: #FCD34D;
+  --status-ready-bg: #1F5B3A;
+  --status-ready-text: #D1FAE5;
+  --status-completed-bg: #3D2B28;
+  --status-completed-text: #F2E6DF;
+  --status-cancelled-bg: #2A2220;
+  --status-cancelled-text: #B6A39D;
+
+  --alert-error-bg: rgba(220, 38, 38, 0.16);
+  --alert-error-border: rgba(248, 113, 113, 0.35);
+  --alert-error-text: #FCA5A5;
+  --alert-success-bg: rgba(22, 163, 74, 0.16);
+  --alert-success-border: rgba(74, 222, 128, 0.35);
+  --alert-success-text: #86EFAC;
+  --backdrop: rgba(8, 5, 5, 0.68);
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.28);
+  --shadow-card: 0 6px 20px rgba(0, 0, 0, 0.38), 0 1px 3px rgba(0, 0, 0, 0.24);
+  --shadow-float: 0 16px 36px rgba(0, 0, 0, 0.48), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+:root[data-theme="dark"] ::placeholder {
+  color: var(--text-light);
+}
+
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select {
+  color: var(--maroon);
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"] option {
+  background-color: var(--bg-card);
+  color: var(--maroon);
+}
+
+/* Circular theme switch transition without any shadow or glow */
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition: none !important;
+}
+
+::view-transition,
+::view-transition-group(root),
+::view-transition-image-pair(root),
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+  box-shadow: none !important;
+  filter: none !important;
+  outline: none !important;
+  border: none !important;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 2;
+}
+
 /* Interactive Card & Hover Zoom Effects */
 .card-hover {
   transition: transform 0.28s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.28s ease, border-color 0.25s ease;
@@ -192,8 +324,8 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
 
 .card-hover:hover {
   transform: translateY(-4px);
-  box-shadow: 0 12px 28px rgba(82, 42, 40, 0.08);
-  border-color: #DBCFC7;
+  box-shadow: var(--shadow-card);
+  border-color: var(--border-input);
 }
 
 .card-hover:active {
@@ -262,14 +394,14 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #FAF6F1;
+  background: var(--bg-subtle);
 }
 ::-webkit-scrollbar-thumb {
-  background: #D9CECA;
+  background: var(--border-input);
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #BBAEA8;
+  background: var(--text-light);
 }
 
 /* Responsive Layout Classes (Desktop -> Tablet -> Mobile/HP) */
@@ -476,11 +608,11 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
     left: 0;
     right: 0;
     z-index: 950;
-    background-color: rgba(255, 255, 255, 0.96);
+    background-color: var(--bg-header-glass);
     backdrop-filter: blur(10px);
     border-top: 1px solid var(--border-light);
     padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
-    box-shadow: 0 -4px 20px rgba(82, 42, 40, 0.08);
+    box-shadow: var(--shadow-float);
   }
   .main-content-area {
     padding-bottom: 92px !important;
@@ -517,6 +649,17 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
 @media (max-width: 540px) {
   .container-app {
     padding: 0 14px;
+  }
+  .header-right {
+    gap: 6px;
+  }
+  .header-lang-btn {
+    min-width: 58px !important;
+    padding: 6px 9px !important;
+    font-size: 12px !important;
+  }
+  .header-profile-name {
+    max-width: 50px;
   }
   .grid-4-cols {
     grid-template-columns: 1fr;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   Search,
   ShoppingBag,
@@ -26,6 +27,8 @@ import {
   Eye,
   EyeOff,
   Globe,
+  Sun,
+  Moon,
   Store,
   Tag,
   Lock,
@@ -185,6 +188,8 @@ const TRANSLATIONS = {
     authWelcome: "Welcome back",
     authCreate: "Create your account",
     authForgot: "Reset password",
+    themeToDark: "Switch to dark mode",
+    themeToLight: "Switch to light mode",
   },
   ID: {
     subtitleCustomer: "Pre-order kantin kampus",
@@ -270,8 +275,58 @@ const TRANSLATIONS = {
     authWelcome: "Selamat datang",
     authCreate: "Buat akun baru",
     authForgot: "Reset kata sandi",
+    themeToDark: "Aktifkan mode gelap",
+    themeToLight: "Aktifkan mode terang",
   },
 };
+
+export function applyDocumentTheme(nextTheme) {
+  const resolved = nextTheme === "dark" ? "dark" : "light";
+  if (typeof document !== "undefined") {
+    document.documentElement.setAttribute("data-theme", resolved);
+    document.documentElement.style.colorScheme = resolved;
+    const meta = document.querySelector?.('meta[name="theme-color"]');
+    if (meta) {
+      meta.setAttribute("content", resolved === "dark" ? "#171211" : "#FFFFFF");
+    }
+  }
+  return resolved;
+}
+
+function ThemeToggleButton({ theme, onToggle, title, size = 36 }) {
+  const isDark = theme === "dark";
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={title}
+      aria-label={title}
+      aria-pressed={isDark}
+      data-testid="theme-toggle-btn"
+      className="btn-interactive"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        border: "1px solid var(--border-light)",
+        backgroundColor: "var(--bg-card)",
+        color: isDark ? "var(--orange)" : "var(--maroon)",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+        flexShrink: 0,
+        boxShadow: "none",
+      }}
+    >
+      {isDark ? (
+        <Sun size={size > 34 ? 16 : 15} strokeWidth={2.2} />
+      ) : (
+        <Moon size={size > 34 ? 16 : 15} strokeWidth={2.2} />
+      )}
+    </button>
+  );
+}
 
 const PROMOS = [
   {
@@ -501,8 +556,87 @@ export default function App() {
 
   const [lang, setLang] = useState(() => localStorage.getItem("letsorder_lang") || "ID");
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem("letsorder_theme") === "dark" ? "dark" : "light";
+    } catch {
+      return "light";
+    }
+  });
   const t = TRANSLATIONS[lang] || TRANSLATIONS.ID;
   const heroSlides = HERO_SLIDES_BY_LANG[lang] || HERO_SLIDES_BY_LANG.ID;
+
+  useLayoutEffect(() => {
+    applyDocumentTheme(theme);
+  }, [theme]);
+
+  const toggleTheme = (event) => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    const rect = event?.currentTarget?.getBoundingClientRect?.();
+    const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+    const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+    const endRadius = Math.hypot(
+      Math.max(x, window.innerWidth - x),
+      Math.max(y, window.innerHeight - y)
+    );
+
+    const commitTheme = () => {
+      applyDocumentTheme(nextTheme);
+      try {
+        localStorage.setItem("letsorder_theme", nextTheme);
+      } catch {
+        // ignore storage restrictions
+      }
+      setTheme(nextTheme);
+    };
+
+    const prefersReduced =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (typeof document.startViewTransition !== "function" || prefersReduced) {
+      commitTheme();
+      return;
+    }
+
+    document.documentElement.classList.add("theme-transitioning");
+    const transition = document.startViewTransition(() => {
+      flushSync(() => {
+        commitTheme();
+      });
+    });
+
+    Promise.resolve(transition.ready)
+      .then(() => {
+        if (typeof document.documentElement.animate !== "function") return;
+        const animation = document.documentElement.animate(
+          {
+            clipPath: [
+              `circle(0px at ${x}px ${y}px)`,
+              `circle(${endRadius}px at ${x}px ${y}px)`,
+            ],
+          },
+          {
+            duration: 520,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            fill: "forwards",
+            pseudoElement: "::view-transition-new(root)",
+          }
+        );
+        return animation?.finished?.catch(() => {});
+      })
+      .catch(() => {})
+      .finally(() => {
+        document.documentElement.classList.remove("theme-transitioning");
+      });
+
+    Promise.resolve(transition.finished)
+      .catch(() => {})
+      .finally(() => {
+        document.documentElement.classList.remove("theme-transitioning");
+      });
+  };
 
   const changeLanguage = (nextLang) => {
     setLang(nextLang);
@@ -2095,7 +2229,7 @@ export default function App() {
               position: "sticky",
               top: 0,
               zIndex: 100,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: "var(--bg-card)",
               borderBottom: "1px solid var(--border-light)",
             }}
           >
@@ -2144,12 +2278,12 @@ export default function App() {
                     <circle cx="50" cy="50" r="41" stroke="#E5B888" strokeWidth="1.5" />
                     <path
                       d="M33 26V40C33 44 36 46 39 46V74H43V46C46 46 49 44 49 40V26H46V38H44V26H38V38H36V26H33Z"
-                      fill="#522A28"
+                      fill="var(--maroon)"
                     />
                     <path
                       d="M51 32L78 50L51 68V32Z"
                       fill="#F8A34B"
-                      stroke="#522A28"
+                      stroke="var(--maroon)"
                       strokeWidth="3.5"
                       strokeLinejoin="round"
                     />
@@ -2202,7 +2336,7 @@ export default function App() {
                       backgroundColor: "var(--bg-cream)",
                       border:
                         portalMode === "tenant"
-                          ? "1px solid #EFE3D8"
+                          ? "1px solid var(--border-light)"
                           : "1.5px solid var(--maroon)",
                       transition: "left 0.32s cubic-bezier(0.22, 1, 0.36, 1), width 0.32s cubic-bezier(0.22, 1, 0.36, 1)",
                       pointerEvents: "none",
@@ -2283,6 +2417,7 @@ export default function App() {
                 <div style={{ position: "relative" }}>
                   <button
                     type="button"
+                    className="header-lang-btn"
                     onClick={() => setIsLangMenuOpen((prev) => !prev)}
                     aria-haspopup="listbox"
                     aria-expanded={isLangMenuOpen}
@@ -2295,7 +2430,7 @@ export default function App() {
                       padding: "7px 12px",
                       borderRadius: "var(--radius-pill)",
                       border: "1px solid var(--border-light)",
-                      backgroundColor: "#FFFFFF",
+                      backgroundColor: "var(--bg-card)",
                       color: "var(--maroon)",
                       fontSize: 13,
                       fontWeight: 700,
@@ -2321,7 +2456,7 @@ export default function App() {
                           top: "calc(100% + 8px)",
                           right: 0,
                           minWidth: 168,
-                          backgroundColor: "#FFFFFF",
+                          backgroundColor: "var(--bg-card)",
                           border: "1px solid var(--border-light)",
                           borderRadius: 14,
                           boxShadow: "0 12px 30px rgba(82, 42, 40, 0.14)",
@@ -2365,6 +2500,13 @@ export default function App() {
                   )}
                 </div>
 
+                <ThemeToggleButton
+                  theme={theme}
+                  onToggle={toggleTheme}
+                  title={theme === "dark" ? t.themeToLight : t.themeToDark}
+                  size={36}
+                />
+
                 <button
                   onClick={() => openDrawerModal("profile")}
                   className="btn-interactive btn-lift"
@@ -2375,7 +2517,7 @@ export default function App() {
                     padding: "6px 12px 6px 8px",
                     borderRadius: "var(--radius-pill)",
                     border: "1px solid var(--border-light)",
-                    backgroundColor: "#FFFFFF",
+                    backgroundColor: "var(--bg-card)",
                     cursor: "pointer",
                     minWidth: 0,
                   }}
@@ -2386,7 +2528,7 @@ export default function App() {
                       width: 28,
                       height: 28,
                       borderRadius: "50%",
-                      backgroundColor: portalMode === "tenant" ? "#EFE2D4" : "var(--bg-cream)",
+                      backgroundColor: portalMode === "tenant" ? "var(--bg-banner-alt)" : "var(--bg-cream)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -2550,7 +2692,7 @@ export default function App() {
                             padding: "9px 18px",
                             borderRadius: "var(--radius-pill)",
                             border: "1px solid var(--border-light)",
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: "var(--bg-card)",
                             boxShadow: "var(--shadow-sm)",
                             cursor: "pointer",
                             fontSize: 13,
@@ -2585,7 +2727,7 @@ export default function App() {
                             padding: "9px 14px",
                             borderRadius: "var(--radius-pill)",
                             border: "1px solid var(--border-light)",
-                            backgroundColor: "#FFFDF9",
+                            backgroundColor: "var(--bg-subtle)",
                             color: "var(--maroon)",
                             fontSize: 13,
                             fontWeight: 800,
@@ -2622,7 +2764,7 @@ export default function App() {
                             padding: "9px 16px",
                             borderRadius: "var(--radius-pill)",
                             border: "1px solid var(--border-input)",
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: "var(--bg-card)",
                             color: "var(--maroon)",
                             fontSize: 13,
                             fontWeight: 700,
@@ -2677,7 +2819,7 @@ export default function App() {
                             key={kpi.label}
                             className="card-hover"
                             style={{
-                              backgroundColor: "#FFFFFF",
+                              backgroundColor: "var(--bg-card)",
                               borderRadius: "var(--radius-lg)",
                               border: "1px solid var(--border-light)",
                               padding: "20px 22px",
@@ -2761,7 +2903,7 @@ export default function App() {
                     >
                       <div
                         style={{
-                          backgroundColor: "#FFFFFF",
+                          backgroundColor: "var(--bg-card)",
                           borderRadius: "var(--radius-xl)",
                           border: "1px solid var(--border-light)",
                           padding: "24px 26px",
@@ -2825,7 +2967,7 @@ export default function App() {
                                   borderRadius: "var(--radius-md)",
                                   border: "1px solid var(--border-light)",
                                   padding: "14px 16px",
-                                  backgroundColor: "#FFFFFF",
+                                  backgroundColor: "var(--bg-card)",
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "space-between",
@@ -2838,8 +2980,8 @@ export default function App() {
                                       width: 48,
                                       height: 48,
                                       borderRadius: 11,
-                                      backgroundColor: "var(--maroon)",
-                                      color: "#FFFFFF",
+                                      backgroundColor: "var(--btn-solid-bg)",
+                                      color: "var(--btn-solid-text)",
                                       fontSize: 12,
                                       fontWeight: 800,
                                       display: "flex",
@@ -2887,7 +3029,7 @@ export default function App() {
                                       backgroundColor: isReady
                                         ? "var(--orange)"
                                         : "var(--bg-cream)",
-                                      color: "var(--maroon)",
+                                      color: isReady ? "var(--on-orange-text)" : "var(--maroon)",
                                       fontSize: 12,
                                       fontWeight: 700,
                                     }}
@@ -2898,7 +3040,7 @@ export default function App() {
                                         height: 6,
                                         borderRadius: "50%",
                                         backgroundColor: isReady
-                                          ? "var(--maroon)"
+                                          ? "var(--on-orange-text)"
                                           : "var(--orange)",
                                       }}
                                     />
@@ -2934,7 +3076,7 @@ export default function App() {
                                         borderRadius: "var(--radius-pill)",
                                         border: "none",
                                         backgroundColor: "var(--orange)",
-                                        color: "var(--maroon)",
+                                        color: "var(--on-orange-text)",
                                         fontSize: 12,
                                         fontWeight: 800,
                                         cursor: "pointer",
@@ -2952,7 +3094,7 @@ export default function App() {
                                         padding: "8px 16px",
                                         borderRadius: "var(--radius-pill)",
                                         border: "1px solid var(--border-input)",
-                                        backgroundColor: "#FFFFFF",
+                                        backgroundColor: "var(--bg-card)",
                                         color: "var(--maroon)",
                                         fontSize: 12,
                                         fontWeight: 700,
@@ -2989,7 +3131,7 @@ export default function App() {
                               style={{
                                 padding: "32px 20px",
                                 borderRadius: "var(--radius-lg)",
-                                backgroundColor: "#FAF6F2",
+                                backgroundColor: "var(--bg-auth-page)",
                                 border: "1px dashed var(--border-input)",
                                 textAlign: "center",
                                 color: "var(--text-muted)",
@@ -3012,7 +3154,7 @@ export default function App() {
                           return (
                             <div
                               style={{
-                                backgroundColor: "#FFFFFF",
+                                backgroundColor: "var(--bg-card)",
                                 borderRadius: "var(--radius-xl)",
                                 border: "1px solid var(--border-light)",
                                 padding: "22px 24px",
@@ -3097,7 +3239,7 @@ export default function App() {
                                   padding: "11px 16px",
                                   borderRadius: "var(--radius-pill)",
                                   border: "1px solid var(--border-input)",
-                                  backgroundColor: "#FFFFFF",
+                                  backgroundColor: "var(--bg-card)",
                                   color: "var(--maroon)",
                                   fontSize: 13,
                                   fontWeight: 700,
@@ -3116,7 +3258,7 @@ export default function App() {
                         })()}
                         <div
                           style={{
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: "var(--bg-card)",
                             borderRadius: "var(--radius-xl)",
                             border: "1px solid var(--border-light)",
                             padding: "22px 24px",
@@ -3207,7 +3349,7 @@ export default function App() {
 
                         <div
                           style={{
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: "var(--bg-card)",
                             borderRadius: "var(--radius-xl)",
                             border: "1px solid var(--border-light)",
                             padding: "22px 24px",
@@ -3235,7 +3377,7 @@ export default function App() {
                               style={{
                                 border: "none",
                                 backgroundColor: "var(--orange)",
-                                color: "var(--maroon)",
+                                color: "var(--on-orange-text)",
                                 borderRadius: "var(--radius-pill)",
                                 padding: "6px 12px",
                                 fontSize: 12,
@@ -3265,7 +3407,7 @@ export default function App() {
                                     padding: "10px 12px",
                                     borderRadius: 10,
                                     border: "1px solid var(--border-light)",
-                                    backgroundColor: vp.aktif ? "#FAF6F2" : "#F9FAFB",
+                                    backgroundColor: vp.aktif ? "var(--bg-auth-page)" : "var(--bg-inactive)",
                                   }}
                                 >
                                   <div>
@@ -3286,8 +3428,8 @@ export default function App() {
                                       onClick={() => handleTogglePromo(vp)}
                                       style={{
                                         border: "1px solid var(--border-input)",
-                                        backgroundColor: vp.aktif ? "var(--maroon)" : "#FFFFFF",
-                                        color: vp.aktif ? "#FFFFFF" : "var(--text-muted)",
+                                        backgroundColor: vp.aktif ? "var(--btn-solid-bg)" : "var(--bg-card)",
+                                        color: vp.aktif ? "var(--btn-solid-text)" : "var(--text-muted)",
                                         borderRadius: "var(--radius-pill)",
                                         padding: "3px 10px",
                                         fontSize: 11,
@@ -3320,7 +3462,7 @@ export default function App() {
 
                         <div
                           style={{
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: "var(--bg-card)",
                             borderRadius: "var(--radius-xl)",
                             border: "1px solid var(--border-light)",
                             padding: "22px 24px",
@@ -3398,7 +3540,7 @@ export default function App() {
                                     padding: "10px 12px",
                                     borderRadius: 10,
                                     border: "1px solid var(--border-light)",
-                                    backgroundColor: "#FAF6F2",
+                                    backgroundColor: "var(--bg-auth-page)",
                                   }}
                                 >
                                   <div
@@ -3480,7 +3622,7 @@ export default function App() {
                           style={{
                             display: "flex",
                             alignItems: "center",
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: "var(--bg-card)",
                             borderRadius: "var(--radius-pill)",
                             padding: "5px 6px 5px 18px",
                             border: "1px solid var(--border-input)",
@@ -3508,8 +3650,8 @@ export default function App() {
                               height: 32,
                               borderRadius: "50%",
                               border: "none",
-                              backgroundColor: "var(--maroon)",
-                              color: "#FFFFFF",
+                              backgroundColor: "var(--btn-solid-bg)",
+                              color: "var(--btn-solid-text)",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -3533,7 +3675,7 @@ export default function App() {
                             borderRadius: "var(--radius-pill)",
                             border: "none",
                             backgroundColor: "var(--orange)",
-                            color: "var(--maroon)",
+                            color: "var(--on-orange-text)",
                             fontSize: 13,
                             fontWeight: 800,
                             cursor: "pointer",
@@ -3593,8 +3735,8 @@ export default function App() {
                                       border: active
                                         ? "1px solid var(--maroon)"
                                         : "1px solid var(--border-input)",
-                                      backgroundColor: active ? "var(--maroon)" : "#FFFFFF",
-                                      color: active ? "#FFFFFF" : "var(--maroon)",
+                                      backgroundColor: active ? "var(--btn-solid-bg)" : "var(--bg-card)",
+                                      color: active ? "var(--btn-solid-text)" : "var(--maroon)",
                                       fontSize: 13,
                                       fontWeight: 700,
                                       cursor: "pointer",
@@ -3648,8 +3790,8 @@ export default function App() {
                                         style={{
                                           padding: "6px 18px",
                                           borderRadius: "var(--radius-pill)",
-                                          backgroundColor: "var(--maroon)",
-                                          color: "#FFFFFF",
+                                          backgroundColor: "var(--btn-solid-bg)",
+                                          color: "var(--btn-solid-text)",
                                           fontSize: 12,
                                           fontWeight: 700,
                                           boxShadow: "0 4px 12px rgba(82, 42, 40, 0.2)",
@@ -3721,7 +3863,7 @@ export default function App() {
                                       height: 28,
                                       borderRadius: "50%",
                                       border: "1px solid var(--border-light)",
-                                      backgroundColor: "#FFFFFF",
+                                      backgroundColor: "var(--bg-card)",
                                       color: "var(--maroon)",
                                       display: "flex",
                                       alignItems: "center",
@@ -3788,7 +3930,7 @@ export default function App() {
                                         borderRadius: 999,
                                         backgroundColor: dish.available
                                           ? "var(--orange)"
-                                          : "#D8D2CE",
+                                          : "var(--switch-track-off)",
                                         position: "relative",
                                         transition: "background-color 0.25s ease",
                                       }}
@@ -3830,7 +3972,7 @@ export default function App() {
                               style={{
                                 padding: "48px 24px",
                                 borderRadius: "var(--radius-xl)",
-                                backgroundColor: "#FFFFFF",
+                                backgroundColor: "var(--bg-card)",
                                 border: "1px dashed var(--border-input)",
                                 textAlign: "center",
                                 boxShadow: "var(--shadow-sm)",
@@ -3853,7 +3995,7 @@ export default function App() {
                                   borderRadius: "var(--radius-pill)",
                                   border: "none",
                                   backgroundColor: "var(--orange)",
-                                  color: "var(--maroon)",
+                                  color: "var(--on-orange-text)",
                                   fontSize: 14,
                                   fontWeight: 800,
                                   cursor: "pointer",
@@ -3892,7 +4034,7 @@ export default function App() {
                     {incomingOrders.length === 0 ? (
                       <div
                         style={{
-                          backgroundColor: "#FFFFFF",
+                          backgroundColor: "var(--bg-card)",
                           borderRadius: "var(--radius-xl)",
                           border: "1px dashed var(--border-input)",
                           padding: "56px 28px",
@@ -3925,7 +4067,7 @@ export default function App() {
                     ) : (
                       <div
                         style={{
-                          backgroundColor: "#FFFFFF",
+                          backgroundColor: "var(--bg-card)",
                           borderRadius: "var(--radius-xl)",
                           border: "1px solid var(--border-light)",
                           padding: "24px",
@@ -3947,7 +4089,7 @@ export default function App() {
                                 borderRadius: "var(--radius-md)",
                                 border: "1px solid var(--border-light)",
                                 padding: "16px 18px",
-                                backgroundColor: "#FFFFFF",
+                                backgroundColor: "var(--bg-card)",
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "space-between",
@@ -3960,8 +4102,8 @@ export default function App() {
                                     width: 48,
                                     height: 48,
                                     borderRadius: 11,
-                                    backgroundColor: "var(--maroon)",
-                                    color: "#FFFFFF",
+                                    backgroundColor: "var(--btn-solid-bg)",
+                                    color: "var(--btn-solid-text)",
                                     fontSize: 12,
                                     fontWeight: 800,
                                     display: "flex",
@@ -3997,7 +4139,7 @@ export default function App() {
                                     padding: "5px 12px",
                                     borderRadius: "var(--radius-pill)",
                                     backgroundColor: isReady ? "var(--orange)" : "var(--bg-cream)",
-                                    color: "var(--maroon)",
+                                    color: isReady ? "var(--on-orange-text)" : "var(--maroon)",
                                     fontSize: 12,
                                     fontWeight: 700,
                                   }}
@@ -4013,8 +4155,8 @@ export default function App() {
                                       padding: "8px 16px",
                                       borderRadius: "var(--radius-pill)",
                                       border: "none",
-                                      backgroundColor: "var(--maroon)",
-                                      color: "#FFFFFF",
+                                      backgroundColor: "var(--btn-solid-bg)",
+                                      color: "var(--btn-solid-text)",
                                       fontSize: 12,
                                       fontWeight: 700,
                                       cursor: "pointer",
@@ -4033,7 +4175,7 @@ export default function App() {
                                       borderRadius: "var(--radius-pill)",
                                       border: "none",
                                       backgroundColor: "var(--orange)",
-                                      color: "var(--maroon)",
+                                      color: "var(--on-orange-text)",
                                       fontSize: 12,
                                       fontWeight: 800,
                                       cursor: "pointer",
@@ -4051,7 +4193,7 @@ export default function App() {
                                       padding: "8px 16px",
                                       borderRadius: "var(--radius-pill)",
                                       border: "1px solid var(--border-input)",
-                                      backgroundColor: "#FFFFFF",
+                                      backgroundColor: "var(--bg-card)",
                                       color: "var(--maroon)",
                                       fontSize: 12,
                                       fontWeight: 700,
@@ -4124,8 +4266,8 @@ export default function App() {
                               border: active
                                 ? "1px solid var(--maroon)"
                                 : "1px solid var(--border-input)",
-                              backgroundColor: active ? "var(--maroon)" : "#FFFFFF",
-                              color: active ? "#FFFFFF" : "var(--maroon)",
+                              backgroundColor: active ? "var(--btn-solid-bg)" : "var(--bg-card)",
+                              color: active ? "var(--btn-solid-text)" : "var(--maroon)",
                               fontSize: 13,
                               fontWeight: 700,
                               cursor: "pointer",
@@ -4138,7 +4280,7 @@ export default function App() {
                     </div>
                     <div
                       style={{
-                        backgroundColor: "#FFFFFF",
+                        backgroundColor: "var(--bg-card)",
                         borderRadius: "var(--radius-xl)",
                         border: "1px solid var(--border-light)",
                         padding: "22px",
@@ -4186,7 +4328,7 @@ export default function App() {
                                 borderRadius: "var(--radius-lg)",
                                 border: "1px solid var(--border-light)",
                                 padding: "16px 20px",
-                                backgroundColor: "#FFFFFF",
+                                backgroundColor: "var(--bg-card)",
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "space-between",
@@ -4199,8 +4341,8 @@ export default function App() {
                                     width: 52,
                                     height: 52,
                                     borderRadius: 12,
-                                    backgroundColor: isCancelled ? "var(--status-cancelled-bg)" : "var(--maroon)",
-                                    color: isCancelled ? "var(--text-muted)" : "#FFFFFF",
+                                    backgroundColor: isCancelled ? "var(--status-cancelled-bg)" : "var(--btn-solid-bg)",
+                                    color: isCancelled ? "var(--text-muted)" : "var(--btn-solid-text)",
                                     fontSize: 12,
                                     fontWeight: 900,
                                     display: "flex",
@@ -4267,12 +4409,12 @@ export default function App() {
                                     padding: "5px 12px",
                                     borderRadius: "var(--radius-pill)",
                                     backgroundColor: isCompleted
-                                      ? "var(--maroon)"
+                                      ? "var(--btn-solid-bg)"
                                       : isPrep
                                         ? "var(--bg-cream)"
                                         : "var(--status-cancelled-bg)",
                                     color: isCompleted
-                                      ? "#FFFFFF"
+                                      ? "var(--btn-solid-text)"
                                       : isPrep
                                         ? "var(--maroon)"
                                         : "var(--text-muted)",
@@ -4337,7 +4479,7 @@ export default function App() {
                                 position: "absolute",
                                 inset: 0,
                                 zIndex: 1,
-                                backgroundImage: `linear-gradient(90deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.80) 48%, rgba(255,255,255,0.18) 100%), url('${slide.image}')`,
+                                backgroundImage: `linear-gradient(90deg, var(--bg-hero-fade-start) 0%, var(--bg-hero-fade-mid) 48%, var(--bg-hero-fade-end) 100%), url('${slide.image}')`,
                                 backgroundSize: "cover",
                                 backgroundPosition: "center right",
                               }}
@@ -4432,7 +4574,7 @@ export default function App() {
                                     padding: "12px 22px",
                                     borderRadius: "var(--radius-pill)",
                                     border: "1px solid var(--border-light)",
-                                    backgroundColor: "#FFFFFF",
+                                    backgroundColor: "var(--bg-card)",
                                     color: "var(--maroon)",
                                     fontSize: 14,
                                     fontWeight: 700,
@@ -4459,7 +4601,7 @@ export default function App() {
                           height: 38,
                           borderRadius: "50%",
                           border: "1px solid rgba(82, 42, 40, 0.12)",
-                          backgroundColor: "rgba(255, 255, 255, 0.92)",
+                          backgroundColor: "var(--bg-overlay-glass)",
                           backdropFilter: "blur(6px)",
                           color: "var(--maroon)",
                           display: "flex",
@@ -4485,7 +4627,7 @@ export default function App() {
                           height: 38,
                           borderRadius: "50%",
                           border: "1px solid rgba(82, 42, 40, 0.12)",
-                          backgroundColor: "rgba(255, 255, 255, 0.92)",
+                          backgroundColor: "var(--bg-overlay-glass)",
                           backdropFilter: "blur(6px)",
                           color: "var(--maroon)",
                           display: "flex",
@@ -4507,7 +4649,7 @@ export default function App() {
                           zIndex: 4,
                           padding: "5px 14px",
                           borderRadius: "var(--radius-pill)",
-                          backgroundColor: "rgba(255, 255, 255, 0.95)",
+                          backgroundColor: "var(--bg-overlay-glass)",
                           backdropFilter: "blur(6px)",
                           display: "flex",
                           alignItems: "center",
@@ -4528,7 +4670,7 @@ export default function App() {
                                 width: active ? 22 : 7,
                                 height: 7,
                                 borderRadius: 999,
-                                backgroundColor: active ? "var(--maroon)" : "#D9CECA",
+                                backgroundColor: active ? "var(--maroon)" : "var(--dot-inactive)",
                                 transition: "all 0.3s cubic-bezier(0.22, 1, 0.36, 1)",
                               }}
                               aria-label={`Go to slide ${idx + 1}`}
@@ -4553,7 +4695,7 @@ export default function App() {
                       <div
                         className="grid-3-cols"
                         style={{
-                          backgroundColor: "#FFFFFF",
+                          backgroundColor: "var(--bg-card)",
                           borderRadius: "var(--radius-lg)",
                           border: "1px solid var(--border-light)",
                           padding: "18px 20px",
@@ -4569,7 +4711,7 @@ export default function App() {
                               <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                                 <path
                                   d="M4 11C4 16 7.5 19 12 19C16.5 19 20 16 20 11H4Z"
-                                  stroke="#522A28"
+                                  stroke="var(--maroon)"
                                   strokeWidth="2"
                                   strokeLinecap="round"
                                 />
@@ -4585,7 +4727,7 @@ export default function App() {
                               <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                                 <path
                                   d="M6 9V19C6 20.1 6.9 21 8 21H16C17.1 21 18 20.1 18 19V9H6Z"
-                                  stroke="#522A28"
+                                  stroke="var(--maroon)"
                                   strokeWidth="2"
                                 />
                                 <path d="M9 5V3M12 5V3M15 5V3" stroke="#F8A34B" strokeWidth="2" strokeLinecap="round" />
@@ -4600,10 +4742,10 @@ export default function App() {
                               <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                                 <path
                                   d="M5 8V18C5 19.65 6.35 21 8 21H14C15.65 21 17 19.65 17 18V8H5Z"
-                                  stroke="#522A28"
+                                  stroke="var(--maroon)"
                                   strokeWidth="2"
                                 />
-                                <path d="M17 10H19C20.1 10 21 10.9 21 12C21 13.1 20.1 14 19 14H17" stroke="#522A28" strokeWidth="2" />
+                                <path d="M17 10H19C20.1 10 21 10.9 21 12C21 13.1 20.1 14 19 14H17" stroke="var(--maroon)" strokeWidth="2" />
                               </svg>
                             ),
                           },
@@ -4622,7 +4764,7 @@ export default function App() {
                                 justifyContent: "space-between",
                                 padding: "16px 20px",
                                 borderRadius: "var(--radius-md)",
-                                backgroundColor: isSelected ? "var(--orange-soft)" : "#FAF6F2",
+                                backgroundColor: isSelected ? "var(--orange-soft)" : "var(--bg-auth-page)",
                                 border: isSelected ? "1.5px solid var(--orange)" : "1px solid var(--border-light)",
                                 cursor: "pointer",
                               }}
@@ -4633,7 +4775,7 @@ export default function App() {
                                     width: 44,
                                     height: 44,
                                     borderRadius: 12,
-                                    backgroundColor: "#FFFFFF",
+                                    backgroundColor: "var(--bg-card)",
                                     border: "1px solid var(--border-light)",
                                     display: "flex",
                                     alignItems: "center",
@@ -4663,7 +4805,7 @@ export default function App() {
                                   width: 30,
                                   height: 30,
                                   borderRadius: "50%",
-                                  backgroundColor: "#FFFFFF",
+                                  backgroundColor: "var(--bg-card)",
                                   border: "1px solid var(--border-light)",
                                   display: "flex",
                                   alignItems: "center",
@@ -4729,7 +4871,7 @@ export default function App() {
                             className="card-hover img-zoom-parent"
                             style={{
                               borderRadius: "var(--radius-lg)",
-                              backgroundColor: "#FFFFFF",
+                              backgroundColor: "var(--bg-card)",
                               border: "1px solid var(--border-light)",
                               overflow: "hidden",
                               boxShadow: "var(--shadow-sm)",
@@ -4768,7 +4910,7 @@ export default function App() {
                                   height: 30,
                                   borderRadius: "50%",
                                   border: "none",
-                                  backgroundColor: "rgba(255,255,255,0.92)",
+                                  backgroundColor: "var(--bg-overlay-glass)",
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4789,7 +4931,7 @@ export default function App() {
                                   right: 12,
                                   padding: "4px 8px",
                                   borderRadius: "var(--radius-pill)",
-                                  backgroundColor: "#FFFFFF",
+                                  backgroundColor: "var(--bg-card)",
                                   display: "flex",
                                   alignItems: "center",
                                   gap: 4,
@@ -4892,7 +5034,7 @@ export default function App() {
                           style={{
                             padding: "48px 24px",
                             borderRadius: "var(--radius-xl)",
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: "var(--bg-card)",
                             border: "1px dashed var(--border-input)",
                             textAlign: "center",
                             boxShadow: "var(--shadow-sm)",
@@ -4942,7 +5084,7 @@ export default function App() {
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          backgroundColor: "#FFFFFF",
+                          backgroundColor: "var(--bg-card)",
                           borderRadius: "var(--radius-pill)",
                           padding: "5px 6px 5px 18px",
                           border: "1px solid var(--border-input)",
@@ -4970,8 +5112,8 @@ export default function App() {
                             height: 36,
                             borderRadius: "50%",
                             border: "none",
-                            backgroundColor: "var(--maroon)",
-                            color: "#FFFFFF",
+                            backgroundColor: "var(--btn-solid-bg)",
+                            color: "var(--btn-solid-text)",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -4990,7 +5132,7 @@ export default function App() {
                           className="card-hover img-zoom-parent"
                           style={{
                             borderRadius: "var(--radius-lg)",
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: "var(--bg-card)",
                             overflow: "hidden",
                             cursor: "pointer",
                           }}
@@ -5023,7 +5165,7 @@ export default function App() {
                                 padding: "4px 10px",
                                 borderRadius: "var(--radius-pill)",
                                 backgroundColor: isTenantOpenAt(tenant, liveClock)
-                                  ? "rgba(255,255,255,0.94)"
+                                  ? "var(--bg-overlay-glass)"
                                   : "rgba(55,65,81,0.88)",
                                 color: isTenantOpenAt(tenant, liveClock) ? "var(--maroon)" : "#FFFFFF",
                                 fontSize: 11,
@@ -5088,7 +5230,7 @@ export default function App() {
                         style={{
                           padding: "48px 24px",
                           borderRadius: "var(--radius-xl)",
-                          backgroundColor: "#FFFFFF",
+                          backgroundColor: "var(--bg-card)",
                           border: "1px dashed var(--border-input)",
                           textAlign: "center",
                           boxShadow: "var(--shadow-sm)",
@@ -5107,7 +5249,7 @@ export default function App() {
                             style={{
                               marginTop: 14,
                               border: "1px solid var(--border-input)",
-                              backgroundColor: "#FFFFFF",
+                              backgroundColor: "var(--bg-card)",
                               color: "var(--maroon)",
                               borderRadius: "var(--radius-pill)",
                               padding: "7px 16px",
@@ -5134,7 +5276,7 @@ export default function App() {
                         padding: "8px 16px",
                         borderRadius: "var(--radius-pill)",
                         border: "1px solid var(--border-light)",
-                        backgroundColor: "#FFFFFF",
+                        backgroundColor: "var(--bg-card)",
                         color: "var(--maroon)",
                         fontSize: 13,
                         fontWeight: 700,
@@ -5181,7 +5323,7 @@ export default function App() {
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          backgroundColor: "#FFFFFF",
+                          backgroundColor: "var(--bg-card)",
                           borderRadius: "var(--radius-pill)",
                           padding: "5px 6px 5px 18px",
                           border: "1px solid var(--border-input)",
@@ -5207,8 +5349,8 @@ export default function App() {
                             height: 34,
                             borderRadius: "50%",
                             border: "none",
-                            backgroundColor: "var(--maroon)",
-                            color: "#FFFFFF",
+                            backgroundColor: "var(--btn-solid-bg)",
+                            color: "var(--btn-solid-text)",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -5224,7 +5366,7 @@ export default function App() {
                           key={item.id_menu}
                           className="card-hover img-zoom-parent"
                           style={{
-                            backgroundColor: "#F3ECE8",
+                            backgroundColor: "var(--bg-surface-muted)",
                             borderRadius: "var(--radius-xl)",
                             padding: "18px 24px",
                             display: "flex",
@@ -5266,7 +5408,7 @@ export default function App() {
                                   height: 28,
                                   borderRadius: "50%",
                                   border: "none",
-                                  backgroundColor: "rgba(255,255,255,0.92)",
+                                  backgroundColor: "var(--bg-overlay-glass)",
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -5287,7 +5429,7 @@ export default function App() {
                                   right: 8,
                                   padding: "3px 8px",
                                   borderRadius: "var(--radius-pill)",
-                                  backgroundColor: "#FFFFFF",
+                                  backgroundColor: "var(--bg-card)",
                                   fontSize: 12,
                                   fontWeight: 700,
                                   color: "var(--maroon)",
@@ -5371,7 +5513,7 @@ export default function App() {
                           style={{
                             padding: "40px 24px",
                             borderRadius: "var(--radius-xl)",
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: "var(--bg-card)",
                             border: "1px dashed var(--border-input)",
                             textAlign: "center",
                             color: "var(--text-muted)",
@@ -5432,7 +5574,7 @@ export default function App() {
                     {checkoutStep === 1 && cartItems.length === 0 ? (
                       <div
                         style={{
-                          backgroundColor: "#FFFFFF",
+                          backgroundColor: "var(--bg-card)",
                           borderRadius: "var(--radius-xl)",
                           border: "1px dashed var(--border-input)",
                           padding: "60px 28px",
@@ -5487,7 +5629,7 @@ export default function App() {
                             borderRadius: "var(--radius-pill)",
                             border: "none",
                             backgroundColor: "var(--orange)",
-                            color: "var(--maroon)",
+                            color: "var(--on-orange-text)",
                             fontSize: 14,
                             fontWeight: 800,
                             cursor: "pointer",
@@ -5502,7 +5644,7 @@ export default function App() {
                       <>
                         <div
                           style={{
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: "var(--bg-card)",
                             borderRadius: "var(--radius-xl)",
                             border: "1px solid var(--border-light)",
                             padding: "16px 28px",
@@ -5533,7 +5675,7 @@ export default function App() {
                               <div
                                 style={{
                                   height: "100%",
-                                  backgroundColor: "var(--maroon)",
+                                  backgroundColor: "var(--btn-solid-bg)",
                                   width:
                                     checkoutStep === 1
                                       ? "0%"
@@ -5564,7 +5706,7 @@ export default function App() {
                                     alignItems: "center",
                                     gap: 10,
                                     zIndex: 2,
-                                    backgroundColor: "#FFFFFF",
+                                    backgroundColor: "var(--bg-card)",
                                     padding: "0 8px",
                                   }}
                                 >
@@ -5577,11 +5719,11 @@ export default function App() {
                                       height: 38,
                                       borderRadius: "50%",
                                       backgroundColor: isDone
-                                        ? "var(--maroon)"
+                                        ? "var(--btn-solid-bg)"
                                         : isActive
                                           ? "var(--orange)"
-                                          : "#F3ECE8",
-                                      color: isDone || isActive ? "#FFFFFF" : "var(--text-muted)",
+                                          : "var(--bg-surface-muted)",
+                                      color: isDone ? "var(--btn-solid-text)" : isActive ? "#FFFFFF" : "var(--text-muted)",
                                       display: "flex",
                                       alignItems: "center",
                                       justifyContent: "center",
@@ -5609,7 +5751,7 @@ export default function App() {
                           <div className="grid-checkout-split">
                             <div
                               style={{
-                                backgroundColor: "#FFFFFF",
+                                backgroundColor: "var(--bg-card)",
                                 borderRadius: "var(--radius-xl)",
                                 border: "1px solid var(--border-light)",
                                 padding: "24px",
@@ -5803,7 +5945,7 @@ export default function App() {
                             </div>
                             <div
                               style={{
-                                backgroundColor: "#FFFFFF",
+                                backgroundColor: "var(--bg-card)",
                                 borderRadius: "var(--radius-xl)",
                                 border: "1px solid var(--border-light)",
                                 padding: "24px",
@@ -5822,7 +5964,7 @@ export default function App() {
                                   style={{
                                     padding: "10px 14px",
                                     borderRadius: "var(--radius-md)",
-                                    backgroundColor: !selectedPromo ? "var(--bg-cream)" : "#FFFFFF",
+                                    backgroundColor: !selectedPromo ? "var(--bg-cream)" : "var(--bg-card)",
                                     border: !selectedPromo ? "1.5px solid var(--maroon)" : "1px solid var(--border-input)",
                                     cursor: "pointer",
                                     display: "flex",
@@ -5846,7 +5988,7 @@ export default function App() {
                                       style={{
                                         padding: "12px 14px",
                                         borderRadius: "var(--radius-md)",
-                                        backgroundColor: isSelected ? "var(--orange-soft)" : "#FFFFFF",
+                                        backgroundColor: isSelected ? "var(--orange-soft)" : "var(--bg-card)",
                                         border: isSelected ? "1.5px solid var(--orange)" : "1px solid var(--border-input)",
                                         cursor: "pointer",
                                         display: "flex",
@@ -5873,7 +6015,7 @@ export default function App() {
                                           <div style={{ fontSize: 13, fontWeight: 800, color: "var(--maroon)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                                             <span>{promo.title}</span>
                                             {promo.isTenantPromo && (
-                                              <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 999, backgroundColor: "var(--maroon)", color: "#FFFFFF" }}>
+                                              <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 999, backgroundColor: "var(--btn-solid-bg)", color: "var(--btn-solid-text)" }}>
                                                 {lang === "EN" ? "Tenant Promo" : "Khusus Tenant"}
                                               </span>
                                             )}
@@ -5890,13 +6032,13 @@ export default function App() {
                                             width: 22,
                                             height: 22,
                                             borderRadius: "50%",
-                                            backgroundColor: "var(--maroon)",
+                                            backgroundColor: "var(--btn-solid-bg)",
                                             display: "flex",
                                             alignItems: "center",
                                             justifyContent: "center",
                                           }}
                                         >
-                                          <Check size={13} color="#FFFFFF" strokeWidth={3} />
+                                          <Check size={13} color="var(--btn-solid-text)" strokeWidth={3} />
                                         </div>
                                       ) : (
                                         <div
@@ -6003,7 +6145,7 @@ export default function App() {
                           <div className="grid-payment-split">
                             <div
                               style={{
-                                backgroundColor: "#FFFFFF",
+                                backgroundColor: "var(--bg-card)",
                                 borderRadius: "var(--radius-xl)",
                                 border: "1px solid var(--border-light)",
                                 padding: "26px",
@@ -6121,7 +6263,7 @@ export default function App() {
                                   padding: "11px",
                                   borderRadius: "var(--radius-pill)",
                                   border: "1px solid var(--border-input)",
-                                  backgroundColor: "#FFFFFF",
+                                  backgroundColor: "var(--bg-card)",
                                   color: "var(--maroon)",
                                   fontSize: 13,
                                   fontWeight: 700,
@@ -6133,7 +6275,7 @@ export default function App() {
                             </div>
                             <div
                               style={{
-                                backgroundColor: "#FFFFFF",
+                                backgroundColor: "var(--bg-card)",
                                 borderRadius: "var(--radius-xl)",
                                 border: "1px solid var(--border-light)",
                                 padding: "32px 28px",
@@ -6171,7 +6313,7 @@ export default function App() {
                                   width: 220,
                                   height: 220,
                                   borderRadius: "var(--radius-lg)",
-                                  backgroundColor: "var(--maroon)",
+                                  backgroundColor: "var(--brand-cocoa)",
                                   padding: 16,
                                   boxShadow: "0 8px 24px rgba(82, 42, 40, 0.15)",
                                   overflow: "hidden",
@@ -6336,7 +6478,7 @@ export default function App() {
                           <div style={{ maxWidth: 540, margin: "0 auto", textAlign: "center" }} className="animate-fade">
                             <div
                               style={{
-                                backgroundColor: "#FFFFFF",
+                                backgroundColor: "var(--bg-card)",
                                 borderRadius: "var(--radius-xl)",
                                 padding: "36px 32px",
                                 boxShadow: "var(--shadow-card)",
@@ -6359,7 +6501,7 @@ export default function App() {
                                   color:
                                     activeOrder?.status_pesanan === "Siap Diambil" ||
                                       activeOrder?.status_pesanan === "Selesai"
-                                      ? "var(--maroon)"
+                                      ? "var(--on-orange-text)"
                                       : "var(--status-preparing-text)",
                                   fontSize: 12,
                                   fontWeight: 700,
@@ -6429,7 +6571,7 @@ export default function App() {
                             </div>
                             <div
                               style={{
-                                backgroundColor: "#FFFFFF",
+                                backgroundColor: "var(--bg-card)",
                                 borderRadius: "var(--radius-xl)",
                                 padding: "24px",
                                 border: "1px solid var(--border-light)",
@@ -6464,7 +6606,7 @@ export default function App() {
                                 padding: "15px",
                                 borderRadius: "var(--radius-pill)",
                                 border: "1px solid var(--border-input)",
-                                backgroundColor: "#FFFFFF",
+                                backgroundColor: "var(--bg-card)",
                                 color: "var(--maroon)",
                                 fontSize: 15,
                                 fontWeight: 800,
@@ -6507,7 +6649,7 @@ export default function App() {
                           <div style={{ maxWidth: 540, margin: "0 auto", textAlign: "center" }} className="animate-fade">
                             <div
                               style={{
-                                backgroundColor: "#FFFFFF",
+                                backgroundColor: "var(--bg-card)",
                                 borderRadius: "var(--radius-xl)",
                                 padding: "36px 32px",
                                 boxShadow: "var(--shadow-card)",
@@ -6528,7 +6670,7 @@ export default function App() {
                                   height: 200,
                                   margin: "0 auto 20px",
                                   borderRadius: "var(--radius-md)",
-                                  backgroundColor: "var(--maroon)",
+                                  backgroundColor: "var(--brand-cocoa)",
                                   padding: 16,
                                   boxShadow: "0 6px 18px rgba(82, 42, 40, 0.12)",
                                 }}
@@ -6630,8 +6772,8 @@ export default function App() {
                               padding: "8px 22px",
                               borderRadius: "var(--radius-pill)",
                               border: active ? "none" : "1px solid var(--border-input)",
-                              backgroundColor: active ? "var(--maroon)" : "#FFFFFF",
-                              color: active ? "#FFFFFF" : "var(--maroon)",
+                              backgroundColor: active ? "var(--btn-solid-bg)" : "var(--bg-card)",
+                              color: active ? "var(--btn-solid-text)" : "var(--maroon)",
                               fontSize: 14,
                               fontWeight: 700,
                               cursor: "pointer",
@@ -6644,7 +6786,7 @@ export default function App() {
                     </div>
                     <div
                       style={{
-                        backgroundColor: "#FFFFFF",
+                        backgroundColor: "var(--bg-card)",
                         borderRadius: "var(--radius-xl)",
                         border: "1px solid var(--border-light)",
                         boxShadow: "var(--shadow-sm)",
@@ -6740,8 +6882,8 @@ export default function App() {
                                     width: 52,
                                     height: 52,
                                     borderRadius: "var(--radius-md)",
-                                    backgroundColor: isInProgress ? "var(--maroon)" : "#F3ECE8",
-                                    color: isInProgress ? "#FFFFFF" : "var(--maroon)",
+                                    backgroundColor: isInProgress ? "var(--btn-solid-bg)" : "var(--bg-surface-muted)",
+                                    color: isInProgress ? "var(--btn-solid-text)" : "var(--maroon)",
                                     display: "flex",
                                     flexDirection: "column",
                                     alignItems: "center",
@@ -6831,7 +6973,7 @@ export default function App() {
                                       }}
                                       style={{
                                         border: "1px solid var(--border-input)",
-                                        backgroundColor: "#FFFFFF",
+                                        backgroundColor: "var(--bg-card)",
                                         color: "var(--maroon)",
                                         borderRadius: "var(--radius-pill)",
                                         padding: "6px 12px",
@@ -6880,7 +7022,7 @@ export default function App() {
                                         style={{
                                           border: "none",
                                           backgroundColor: "var(--orange)",
-                                          color: "var(--maroon)",
+                                          color: "var(--on-orange-text)",
                                           borderRadius: "var(--radius-pill)",
                                           padding: "6px 12px",
                                           fontSize: 12,
@@ -6955,7 +7097,7 @@ export default function App() {
                 position: "fixed",
                 inset: 0,
                 zIndex: 1250,
-                backgroundColor: "rgba(82, 42, 40, 0.38)",
+                backgroundColor: "var(--backdrop)",
                 backdropFilter: "blur(5px)",
                 display: "flex",
                 alignItems: "center",
@@ -6971,7 +7113,7 @@ export default function App() {
                 style={{
                   width: "100%",
                   maxWidth: 460,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: "var(--bg-card)",
                   borderRadius: "var(--radius-xl)",
                   padding: "26px 28px",
                   boxShadow: "var(--shadow-float)",
@@ -7009,7 +7151,7 @@ export default function App() {
                       height: 34,
                       borderRadius: "50%",
                       border: "1px solid var(--border-light)",
-                      backgroundColor: "#FFFFFF",
+                      backgroundColor: "var(--bg-card)",
                       color: "var(--maroon)",
                       display: "flex",
                       alignItems: "center",
@@ -7120,9 +7262,9 @@ export default function App() {
                       style={{
                         padding: "10px 14px",
                         borderRadius: 12,
-                        backgroundColor: "#FEF2F2",
-                        border: "1px solid #FECACA",
-                        color: "#991B1B",
+                        backgroundColor: "var(--alert-error-bg)",
+                        border: "1px solid var(--alert-error-border)",
+                        color: "var(--alert-error-text)",
                         fontSize: 12,
                         fontWeight: 600,
                       }}
@@ -7253,7 +7395,7 @@ export default function App() {
                           borderRadius: 999,
                           backgroundColor: editDishForm.available
                             ? "var(--orange)"
-                            : "#D8D2CE",
+                            : "var(--switch-track-off)",
                           position: "relative",
                           transition: "background-color 0.25s ease",
                         }}
@@ -7299,7 +7441,7 @@ export default function App() {
                         padding: "12px",
                         borderRadius: "var(--radius-pill)",
                         border: "1px solid var(--border-input)",
-                        backgroundColor: "#FFFFFF",
+                        backgroundColor: "var(--bg-card)",
                         color: "var(--maroon)",
                         fontSize: 13,
                         fontWeight: 700,
@@ -7317,7 +7459,7 @@ export default function App() {
                         borderRadius: "var(--radius-pill)",
                         border: "none",
                         backgroundColor: "var(--orange)",
-                        color: "var(--maroon)",
+                        color: "var(--on-orange-text)",
                         fontSize: 13,
                         fontWeight: 800,
                         cursor: "pointer",
@@ -7382,7 +7524,7 @@ export default function App() {
                   maxWidth: 480,
                   maxHeight: "90vh",
                   overflowY: "auto",
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: "var(--bg-card)",
                   borderRadius: "var(--radius-xl)",
                   padding: "26px 28px 24px",
                   boxShadow: "0 20px 50px rgba(82, 42, 40, 0.24)",
@@ -7479,9 +7621,9 @@ export default function App() {
                       style={{
                         padding: "10px 14px",
                         borderRadius: 12,
-                        backgroundColor: "#FEF2F2",
-                        border: "1px solid #FECACA",
-                        color: "#991B1B",
+                        backgroundColor: "var(--alert-error-bg)",
+                        border: "1px solid var(--alert-error-border)",
+                        color: "var(--alert-error-text)",
                         fontSize: 12,
                         fontWeight: 600,
                         display: "flex",
@@ -7553,7 +7695,7 @@ export default function App() {
                           border: "1px solid var(--border-input)",
                           fontSize: 14,
                           color: "var(--maroon)",
-                          backgroundColor: "#FFFFFF",
+                          backgroundColor: "var(--bg-card)",
                           outline: "none",
                         }}
                       >
@@ -7687,7 +7829,7 @@ export default function App() {
                         padding: "12px",
                         borderRadius: "var(--radius-pill)",
                         border: "1px solid var(--border-input)",
-                        backgroundColor: "#FFFFFF",
+                        backgroundColor: "var(--bg-card)",
                         color: "var(--maroon)",
                         fontSize: 13,
                         fontWeight: 700,
@@ -7705,7 +7847,7 @@ export default function App() {
                         borderRadius: "var(--radius-pill)",
                         border: "none",
                         backgroundColor: "var(--orange)",
-                        color: "var(--maroon)",
+                        color: "var(--on-orange-text)",
                         fontSize: 13,
                         fontWeight: 800,
                         cursor: isUploadingMenu ? "not-allowed" : "pointer",
@@ -7744,7 +7886,7 @@ export default function App() {
                   bottom: 0,
                   width: "100%",
                   maxWidth: 350,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: "var(--bg-card)",
                   borderTopRightRadius: "24px",
                   borderBottomRightRadius: "24px",
                   boxShadow: "0 20px 48px rgba(82, 42, 40, 0.18)",
@@ -7824,7 +7966,7 @@ export default function App() {
 
                   <div
                     style={{
-                      backgroundColor: "#FFFFFF",
+                      backgroundColor: "var(--bg-card)",
                       borderRadius: "var(--radius-lg)",
                       border: "1px solid var(--border-light)",
                       overflow: "hidden",
@@ -7851,7 +7993,7 @@ export default function App() {
                             padding: "16px 18px",
                             border: "none",
                             borderBottom: idx !== arr.length - 1 ? "1px solid var(--border-light)" : "none",
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: "var(--bg-card)",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "space-between",
@@ -7900,8 +8042,8 @@ export default function App() {
                       padding: "14px",
                       borderRadius: "var(--radius-pill)",
                       border: "none",
-                      backgroundColor: "var(--maroon)",
-                      color: "#FFFFFF",
+                      backgroundColor: "var(--btn-solid-bg)",
+                      color: "var(--btn-solid-text)",
                       fontSize: 14,
                       fontWeight: 700,
                       cursor: "pointer",
@@ -7944,7 +8086,7 @@ export default function App() {
                   maxWidth: activeDrawerModal === "profile" ? 760 : 460,
                   maxHeight: "90vh",
                   overflowY: "auto",
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: "var(--bg-card)",
                   borderRadius: "var(--radius-xl)",
                   padding: activeDrawerModal === "profile" ? "30px 34px" : "26px 28px",
                   boxShadow: "0 20px 50px rgba(82, 42, 40, 0.24)",
@@ -8057,12 +8199,12 @@ export default function App() {
                           padding: "10px 14px",
                           borderRadius: 12,
                           backgroundColor:
-                            profileAlert.type === "error" ? "#FEF2F2" : "#ECFDF5",
+                            profileAlert.type === "error" ? "var(--alert-error-bg)" : "var(--alert-success-bg)",
                           border:
                             profileAlert.type === "error"
-                              ? "1px solid #FECACA"
-                              : "1px solid #A7F3D0",
-                          color: profileAlert.type === "error" ? "#991B1B" : "#065F46",
+                              ? "1px solid var(--alert-error-border)"
+                              : "1px solid var(--alert-success-border)",
+                          color: profileAlert.type === "error" ? "var(--alert-error-text)" : "var(--alert-success-text)",
                           fontSize: 12,
                           fontWeight: 600,
                           marginBottom: 18,
@@ -8387,7 +8529,7 @@ export default function App() {
                                 borderRadius: "var(--radius-pill)",
                                 border: "none",
                                 backgroundColor: "var(--orange)",
-                                color: "var(--maroon)",
+                                color: "var(--on-orange-text)",
                                 fontSize: 14,
                                 fontWeight: 800,
                                 cursor: "pointer",
@@ -8437,7 +8579,7 @@ export default function App() {
                             padding: "9px 20px",
                             borderRadius: "var(--radius-pill)",
                             border: "1px solid var(--border-input)",
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: "var(--bg-card)",
                             color: "var(--maroon)",
                             fontSize: 13,
                             fontWeight: 700,
@@ -8553,7 +8695,7 @@ export default function App() {
                           }}
                           style={{
                             border: "1px solid var(--border-input)",
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: "var(--bg-card)",
                             color: "var(--maroon)",
                             borderRadius: "var(--radius-pill)",
                             padding: "5px 12px",
@@ -8589,7 +8731,7 @@ export default function App() {
                           style={{
                             padding: "12px 14px",
                             borderRadius: 12,
-                            backgroundColor: n.status_baca ? "#FFFFFF" : "var(--bg-cream)",
+                            backgroundColor: n.status_baca ? "var(--bg-card)" : "var(--bg-cream)",
                             border: n.status_baca ? "1px solid var(--border-light)" : "1px solid #EDD1B4",
                             fontSize: 13,
                             fontWeight: n.status_baca ? 500 : 700,
@@ -8611,11 +8753,11 @@ export default function App() {
 
                 {activeDrawerModal === "help" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                    <div style={{ padding: "12px 14px", borderRadius: 12, backgroundColor: "#FAF6F2", border: "1px solid var(--border-light)" }}>
+                    <div style={{ padding: "12px 14px", borderRadius: 12, backgroundColor: "var(--bg-auth-page)", border: "1px solid var(--border-light)" }}>
                       <div style={{ fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>Bagaimana cara memesan makanan?</div>
                       Pilih menu dari halaman Home atau Tenant, masukkan ke keranjang, lalu selesaikan pembayaran QRIS untuk mendapatkan nomor antrean.
                     </div>
-                    <div style={{ padding: "12px 14px", borderRadius: 12, backgroundColor: "#FAF6F2", border: "1px solid var(--border-light)" }}>
+                    <div style={{ padding: "12px 14px", borderRadius: 12, backgroundColor: "var(--bg-auth-page)", border: "1px solid var(--border-light)" }}>
                       <div style={{ fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>Bagaimana cara upload menu bagi Tenant?</div>
                       Login sebagai Tenant (Vendor), buka tab <strong>Menu</strong>, lalu klik tombol <strong>+ Upload Menu</strong>.
                     </div>
@@ -8648,7 +8790,7 @@ export default function App() {
                 style={{
                   width: "100%",
                   maxWidth: 820,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: "var(--bg-card)",
                   borderTopLeftRadius: "28px",
                   borderTopRightRadius: "28px",
                   boxShadow: "0 -16px 50px rgba(82, 42, 40, 0.22)",
@@ -8731,7 +8873,7 @@ export default function App() {
                         height: 34,
                         borderRadius: "50%",
                         border: "none",
-                        backgroundColor: "rgba(255,255,255,0.92)",
+                        backgroundColor: "var(--bg-overlay-glass)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -8752,7 +8894,7 @@ export default function App() {
                         right: 14,
                         padding: "4px 10px",
                         borderRadius: "var(--radius-pill)",
-                        backgroundColor: "#FFFFFF",
+                        backgroundColor: "var(--bg-card)",
                         display: "flex",
                         alignItems: "center",
                         gap: 4,
@@ -8864,7 +9006,7 @@ export default function App() {
                             padding: "5px 12px",
                             borderRadius: "var(--radius-pill)",
                             border: "1px solid var(--border-input)",
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: "var(--bg-card)",
                           }}
                         >
                           <button
@@ -8951,7 +9093,7 @@ export default function App() {
                       style={{
                         fontSize: 13,
                         color: "var(--text-muted)",
-                        backgroundColor: "#FAF6F2",
+                        backgroundColor: "var(--bg-auth-page)",
                         padding: "12px 14px",
                         borderRadius: 12,
                       }}
@@ -8968,7 +9110,7 @@ export default function App() {
                           style={{
                             padding: "10px 14px",
                             borderRadius: 12,
-                            backgroundColor: "#FAF6F2",
+                            backgroundColor: "var(--bg-auth-page)",
                             border: "1px solid var(--border-light)",
                           }}
                         >
@@ -9032,7 +9174,7 @@ export default function App() {
                             cursor: "pointer",
                             borderRadius: "var(--radius-md)",
                             padding: 6,
-                            backgroundColor: "#FAF6F2",
+                            backgroundColor: "var(--bg-auth-page)",
                             border: "1px solid var(--border-light)",
                           }}
                         >
@@ -9092,7 +9234,7 @@ export default function App() {
             position: "fixed",
             inset: 0,
             zIndex: 1200,
-            backgroundColor: "#FAF6F2",
+            backgroundColor: "var(--bg-auth-page)",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -9102,7 +9244,7 @@ export default function App() {
           }}
           className="animate-fade"
         >
-          <div style={{ position: "absolute", top: 16, right: 20, zIndex: 10 }}>
+          <div style={{ position: "absolute", top: 16, right: 20, zIndex: 10, display: "flex", alignItems: "center", gap: 8 }}>
             <button
               type="button"
               onClick={() => changeLanguage(lang === "ID" ? "EN" : "ID")}
@@ -9115,7 +9257,7 @@ export default function App() {
                 padding: "7px 12px",
                 borderRadius: "var(--radius-pill)",
                 border: "1px solid var(--border-light)",
-                backgroundColor: "#FFFFFF",
+                backgroundColor: "var(--bg-card)",
                 color: "var(--maroon)",
                 fontSize: 12,
                 fontWeight: 700,
@@ -9126,6 +9268,12 @@ export default function App() {
               <Globe size={14} color="var(--text-muted)" />
               <span>{lang}</span>
             </button>
+            <ThemeToggleButton
+              theme={theme}
+              onToggle={toggleTheme}
+              title={theme === "dark" ? t.themeToLight : t.themeToDark}
+              size={34}
+            />
           </div>
           <div style={{ textAlign: "center", marginBottom: 14, flexShrink: 0 }}>
             <div style={{ display: "inline-block", marginBottom: 6 }}>
@@ -9134,12 +9282,12 @@ export default function App() {
                 <circle cx="50" cy="50" r="41" stroke="#E5B888" strokeWidth="1.5" />
                 <path
                   d="M33 26V40C33 44 36 46 39 46V74H43V46C46 46 49 44 49 40V26H46V38H44V26H38V38H36V26H33Z"
-                  fill="#522A28"
+                  fill="var(--maroon)"
                 />
                 <path
                   d="M51 32L78 50L51 68V32Z"
                   fill="#F8A34B"
-                  stroke="#522A28"
+                  stroke="var(--maroon)"
                   strokeWidth="3.5"
                   strokeLinejoin="round"
                 />
@@ -9188,7 +9336,7 @@ export default function App() {
               width: "100%",
               maxWidth: 436,
               maxHeight: "calc(100vh - 170px)",
-              backgroundColor: "#FFFFFF",
+              backgroundColor: "var(--bg-card)",
               borderRadius: "var(--radius-xl)",
               padding: "24px 28px 20px",
               boxShadow: "0 16px 44px rgba(82, 42, 40, 0.1), 0 2px 8px rgba(82, 42, 40, 0.04)",
@@ -9327,9 +9475,9 @@ export default function App() {
                 style={{
                   padding: "10px 14px",
                   borderRadius: 12,
-                  backgroundColor: "#FEF2F2",
-                  border: "1px solid #FECACA",
-                  color: "#991B1B",
+                  backgroundColor: "var(--alert-error-bg)",
+                  border: "1px solid var(--alert-error-border)",
+                  color: "var(--alert-error-text)",
                   fontSize: 12,
                   fontWeight: 600,
                   marginBottom: 12,
@@ -9349,9 +9497,9 @@ export default function App() {
                 style={{
                   padding: "10px 14px",
                   borderRadius: 12,
-                  backgroundColor: "#ECFDF5",
-                  border: "1px solid #A7F3D0",
-                  color: "#065F46",
+                  backgroundColor: "var(--alert-success-bg)",
+                  border: "1px solid var(--alert-success-border)",
+                  color: "var(--alert-success-text)",
                   fontSize: 12,
                   fontWeight: 600,
                   marginBottom: 12,
@@ -9666,7 +9814,7 @@ export default function App() {
                   borderRadius: "var(--radius-pill)",
                   border: "none",
                   backgroundColor: "var(--orange)",
-                  color: "var(--maroon)",
+                  color: "var(--on-orange-text)",
                   fontSize: 14,
                   fontWeight: 800,
                   cursor: "pointer",
@@ -9712,7 +9860,7 @@ export default function App() {
                         padding: "11px 16px",
                         borderRadius: "var(--radius-pill)",
                         border: "1px solid var(--border-input)",
-                        backgroundColor: "#FFFFFF",
+                        backgroundColor: "var(--bg-card)",
                         color: "var(--maroon)",
                         fontSize: 13,
                         fontWeight: 800,
@@ -9906,7 +10054,7 @@ export default function App() {
             position: "fixed",
             inset: 0,
             zIndex: 1300,
-            backgroundColor: "rgba(82, 42, 40, 0.38)",
+            backgroundColor: "var(--backdrop)",
             backdropFilter: "blur(5px)",
             display: "flex",
             alignItems: "center",
@@ -9922,7 +10070,7 @@ export default function App() {
               maxWidth: 480,
               maxHeight: "90vh",
               overflowY: "auto",
-              backgroundColor: "#FFFFFF",
+              backgroundColor: "var(--bg-card)",
               borderRadius: "var(--radius-xl)",
               padding: "26px",
               boxShadow: "var(--shadow-card)",
@@ -10046,7 +10194,7 @@ export default function App() {
               <button
                 type="submit"
                 className="btn-interactive btn-lift"
-                style={{ width: "100%", padding: "12px", borderRadius: "var(--radius-pill)", border: "none", backgroundColor: "var(--orange)", color: "var(--maroon)", fontSize: 14, fontWeight: 800, cursor: "pointer", marginTop: 4 }}
+                style={{ width: "100%", padding: "12px", borderRadius: "var(--radius-pill)", border: "none", backgroundColor: "var(--orange)", color: "var(--on-orange-text)", fontSize: 14, fontWeight: 800, cursor: "pointer", marginTop: 4 }}
               >
                 {lang === "EN" ? "Save Store Settings" : "Simpan Pengaturan Kantin"}
               </button>
@@ -10061,7 +10209,7 @@ export default function App() {
             position: "fixed",
             inset: 0,
             zIndex: 1300,
-            backgroundColor: "rgba(82, 42, 40, 0.38)",
+            backgroundColor: "var(--backdrop)",
             backdropFilter: "blur(5px)",
             display: "flex",
             alignItems: "center",
@@ -10075,7 +10223,7 @@ export default function App() {
             style={{
               width: "100%",
               maxWidth: 420,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: "var(--bg-card)",
               borderRadius: "var(--radius-xl)",
               padding: "26px",
               boxShadow: "var(--shadow-card)",
@@ -10171,7 +10319,7 @@ export default function App() {
               <button
                 type="submit"
                 className="btn-interactive btn-lift"
-                style={{ width: "100%", padding: "12px", borderRadius: "var(--radius-pill)", border: "none", backgroundColor: "var(--orange)", color: "var(--maroon)", fontSize: 14, fontWeight: 800, cursor: "pointer" }}
+                style={{ width: "100%", padding: "12px", borderRadius: "var(--radius-pill)", border: "none", backgroundColor: "var(--orange)", color: "var(--on-orange-text)", fontSize: 14, fontWeight: 800, cursor: "pointer" }}
               >
                 {lang === "EN" ? "Publish Promo" : "Simpan Promo"}
               </button>
@@ -10186,7 +10334,7 @@ export default function App() {
             position: "fixed",
             inset: 0,
             zIndex: 1350,
-            backgroundColor: "rgba(82, 42, 40, 0.42)",
+            backgroundColor: "var(--backdrop)",
             backdropFilter: "blur(5px)",
             display: "flex",
             alignItems: "center",
@@ -10200,7 +10348,7 @@ export default function App() {
             style={{
               width: "100%",
               maxWidth: 420,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: "var(--bg-card)",
               borderRadius: "var(--radius-xl)",
               padding: "24px",
               boxShadow: "var(--shadow-card)",
@@ -10227,7 +10375,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setCancelTarget(null)}
-                  style={{ flex: 1, padding: "10px", borderRadius: "var(--radius-pill)", border: "1px solid var(--border-input)", backgroundColor: "#FFFFFF", color: "var(--maroon)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                  style={{ flex: 1, padding: "10px", borderRadius: "var(--radius-pill)", border: "1px solid var(--border-input)", backgroundColor: "var(--bg-card)", color: "var(--maroon)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
                 >
                   {lang === "EN" ? "Keep order" : "Kembali"}
                 </button>
@@ -10249,7 +10397,7 @@ export default function App() {
             position: "fixed",
             inset: 0,
             zIndex: 1350,
-            backgroundColor: "rgba(82, 42, 40, 0.42)",
+            backgroundColor: "var(--backdrop)",
             backdropFilter: "blur(5px)",
             display: "flex",
             alignItems: "center",
@@ -10263,7 +10411,7 @@ export default function App() {
             style={{
               width: "100%",
               maxWidth: 420,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: "var(--bg-card)",
               borderRadius: "var(--radius-xl)",
               padding: "24px",
               boxShadow: "var(--shadow-card)",
@@ -10322,7 +10470,7 @@ export default function App() {
               <button
                 type="submit"
                 className="btn-interactive btn-lift"
-                style={{ width: "100%", padding: "12px", borderRadius: "var(--radius-pill)", border: "none", backgroundColor: "var(--orange)", color: "var(--maroon)", fontSize: 14, fontWeight: 800, cursor: "pointer" }}
+                style={{ width: "100%", padding: "12px", borderRadius: "var(--radius-pill)", border: "none", backgroundColor: "var(--orange)", color: "var(--on-orange-text)", fontSize: 14, fontWeight: 800, cursor: "pointer" }}
               >
                 {lang === "EN" ? "Submit Rating" : "Kirim Rating & Ulasan"}
               </button>
