@@ -312,9 +312,12 @@ let currentThemeState = readStoredTheme();
 const themeListeners = new Set();
 let cancelActiveThemeWave = null;
 let themeAnimatingUntil = 0;
+let isThemeTransitionLocked = false;
+let themeUnlockTimer = 0;
 
 function isThemeAnimating() {
   return (
+    isThemeTransitionLocked ||
     cancelActiveThemeWave !== null ||
     (typeof performance !== "undefined" && performance.now() < themeAnimatingUntil)
   );
@@ -324,13 +327,17 @@ async function waitForThemeTransitionIdle() {
   if (!isThemeAnimating()) return;
   await new Promise((resolve) => {
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const waitMs = Math.min(480, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
+    const waitMs = Math.min(540, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 80));
     setTimeout(resolve, waitMs);
   });
 }
 
 function getThemeSnapshot() {
   return currentThemeState;
+}
+
+function getThemeBusySnapshot() {
+  return isThemeTransitionLocked;
 }
 
 function subscribeTheme(listener) {
@@ -358,9 +365,9 @@ function commitAppTheme(nextTheme, deferStorage = false) {
 }
 
 function toggleAppTheme(event) {
-  if (cancelActiveThemeWave) {
-    cancelActiveThemeWave();
-    cancelActiveThemeWave = null;
+  // Block repeated clicks until the full circular transition finishes and settles
+  if (isThemeAnimating()) {
+    return;
   }
 
   const prevTheme = currentThemeState === "dark" ? "dark" : "light";
@@ -395,6 +402,12 @@ function toggleAppTheme(event) {
   }
 
   const WAVE_DURATION = 420;
+
+  if (themeUnlockTimer) {
+    clearTimeout(themeUnlockTimer);
+    themeUnlockTimer = 0;
+  }
+  isThemeTransitionLocked = true;
 
   document.documentElement.classList.add("theme-wave-active");
   rootEl.setAttribute("data-theme-scope", prevTheme);
@@ -534,6 +547,11 @@ function toggleAppTheme(event) {
       themeAnimatingUntil = 0;
       // 2. Re-enable transitions only after the new colors are committed.
       document.documentElement.classList.remove("theme-wave-active");
+      themeUnlockTimer = setTimeout(() => {
+        themeUnlockTimer = 0;
+        isThemeTransitionLocked = false;
+        themeListeners.forEach((listener) => listener());
+      }, 60);
     }
   };
 
@@ -564,6 +582,7 @@ function toggleAppTheme(event) {
 
 const ThemeToggleButton = memo(function ThemeToggleButton({ darkTitle, lightTitle, size = 36 }) {
   const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot);
+  const isBusy = useSyncExternalStore(subscribeTheme, getThemeBusySnapshot);
   const isDark = theme === "dark";
   const title = isDark ? lightTitle : darkTitle;
 
@@ -577,6 +596,8 @@ const ThemeToggleButton = memo(function ThemeToggleButton({ darkTitle, lightTitl
     <button
       type="button"
       onClick={toggleAppTheme}
+      disabled={isBusy}
+      aria-busy={isBusy}
       title={title}
       aria-label={title}
       aria-pressed={isDark}
@@ -592,7 +613,7 @@ const ThemeToggleButton = memo(function ThemeToggleButton({ darkTitle, lightTitl
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        cursor: "pointer",
+        cursor: isBusy ? "wait" : "pointer",
         flexShrink: 0,
         boxShadow: "none",
       }}

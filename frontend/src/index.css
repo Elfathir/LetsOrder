@@ -313,9 +313,14 @@ html.theme-wave-active *::after {
   color-scheme: light;
 }
 
-.theme-toggle-btn:hover {
+.theme-toggle-btn:not(:disabled):hover {
   border-color: var(--border-input) !important;
   background-color: var(--bg-subtle) !important;
+}
+
+.theme-toggle-btn:disabled {
+  cursor: wait !important;
+  opacity: 0.72;
 }
 
 /* Interactive Card & Hover Zoom Effects */
