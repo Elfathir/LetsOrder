@@ -305,10 +305,8 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
   border: none !important;
 }
 
-::view-transition-group(root),
 ::view-transition-image-pair(root) {
   isolation: isolate;
-  contain: layout style paint;
 }
 
 ::view-transition-old(root) {
@@ -322,6 +320,11 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
   will-change: clip-path;
   transform: translateZ(0);
   backface-visibility: hidden;
+}
+
+.theme-toggle-btn:hover {
+  border-color: var(--border-input) !important;
+  background-color: var(--bg-subtle) !important;
 }
 
 /* Interactive Card & Hover Zoom Effects */

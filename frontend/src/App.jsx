@@ -323,7 +323,7 @@ async function waitForThemeTransitionIdle() {
   if (!isThemeAnimating()) return;
   await new Promise((resolve) => {
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const waitMs = Math.min(600, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
+    const waitMs = Math.min(720, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
     setTimeout(resolve, waitMs);
   });
 }
@@ -351,13 +351,15 @@ function commitAppTheme(nextTheme) {
 function toggleAppTheme(event) {
   const nextTheme = currentThemeState === "dark" ? "light" : "dark";
   const rect = event?.currentTarget?.getBoundingClientRect?.();
-  const rawX = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-  const rawY = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+  const vw = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0);
+  const vh = Math.max(window.innerHeight || 0, document.documentElement?.clientHeight || 0);
+  const rawX = rect ? rect.left + rect.width / 2 : vw / 2;
+  const rawY = rect ? rect.top + rect.height / 2 : vh / 2;
   const x = Math.round(rawX);
   const y = Math.round(rawY);
-  const endRadius = Math.ceil(
-    Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
-  );
+  const cornerDist = Math.hypot(Math.max(x, vw - x), Math.max(y, vh - y));
+  // Overshoot 15% beyond farthest corner so expo ease-out never stalls on a corner sliver
+  const endRadius = Math.ceil(cornerDist * 1.15);
 
   const prefersReduced =
     typeof window !== "undefined" &&
@@ -379,7 +381,7 @@ function toggleAppTheme(event) {
   }
 
   themeAnimatingUntil =
-    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 550;
+    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 650;
 
   let transition;
   try {
@@ -408,8 +410,8 @@ function toggleAppTheme(event) {
           ],
         },
         {
-          duration: 440,
-          easing: "cubic-bezier(0.4, 0, 0.2, 1)",
+          duration: 560,
+          easing: "cubic-bezier(0.16, 1, 0.3, 1)",
           fill: "forwards",
           pseudoElement: "::view-transition-new(root)",
         }
@@ -444,7 +446,7 @@ const ThemeToggleButton = memo(function ThemeToggleButton({ darkTitle, lightTitl
       aria-label={title}
       aria-pressed={isDark}
       data-testid="theme-toggle-btn"
-      className="btn-interactive"
+      className="theme-toggle-btn"
       style={{
         width: size,
         height: size,
