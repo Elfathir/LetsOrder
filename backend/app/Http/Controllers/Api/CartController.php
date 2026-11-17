@@ -35,7 +35,7 @@ class CartController extends Controller
 
         $validated = $request->validate([
             'id_menu' => 'required|integer|exists:menus,id_menu',
-            'jumlah' => 'required|integer|min:1',
+            'jumlah' => 'required|integer|min:1|max:100',
             'catatan' => 'nullable|string|max:500',
         ]);
 
@@ -55,7 +55,7 @@ class CartController extends Controller
             ], 422);
         }
 
-        if ($menu->tenant && !$menu->tenant->status_buka) {
+        if ($menu->tenant && !$menu->tenant->isCurrentlyOpen()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Tenant sedang tutup dan tidak dapat menerima pesanan.',
@@ -89,7 +89,7 @@ class CartController extends Controller
                 : $existingItem->catatan;
 
             $existingItem->update([
-                'jumlah' => $existingItem->jumlah + (int) $validated['jumlah'],
+                'jumlah' => min(100, $existingItem->jumlah + (int) $validated['jumlah']),
                 'catatan' => $newNotes ?? '',
             ]);
             $cartItem = $existingItem;
@@ -136,7 +136,7 @@ class CartController extends Controller
         }
 
         $validated = $request->validate([
-            'jumlah' => 'sometimes|required|integer|min:1',
+            'jumlah' => 'sometimes|required|integer|min:1|max:100',
             'catatan' => 'nullable|string|max:500',
         ]);
 

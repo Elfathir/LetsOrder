@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Support\ImageValidator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class AdminController extends Controller
@@ -108,7 +110,14 @@ class AdminController extends Controller
             unset($validated['password']);
         }
 
+        $oldRole = $user->peran;
         $user->update($validated);
+        Log::info('security_event.admin_user_updated', [
+            'admin_id' => $request->user()?->id_user,
+            'target_user_id' => $user->id_user,
+            'old_role' => $oldRole,
+            'new_role' => $user->peran,
+        ]);
 
         return response()->json([
             'success' => true,
@@ -145,8 +154,8 @@ class AdminController extends Controller
         $validated = $request->validate([
             'id_user' => 'required|integer|exists:users,id_user',
             'nama_tenant' => 'required|string|max:100',
-            'deskripsi' => 'nullable|string',
-            'logo' => 'nullable|string',
+            'deskripsi' => 'nullable|string|max:1000',
+            'logo' => ['nullable', 'string', ImageValidator::rule('logo tenant')],
             'status_buka' => 'sometimes|boolean',
         ]);
 
@@ -205,8 +214,8 @@ class AdminController extends Controller
         $validated = $request->validate([
             'id_user' => 'sometimes|required|integer|exists:users,id_user',
             'nama_tenant' => 'sometimes|required|string|max:100',
-            'deskripsi' => 'nullable|string',
-            'logo' => 'nullable|string',
+            'deskripsi' => 'nullable|string|max:1000',
+            'logo' => ['nullable', 'string', ImageValidator::rule('logo tenant')],
             'status_buka' => 'sometimes|boolean',
         ]);
 

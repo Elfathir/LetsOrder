@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Menu;
 use App\Models\Tenant;
+use App\Support\ImageValidator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 
@@ -195,8 +196,8 @@ class TenantController extends Controller
 
         $validated = $request->validate([
             'nama_tenant' => 'sometimes|required|string|max:100',
-            'deskripsi' => 'nullable|string',
-            'logo' => 'nullable|string',
+            'deskripsi' => 'nullable|string|max:1000',
+            'logo' => ['nullable', 'string', ImageValidator::rule('logo tenant')],
             'status_buka' => 'sometimes|boolean',
             'jam_buka' => 'nullable|string|max:10',
             'jam_tutup' => 'nullable|string|max:10',

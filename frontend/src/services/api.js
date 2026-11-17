@@ -1,6 +1,12 @@
+const DEFAULT_API_BASE_URL =
+  import.meta.env.DEV ||
+  (typeof window !== "undefined" &&
+    !["localhost", "127.0.0.1"].includes(window.location.hostname))
+    ? "/api"
+    : "http://127.0.0.1:8000/api";
+
 export const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.DEV ? "/api" : "http://127.0.0.1:8000/api")
+  import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL
 ).replace(/\/$/, "");
 
 const TOKEN_STORAGE_KEY = "letsorder_auth_token";

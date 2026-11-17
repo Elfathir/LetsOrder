@@ -10,6 +10,7 @@ use App\Models\StatusHistory;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class PaymentController extends Controller
@@ -294,6 +295,14 @@ class PaymentController extends Controller
         });
 
         $payment->refresh();
+
+        Log::info('security_event.payment_verified', [
+            'id_pembayaran' => $payment->id_pembayaran,
+            'id_pesanan' => $order->id_pesanan,
+            'actor_id' => $user->id_user,
+            'actor_role' => $user->peran,
+            'status_verifikasi' => $newStatus,
+        ]);
 
         return response()->json([
             'success' => true,

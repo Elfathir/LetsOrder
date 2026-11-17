@@ -85,6 +85,24 @@ function sha256Hex(value) {
   return crypto.createHash("sha256").update(String(value)).digest("hex");
 }
 
+function hashToken(token) {
+  return `sha256:${sha256Hex(token)}`;
+}
+
+function logSecurityEvent(event, meta = {}) {
+  try {
+    console.warn(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        security_event: event,
+        ...meta,
+      })
+    );
+  } catch {
+    // Ignore logging errors
+  }
+}
+
 function constantTimeEqualStr(a, b) {
   const bufA = Buffer.from(String(a));
   const bufB = Buffer.from(String(b));
@@ -281,7 +299,9 @@ function purgeDummySeedRecords(parsed) {
 
 function saveDb(db) {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+  const tmpPath = `${DB_PATH}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(db, null, 2));
+  fs.renameSync(tmpPath, DB_PATH);
 }
 
 function loadDb() {
@@ -307,6 +327,18 @@ function loadDb() {
             u.password = hashPassword(u.password);
             migrated = true;
           }
+        }
+        if (parsed.tokens && typeof parsed.tokens === "object") {
+          const nextTokens = {};
+          for (const [rawKey, uid] of Object.entries(parsed.tokens)) {
+            if (String(rawKey).startsWith("sha256:")) {
+              nextTokens[rawKey] = uid;
+            } else {
+              nextTokens[hashToken(rawKey)] = uid;
+              migrated = true;
+            }
+          }
+          parsed.tokens = nextTokens;
         }
         if (migrated) saveDb(parsed);
         return parsed;
@@ -462,8 +494,12 @@ function getCorsHeaders(req) {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     Vary: "Origin",
   };
+  if (req.headers?.authorization) {
+    headers["Cache-Control"] = "no-store, private";
+  }
   if (origin && isAllowedOrigin(origin)) {
     headers["Access-Control-Allow-Origin"] = origin;
   }
@@ -517,6 +553,7 @@ function checkRateLimit(req, res, bucket, maxAttempts = 15, windowMs = 60_000) {
   const now = Date.now();
   const timestamps = (rateLimitBuckets.get(key) || []).filter((ts) => now - ts < windowMs);
   if (timestamps.length >= maxAttempts) {
+    logSecurityEvent("auth_rate_limited", { bucket, ip: getClientIp(req) });
     sendJson(req, res, 429, {
       success: false,
       message: "Terlalu banyak percobaan. Silakan tunggu 1 menit lalu coba kembali.",
@@ -531,8 +568,9 @@ function checkRateLimit(req, res, bucket, maxAttempts = 15, windowMs = 60_000) {
 function getAuthUser(req) {
   const auth = req.headers.authorization || "";
   const token = auth.replace(/^Bearer\s+/i, "").trim();
-  if (!token || !db.tokens[token]) return null;
-  const userId = db.tokens[token];
+  if (!token) return null;
+  const userId = db.tokens[hashToken(token)] ?? db.tokens[token];
+  if (!userId) return null;
   return db.users.find((u) => u.id_user === userId) || null;
 }
 
@@ -549,6 +587,13 @@ function requireRole(req, res, user, ...allowedRoles) {
   const role = String(user?.peran || "").toLowerCase();
   const allowed = allowedRoles.map((r) => r.toLowerCase());
   if (!allowed.includes(role)) {
+    logSecurityEvent("access_denied_role", {
+      user_id: user?.id_user,
+      user_role: role,
+      allowed_roles: allowed,
+      path: req.url,
+      ip: getClientIp(req),
+    });
     sendJson(req, res, 403, {
       success: false,
       message: "Anda tidak memiliki hak akses untuk fitur ini.",
@@ -599,12 +644,32 @@ function issueUserSession(user, createTenantName = null) {
   const tenant =
     user.peran === "Vendor" ? ensureTenantForVendor(user, createTenantName || user.nama) : null;
   const token = crypto.randomBytes(24).toString("hex");
-  db.tokens[token] = user.id_user;
+  db.tokens[hashToken(token)] = user.id_user;
   saveDb(db);
   return { token, userPayload: sanitizeUserResponse(user, tenant) };
 }
 
 const server = http.createServer(async (req, res) => {
+  try {
+    await handleApiRequest(req, res);
+  } catch (err) {
+    logSecurityEvent("unhandled_server_error", {
+      method: req.method,
+      path: String(req.url || "").slice(0, 120),
+      message: err?.message || "unknown",
+    });
+    if (!res.headersSent) {
+      sendJson(req, res, 500, {
+        success: false,
+        message: "Terjadi kesalahan internal pada server.",
+      });
+    } else if (!res.writableEnded) {
+      res.end();
+    }
+  }
+});
+
+async function handleApiRequest(req, res) {
   if (req.method === "OPTIONS") {
     const headers = getCorsHeaders(req);
     delete headers["Content-Type"];
@@ -612,7 +677,12 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  const urlObj = new URL(req.url, "http://127.0.0.1:8000");
+  let urlObj;
+  try {
+    urlObj = new URL(req.url || "/", "http://127.0.0.1:8000");
+  } catch {
+    return sendJson(req, res, 400, { success: false, message: "Format URL tidak valid." });
+  }
   const pathname = urlObj.pathname.replace(/^\/api(\/v1)?/, "") || "/";
   const method = req.method.toUpperCase();
 
@@ -645,6 +715,10 @@ const server = http.createServer(async (req, res) => {
     );
 
     if (!user || !verifyPassword(password, user.password)) {
+      logSecurityEvent("auth_login_failed", {
+        identifier: identifier.slice(0, 64),
+        ip: getClientIp(req),
+      });
       return sendJson(req, res, 422, {
         success: false,
         message: "Username/email atau password tidak sesuai. Pastikan Anda sudah mendaftar akun terlebih dahulu.",
@@ -683,10 +757,10 @@ const server = http.createServer(async (req, res) => {
     const password = String(body.password || "");
     const peran = body.peran === "Vendor" ? "Vendor" : "Customer";
 
-    if (!username || !isValidEmail(email) || password.length < 6) {
+    if (!username || !isValidEmail(email) || password.length < 8) {
       return sendJson(req, res, 422, {
         success: false,
-        message: "Username, format email valid, dan password (minimal 6 karakter) wajib diisi.",
+        message: "Username, format email valid, dan password (minimal 8 karakter) wajib diisi.",
       });
     }
 
@@ -954,7 +1028,7 @@ const server = http.createServer(async (req, res) => {
           });
         }
         const tokenInfo = await tokenInfoRes.json();
-        if (tokenInfo.aud && tokenInfo.aud !== expectedClientId) {
+        if (tokenInfo.aud !== expectedClientId) {
           return sendJson(req, res, 401, {
             success: false,
             message: "Client ID token akses Google tidak sesuai dengan aplikasi ini.",
@@ -1094,10 +1168,10 @@ const server = http.createServer(async (req, res) => {
         attempts: 0,
       };
       saveDb(db);
-      if (process.env.NODE_ENV !== "production") {
-        // Out-of-band local dev log (never returned in HTTP response)
-        console.info(`[LetsOrder Local Reset Code] user=${user.username} code=${resetCode} (expires 15m)`);
-      }
+      logSecurityEvent("password_reset_requested", {
+        user_id: user.id_user,
+        ip: getClientIp(req),
+      });
     }
 
     return sendJson(req, res, 200, {
@@ -1116,11 +1190,11 @@ const server = http.createServer(async (req, res) => {
     const resetCode = String(body.reset_token || body.code || "").trim();
     const newPassword = String(body.new_password || body.password || "");
 
-    if (!identifier || !resetCode || newPassword.length < 6) {
+    if (!identifier || !resetCode || newPassword.length < 8) {
       return sendJson(req, res, 422, {
         success: false,
         message:
-          "Masukkan username/email, kode verifikasi reset 6 digit, dan password baru minimal 6 karakter.",
+          "Masukkan username/email, kode verifikasi reset 6 digit, dan password baru minimal 8 karakter.",
       });
     }
 
@@ -1173,10 +1247,10 @@ const server = http.createServer(async (req, res) => {
         message: "Password saat ini tidak sesuai.",
       });
     }
-    if (newPassword.length < 6) {
+    if (newPassword.length < 8) {
       return sendJson(req, res, 422, {
         success: false,
-        message: "Password baru minimal 6 karakter.",
+        message: "Password baru minimal 8 karakter.",
       });
     }
     user.password = hashPassword(newPassword);
@@ -1294,9 +1368,13 @@ const server = http.createServer(async (req, res) => {
   if (pathname === "/auth/logout" && method === "POST") {
     const auth = req.headers.authorization || "";
     const token = auth.replace(/^Bearer\s+/i, "").trim();
-    if (token && db.tokens[token]) {
-      delete db.tokens[token];
-      saveDb(db);
+    if (token) {
+      const hashed = hashToken(token);
+      if (db.tokens[hashed] || db.tokens[token]) {
+        delete db.tokens[hashed];
+        delete db.tokens[token];
+        saveDb(db);
+      }
     }
     return sendJson(req, res, 200, {
       success: true,
@@ -1451,7 +1529,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(req, res, 422, { success: false, message: "Menu sedang tidak tersedia." });
     }
     const menuTenant = db.tenants.find((t) => t.id_tenant === menu.id_tenant);
-    if (menuTenant && !menuTenant.status_buka) {
+    if (menuTenant && !isTenantOpenNow(menuTenant)) {
       return sendJson(req, res, 422, { success: false, message: "Tenant sedang tutup." });
     }
 
@@ -1690,8 +1768,16 @@ const server = http.createServer(async (req, res) => {
     const totalHarga = Math.max(0, subtotal - promoDiscount);
 
     const nextOrderId = Math.max(100, ...db.orders.map((o) => o.id_pesanan)) + 1;
-    const queueSeq = db.orders.length + 1;
-    const queueNum = `A-${String(queueSeq).padStart(3, "0")}`;
+    const todayPrefix = formatDbTimestamp().slice(0, 10);
+    const todayTenantOrders = db.orders.filter(
+      (o) => Number(o.id_tenant) === Number(targetTenantId) && String(o.waktu_pesan || "").startsWith(todayPrefix)
+    );
+    let queueSeq = todayTenantOrders.length + 1;
+    let queueNum = `A-${String(queueSeq).padStart(3, "0")}`;
+    while (todayTenantOrders.some((o) => o.nomor_antrean === queueNum)) {
+      queueSeq += 1;
+      queueNum = `A-${String(queueSeq).padStart(3, "0")}`;
+    }
 
     const newOrder = {
       id_pesanan: nextOrderId,
@@ -1922,6 +2008,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     saveDb(db);
+    logSecurityEvent("payment_verified", {
+      id_pembayaran: payment.id_pembayaran,
+      id_pesanan: ord.id_pesanan,
+      actor_id: user.id_user,
+      actor_role: user.peran,
+      status_verifikasi: nextStatusVerif,
+    });
     return sendJson(req, res, 200, {
       success: true,
       message: "Pembayaran berhasil diverifikasi.",
@@ -2051,6 +2144,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     saveDb(db);
+    logSecurityEvent("order_cancelled", {
+      id_pesanan: ord.id_pesanan,
+      actor_id: user.id_user,
+      actor_role: user.peran,
+    });
     return sendJson(req, res, 200, {
       success: true,
       message: "Pesanan berhasil dibatalkan.",
@@ -2312,8 +2410,8 @@ const server = http.createServer(async (req, res) => {
     }
     const tenant = ensureTenantForVendor(user);
     const namaMenu = String(body.nama_menu || "").trim().slice(0, 100);
-    const harga = Math.max(0, Number(String(body.harga || 0).replace(/\D/g, "")));
-    const estimasiMenit = Math.max(1, Number(body.estimasi_menit || 8));
+    const harga = Math.max(0, Math.min(10_000_000, Number(String(body.harga || 0).replace(/\D/g, ""))));
+    const estimasiMenit = Math.max(1, Math.min(180, Number(body.estimasi_menit || 8)));
     const kategoriNama = body.kategori_nama || "Rice & Mains";
     const catObj =
       db.categories.find((c) => c.nama_kategori === kategoriNama) || db.categories[0];
@@ -2378,12 +2476,12 @@ const server = http.createServer(async (req, res) => {
     if (body.nama_menu !== undefined) menu.nama_menu = String(body.nama_menu).trim().slice(0, 100);
     if (body.deskripsi !== undefined) menu.deskripsi = String(body.deskripsi).slice(0, 500);
     if (body.gambar !== undefined) menu.gambar = body.gambar;
-    if (body.estimasi_menit !== undefined) menu.estimasi_menit = Math.max(1, Number(body.estimasi_menit));
+    if (body.estimasi_menit !== undefined) menu.estimasi_menit = Math.max(1, Math.min(180, Number(body.estimasi_menit)));
     if (body.kategori_nama !== undefined) {
       const c = db.categories.find((x) => x.nama_kategori === body.kategori_nama);
       if (c) menu.id_kategori = c.id_kategori;
     }
-    if (body.harga !== undefined) menu.harga = Math.max(0, Number(body.harga));
+    if (body.harga !== undefined) menu.harga = Math.max(0, Math.min(10_000_000, Number(body.harga)));
     if (body.status_tersedia !== undefined) {
       menu.status_tersedia = Boolean(body.status_tersedia);
     }
@@ -2490,7 +2588,7 @@ const server = http.createServer(async (req, res) => {
     success: false,
     message: "Endpoint tidak ditemukan.",
   });
-});
+}
 
 const PORT = Number(process.env.PORT || 8000);
 server.listen(PORT, "127.0.0.1", () => {

@@ -431,11 +431,30 @@ function getInitials(name) {
   return clean.slice(0, 2).toUpperCase();
 }
 
+function isSafeImageSrc(value) {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "menu/default.png" || trimmed === "tenant/default.png") {
+    return false;
+  }
+  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=\r\n]+$/i.test(trimmed)) {
+    return true;
+  }
+  if (trimmed.toLowerCase().startsWith("data:")) return false;
+  if (trimmed.startsWith("/")) return !trimmed.startsWith("//");
+  if (!trimmed.includes(":")) return !/[\r\n<>"']/.test(trimmed);
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 function SafeImage({ src, alt, className = "", style = {}, fallbackType = "food", iconSize = 28 }) {
   const [failed, setFailed] = useState(false);
   const rawSrc = typeof src === "string" ? src.trim() : "";
-  const cleanSrc =
-    rawSrc === "menu/default.png" || rawSrc === "tenant/default.png" ? "" : rawSrc;
+  const cleanSrc = isSafeImageSrc(rawSrc) ? rawSrc : "";
 
   useEffect(() => {
     setFailed(false);
@@ -9547,7 +9566,7 @@ export default function App() {
                           type={showPassword ? "text" : "password"}
                           required
                           autoComplete="new-password"
-                          placeholder="Minimal 6 karakter"
+                          placeholder="Minimal 8 karakter"
                           value={authForm.new_password}
                           onChange={(e) => setAuthForm({ ...authForm, new_password: e.target.value })}
                           style={{
@@ -9601,7 +9620,7 @@ export default function App() {
                       type={showPassword ? "text" : "password"}
                       required
                       autoComplete={authMode === "login" ? "current-password" : "new-password"}
-                      placeholder={authMode === "register" ? "Minimal 6 karakter" : "••••••••"}
+                      placeholder={authMode === "register" ? "Minimal 8 karakter" : "••••••••"}
                       value={authForm.password}
                       onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
                       style={{

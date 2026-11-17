@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Menu;
 use App\Models\Tenant;
+use App\Support\ImageValidator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 
@@ -118,10 +119,10 @@ class MenuController extends Controller
             'id_kategori' => 'nullable|integer|exists:categories,id_kategori',
             'kategori_nama' => 'nullable|string|max:100',
             'nama_menu' => 'required|string|max:100',
-            'deskripsi' => 'nullable|string',
-            'gambar' => 'nullable|string',
-            'harga' => 'required|integer|min:0',
-            'estimasi_menit' => 'required|integer|min:1',
+            'deskripsi' => 'nullable|string|max:1000',
+            'gambar' => ['nullable', 'string', ImageValidator::rule('gambar menu')],
+            'harga' => 'required|integer|min:0|max:10000000',
+            'estimasi_menit' => 'required|integer|min:1|max:180',
             'status_tersedia' => 'sometimes|boolean',
         ]);
 
@@ -244,10 +245,10 @@ class MenuController extends Controller
         $validated = $request->validate([
             'id_kategori' => 'sometimes|required|integer|exists:categories,id_kategori',
             'nama_menu' => 'sometimes|required|string|max:100',
-            'deskripsi' => 'nullable|string',
-            'gambar' => 'nullable|string',
-            'harga' => 'sometimes|required|integer|min:0',
-            'estimasi_menit' => 'sometimes|required|integer|min:1',
+            'deskripsi' => 'nullable|string|max:1000',
+            'gambar' => ['nullable', 'string', ImageValidator::rule('gambar menu')],
+            'harga' => 'sometimes|required|integer|min:0|max:10000000',
+            'estimasi_menit' => 'sometimes|required|integer|min:1|max:180',
             'status_tersedia' => 'sometimes|boolean',
         ]);
 

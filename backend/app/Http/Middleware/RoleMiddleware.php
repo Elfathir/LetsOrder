@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 class RoleMiddleware
@@ -28,6 +29,15 @@ class RoleMiddleware
         $allowedRoles = array_map(fn (string $role) => strtolower(trim($role)), $roles);
 
         if (!in_array($userRole, $allowedRoles, true)) {
+            Log::warning('security_event.access_denied_role', [
+                'user_id' => $user->id_user,
+                'user_role' => $userRole,
+                'allowed_roles' => $allowedRoles,
+                'path' => $request->path(),
+                'method' => $request->method(),
+                'ip' => $request->ip(),
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Anda tidak memiliki hak akses untuk fitur ini.',

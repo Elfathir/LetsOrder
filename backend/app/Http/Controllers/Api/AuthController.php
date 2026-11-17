@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\ImageValidator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
@@ -21,8 +22,8 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $passwordRule = $request->has('password_confirmation')
-            ? 'required|string|min:6|confirmed'
-            : 'required|string|min:6';
+            ? 'required|string|min:8|confirmed'
+            : 'required|string|min:8';
 
         $validated = $request->validate([
             'username' => 'required|string|max:50|unique:users,username',
@@ -91,6 +92,11 @@ class AuthController extends Controller
             ->first();
 
         if (!$user || !Hash::check($validated['password'], $user->password)) {
+            Log::warning('security_event.auth_login_failed', [
+                'identifier' => mb_substr($validated['login_identifier'], 0, 64),
+                'ip' => $request->ip(),
+            ]);
+
             throw ValidationException::withMessages([
                 'login' => ['Username/email atau password tidak sesuai.'],
             ]);
@@ -265,7 +271,7 @@ class AuthController extends Controller
             $tokenInfo = Http::get('https://www.googleapis.com/oauth2/v3/tokeninfo', [
                 'access_token' => $request->input('access_token'),
             ]);
-            if ($tokenInfo->successful() && ($tokenInfo->json('aud') === $expectedClientId || empty($tokenInfo->json('aud')))) {
+            if ($tokenInfo->successful() && $tokenInfo->json('aud') === $expectedClientId) {
                 $res = Http::withToken($request->input('access_token'))
                     ->get('https://www.googleapis.com/oauth2/v3/userinfo');
                 if ($res->successful()) {
@@ -323,13 +329,10 @@ class AuthController extends Controller
                 'attempts' => 0,
             ], now()->addMinutes(15));
 
-            if (app()->isLocal()) {
-                Log::info('Local LetsOrder password reset code issued', [
-                    'user_id' => $user->id_user,
-                    'username' => $user->username,
-                    'code' => $code,
-                ]);
-            }
+            Log::info('security_event.password_reset_requested', [
+                'user_id' => $user->id_user,
+                'ip' => $request->ip(),
+            ]);
         }
 
         return response()->json([
@@ -347,10 +350,10 @@ class AuthController extends Controller
         $resetCode = trim((string) ($request->input('reset_token') ?? $request->input('code') ?? ''));
         $newPassword = (string) ($request->input('new_password') ?? $request->input('password'));
 
-        if (!$identifier || !$resetCode || strlen($newPassword) < 6) {
+        if (!$identifier || !$resetCode || strlen($newPassword) < 8) {
             return response()->json([
                 'success' => false,
-                'message' => 'Masukkan username/email, kode verifikasi reset 6 digit, dan password baru minimal 6 karakter.',
+                'message' => 'Masukkan username/email, kode verifikasi reset 6 digit, dan password baru minimal 8 karakter.',
             ], 422);
         }
 
@@ -362,6 +365,9 @@ class AuthController extends Controller
             if ($cacheKey) {
                 Cache::forget($cacheKey);
             }
+            Log::warning('security_event.password_reset_rejected', [
+                'ip' => $request->ip(),
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Kode reset tidak valid atau sudah kedaluwarsa.',
@@ -371,6 +377,11 @@ class AuthController extends Controller
         if (!hash_equals((string) $record['hash'], hash('sha256', $resetCode))) {
             $record['attempts'] = ($record['attempts'] ?? 0) + 1;
             Cache::put($cacheKey, $record, now()->addMinutes(15));
+            Log::warning('security_event.password_reset_invalid_code', [
+                'user_id' => $user->id_user,
+                'attempts' => $record['attempts'],
+                'ip' => $request->ip(),
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Kode verifikasi reset password tidak sesuai.',
@@ -381,6 +392,10 @@ class AuthController extends Controller
         $user->save();
         $user->tokens()->delete();
         Cache::forget($cacheKey);
+        Log::info('security_event.password_reset_completed', [
+            'user_id' => $user->id_user,
+            'ip' => $request->ip(),
+        ]);
 
         return response()->json([
             'success' => true,
@@ -396,7 +411,7 @@ class AuthController extends Controller
         $user = $request->user();
         $validated = $request->validate([
             'current_password' => 'required|string',
-            'new_password' => 'required|string|min:6',
+            'new_password' => 'required|string|min:8',
         ]);
 
         if (!Hash::check($validated['current_password'], $user->password)) {
@@ -440,7 +455,7 @@ class AuthController extends Controller
             'no_telp' => 'nullable|string|max:30',
             'jenis_kelamin' => 'nullable|string|max:20',
             'tanggal_lahir' => 'nullable|string|max:20',
-            'avatar' => 'nullable|string',
+            'avatar' => ['nullable', 'string', ImageValidator::rule('foto profil')],
             'nama_tenant' => 'nullable|string|max:100',
         ]);
 

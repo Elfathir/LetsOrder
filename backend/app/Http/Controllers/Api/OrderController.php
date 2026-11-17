@@ -12,6 +12,7 @@ use App\Models\StatusHistory;
 use App\Models\Tenant;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
@@ -535,6 +536,12 @@ class OrderController extends Controller
 
         $order->load(['user', 'tenant', 'orderDetails.menu', 'payments', 'statusHistories']);
 
+        Log::info('security_event.order_cancelled', [
+            'id_pesanan' => $order->id_pesanan,
+            'actor_id' => $user->id_user,
+            'actor_role' => $user->peran,
+        ]);
+
         return response()->json([
             'success' => true,
             'message' => 'Pesanan berhasil dibatalkan.',
@@ -626,6 +633,7 @@ class OrderController extends Controller
         $prefix = chr(64 + (($idTenant - 1) % 26) + 1); // Tenant 1 -> A, Tenant 2 -> B, dst.
         $todayCount = Order::where('id_tenant', $idTenant)
             ->whereDate('waktu_pesan', now()->toDateString())
+            ->lockForUpdate()
             ->count();
 
         $sequence = $todayCount + 1;
@@ -635,6 +643,7 @@ class OrderController extends Controller
             Order::where('id_tenant', $idTenant)
                 ->whereDate('waktu_pesan', now()->toDateString())
                 ->where('nomor_antrean', $candidate)
+                ->lockForUpdate()
                 ->exists()
         ) {
             $sequence++;
