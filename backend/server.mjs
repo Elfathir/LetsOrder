@@ -5,7 +5,9 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.join(__dirname, "storage", "app", "db.json");
+const DB_PATH = process.env.LETSORDER_DB_PATH
+  ? path.resolve(process.env.LETSORDER_DB_PATH)
+  : path.join(__dirname, "storage", "app", "db.json");
 const MAX_BODY_BYTES = 6 * 1024 * 1024; // 6 MB limit per request body
 const SESSION_INACTIVITY_DAYS = Math.max(
   1,

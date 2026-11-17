@@ -51,7 +51,7 @@ return [
     */
 
     'expiration' => filter_var(
-        env('SANCTUM_TOKEN_EXPIRATION'),
+        env('SANCTUM_FIXED_TOKEN_EXPIRATION'),
         FILTER_VALIDATE_INT,
         ['options' => ['min_range' => 1]]
     ) ?: null,

@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import {
   api,
+  getStoredToken,
   getStoredUser,
   setStoredSession,
   clearStoredSession,
@@ -1114,8 +1115,12 @@ export default function App() {
   const syncFromApi = useCallback(async () => {
     try {
       if (currentUser) {
+        const tokenAtStart = getStoredToken() || "";
         try {
           const meRes = await api.me();
+          if ((getStoredToken() || "") !== tokenAtStart) {
+            return;
+          }
           const validUser =
             meRes?.data?.user || (meRes?.data?.id_user ? meRes.data : null);
           if (!validUser) {
@@ -1127,11 +1132,14 @@ export default function App() {
             return;
           }
         } catch (err) {
+          if ((getStoredToken() || "") !== tokenAtStart) {
+            return;
+          }
           if (err?.status === 401) {
             clearStoredSession();
             setCurrentUser(null);
             setAuthError(
-              "Sesi login berakhir karena tidak aktif selama 5 hari atau token direset. Silakan login kembali."
+              "Sesi login tidak valid atau telah kedaluwarsa. Silakan login kembali."
             );
             return;
           }
