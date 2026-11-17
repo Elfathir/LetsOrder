@@ -287,6 +287,45 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
   color: var(--maroon);
 }
 
+/* Pause competing transitions/animations so ViewTransition snapshots stay 100% static & shadowless */
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after,
+html:active-view-transition *,
+html:active-view-transition *::before,
+html:active-view-transition *::after {
+  transition: none !important;
+  animation-play-state: paused !important;
+}
+
+::view-transition {
+  pointer-events: none;
+}
+
+::view-transition-group(root) {
+  animation-duration: 0s;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+  box-shadow: none !important;
+  filter: none !important;
+  outline: none !important;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+  pointer-events: none;
+}
+
+::view-transition-new(root) {
+  z-index: 2;
+  pointer-events: none;
+  will-change: clip-path;
+}
+
 .theme-toggle-btn:hover {
   border-color: var(--border-input) !important;
   background-color: var(--bg-subtle) !important;

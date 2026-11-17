@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { flushSync } from "react-dom";
 import {
   Search,
   ShoppingBag,
@@ -309,12 +310,12 @@ export function applyDocumentTheme(nextTheme) {
 
 let currentThemeState = readStoredTheme();
 const themeListeners = new Set();
-let cancelActiveThemeOverlay = null;
+let activeThemeTransition = null;
 let themeAnimatingUntil = 0;
 
 function isThemeAnimating() {
   return (
-    cancelActiveThemeOverlay !== null ||
+    activeThemeTransition !== null ||
     (typeof performance !== "undefined" && performance.now() < themeAnimatingUntil)
   );
 }
@@ -323,7 +324,7 @@ async function waitForThemeTransitionIdle() {
   if (!isThemeAnimating()) return;
   await new Promise((resolve) => {
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const waitMs = Math.min(700, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
+    const waitMs = Math.min(520, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
     setTimeout(resolve, waitMs);
   });
 }
@@ -337,23 +338,26 @@ function subscribeTheme(listener) {
   return () => themeListeners.delete(listener);
 }
 
-function commitAppTheme(nextTheme) {
-  const resolved = applyDocumentTheme(nextTheme);
-  currentThemeState = resolved;
+function persistThemePreference(resolved) {
   try {
     localStorage.setItem("letsorder_theme", resolved);
   } catch {
     // ignore storage restrictions
   }
+}
+
+function commitAppTheme(nextTheme, deferStorage = false) {
+  const resolved = applyDocumentTheme(nextTheme);
+  currentThemeState = resolved;
+  if (deferStorage) {
+    setTimeout(() => persistThemePreference(resolved), 0);
+  } else {
+    persistThemePreference(resolved);
+  }
   themeListeners.forEach((listener) => listener());
 }
 
 function toggleAppTheme(event) {
-  if (cancelActiveThemeOverlay) {
-    cancelActiveThemeOverlay();
-    cancelActiveThemeOverlay = null;
-  }
-
   const nextTheme = currentThemeState === "dark" ? "light" : "dark";
   const rect = event?.currentTarget?.getBoundingClientRect?.();
   const vw = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0);
@@ -362,128 +366,75 @@ function toggleAppTheme(event) {
   const y = Math.round(rect ? rect.top + rect.height / 2 : vh / 2);
   const startRadius = Math.max(14, rect && rect.width > 0 ? Math.round(rect.width / 2) : 18);
   const endRadius = Math.ceil(Math.hypot(Math.max(x, vw - x), Math.max(y, vh - y)));
-  const baseRadius = Math.max(startRadius, Math.min(256, endRadius));
-  const startScale = Number((startRadius / baseRadius).toFixed(4));
-  const endScale = Number((endRadius / baseRadius + 0.04).toFixed(4));
 
   const prefersReduced =
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  if (
-    prefersReduced ||
-    typeof document === "undefined" ||
-    !document.body ||
-    typeof document.createElement("div").animate !== "function"
-  ) {
+  if (typeof document.startViewTransition !== "function" || prefersReduced) {
     commitAppTheme(nextTheme);
     return;
   }
 
-  const host = document.createElement("div");
-  host.style.cssText =
-    "position:fixed;inset:0;z-index:99999;pointer-events:none;overflow:hidden;";
-
-  const circle = document.createElement("div");
-  const diameter = baseRadius * 2;
-  const fillBg = nextTheme === "dark" ? "#171211" : "#FFFFFF";
-  circle.style.cssText = [
-    "position:fixed",
-    `left:${x - baseRadius}px`,
-    `top:${y - baseRadius}px`,
-    `width:${diameter}px`,
-    `height:${diameter}px`,
-    "border-radius:50%",
-    `background-color:${fillBg}`,
-    "box-shadow:none",
-    "border:none",
-    "outline:none",
-    "pointer-events:none",
-    "will-change:transform,opacity",
-    `transform:translateZ(0) scale(${startScale})`,
-  ].join(";");
-
-  host.appendChild(circle);
-  document.body.appendChild(host);
-
-  let aborted = false;
-  let committed = false;
-  let expandAnim = null;
-  let fadeAnim = null;
-
-  themeAnimatingUntil =
-    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 620;
-
-  const cleanup = () => {
-    if (host.parentNode) host.parentNode.removeChild(host);
-    if (cancelActiveThemeOverlay === abortCurrent) {
-      cancelActiveThemeOverlay = null;
-      themeAnimatingUntil = 0;
-    }
-  };
-
-  const abortCurrent = () => {
-    aborted = true;
+  if (activeThemeTransition) {
     try {
-      expandAnim?.cancel?.();
-      fadeAnim?.cancel?.();
+      activeThemeTransition.skipTransition?.();
     } catch {
-      // ignore animation cancel errors
+      // ignore skipped transition errors
     }
-    if (!committed) {
-      committed = true;
-      commitAppTheme(nextTheme);
-    }
-    cleanup();
-  };
+    activeThemeTransition = null;
+  }
 
-  cancelActiveThemeOverlay = abortCurrent;
+  document.documentElement.classList.add("theme-transitioning");
+  themeAnimatingUntil =
+    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 460;
 
-  expandAnim = circle.animate(
-    [
-      { transform: `translateZ(0) scale(${startScale})` },
-      { transform: `translateZ(0) scale(${endScale})` },
-    ],
-    {
-      duration: 380,
-      easing: "linear",
-      fill: "forwards",
-    }
-  );
+  let transition;
+  try {
+    transition = document.startViewTransition(() => {
+      flushSync(() => {
+        commitAppTheme(nextTheme, true);
+      });
+    });
+  } catch {
+    themeAnimatingUntil = 0;
+    document.documentElement.classList.remove("theme-transitioning");
+    commitAppTheme(nextTheme);
+    return;
+  }
 
-  Promise.resolve(expandAnim.finished)
+  activeThemeTransition = transition;
+
+  Promise.resolve(transition.ready)
     .then(() => {
-      if (aborted) return;
-      if (!committed) {
-        committed = true;
-        commitAppTheme(nextTheme);
-      }
-      return new Promise((resolve) => {
-        if (typeof requestAnimationFrame === "function") {
-          requestAnimationFrame(() => resolve());
-        } else {
-          setTimeout(resolve, 16);
+      if (activeThemeTransition !== transition) return;
+      if (typeof document.documentElement.animate !== "function") return;
+      document.documentElement.animate(
+        {
+          clipPath: [
+            `circle(${startRadius}px at ${x}px ${y}px)`,
+            `circle(${endRadius}px at ${x}px ${y}px)`,
+          ],
+        },
+        {
+          duration: 400,
+          easing: "linear",
+          fill: "both",
+          pseudoElement: "::view-transition-new(root)",
         }
-      });
+      );
     })
-    .then(() => {
-      if (aborted) return;
-      fadeAnim = circle.animate([{ opacity: 1 }, { opacity: 0 }], {
-        duration: 180,
-        easing: "ease-out",
-        fill: "forwards",
-      });
-      return fadeAnim.finished;
-    })
-    .catch(() => {
-      if (!aborted && !committed) {
-        committed = true;
-        commitAppTheme(nextTheme);
-      }
-    })
+    .catch(() => { });
+
+  Promise.resolve(transition.finished)
+    .catch(() => { })
     .finally(() => {
-      if (!aborted) cleanup();
+      if (activeThemeTransition === transition) {
+        activeThemeTransition = null;
+        themeAnimatingUntil = 0;
+        document.documentElement.classList.remove("theme-transitioning");
+      }
     });
 }
 
@@ -493,7 +444,9 @@ const ThemeToggleButton = memo(function ThemeToggleButton({ darkTitle, lightTitl
   const title = isDark ? lightTitle : darkTitle;
 
   useLayoutEffect(() => {
-    applyDocumentTheme(theme);
+    if (typeof document === "undefined" || document.documentElement.getAttribute("data-theme") !== theme) {
+      applyDocumentTheme(theme);
+    }
   }, [theme]);
 
   return (
