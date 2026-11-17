@@ -323,7 +323,7 @@ async function waitForThemeTransitionIdle() {
   if (!isThemeAnimating()) return;
   await new Promise((resolve) => {
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const waitMs = Math.min(1020, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
+    const waitMs = Math.min(1380, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
     setTimeout(resolve, waitMs);
   });
 }
@@ -381,7 +381,7 @@ function toggleAppTheme(event) {
   }
 
   themeAnimatingUntil =
-    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 950;
+    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 1300;
 
   let transition;
   try {
@@ -410,7 +410,7 @@ function toggleAppTheme(event) {
           ],
         },
         {
-          duration: 850,
+          duration: 1200,
           easing: "cubic-bezier(0.16, 1, 0.3, 1)",
           fill: "forwards",
           pseudoElement: "::view-transition-new(root)",
