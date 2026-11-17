@@ -2491,7 +2491,7 @@ export default function App() {
               <div className="header-left">
                 <button
                   onClick={openDrawer}
-                  className="btn-interactive"
+                  className="btn-interactive header-menu-btn"
                   style={{
                     border: "none",
                     background: "transparent",
@@ -2527,7 +2527,7 @@ export default function App() {
                     minWidth: 0,
                   }}
                 >
-                  <svg width="38" height="38" viewBox="0 0 100 100" fill="none" style={{ flexShrink: 0 }}>
+                  <svg className="header-logo-svg" width="38" height="38" viewBox="0 0 100 100" fill="none" style={{ flexShrink: 0 }}>
                     <circle cx="50" cy="50" r="46" stroke="#D49354" strokeWidth="3" />
                     <circle cx="50" cy="50" r="41" stroke="#E5B888" strokeWidth="1.5" />
                     <path
@@ -2545,6 +2545,7 @@ export default function App() {
 
                   <div style={{ minWidth: 0 }}>
                     <div
+                      className="header-brand-title"
                       style={{
                         fontSize: 18,
                         fontWeight: 800,
@@ -2762,7 +2763,7 @@ export default function App() {
 
                 <button
                   onClick={() => openDrawerModal("profile")}
-                  className="btn-interactive btn-lift"
+                  className="btn-interactive btn-lift header-profile-btn"
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -4690,8 +4691,9 @@ export default function App() {
             {portalMode === "customer" && (
               <>
                 {navTab === "home" && !activeTenantView && (
-                  <div className="container-app animate-fade" style={{ paddingTop: 28 }}>
+                  <div className="container-app animate-fade home-page-container" style={{ paddingTop: 28 }}>
                     <div
+                      className="hero-banner-card"
                       onMouseEnter={() => setIsHeroPaused(true)}
                       onMouseLeave={() => setIsHeroPaused(false)}
                       style={{
@@ -4717,6 +4719,7 @@ export default function App() {
                         {heroSlides.map((slide, sIdx) => (
                           <div
                             key={sIdx}
+                            className="hero-slide-item"
                             style={{
                               width: `${100 / heroSlides.length}%`,
                               flexShrink: 0,
@@ -4746,6 +4749,7 @@ export default function App() {
                               }}
                             >
                               <div
+                                className="hero-slide-tag"
                                 style={{
                                   display: "inline-flex",
                                   alignItems: "center",
@@ -4780,6 +4784,7 @@ export default function App() {
                               </h1>
 
                               <p
+                                className="hero-slide-desc"
                                 style={{
                                   fontSize: 15,
                                   color: "var(--text-muted)",
@@ -4790,8 +4795,9 @@ export default function App() {
                                 {slide.desc}
                               </p>
 
-                              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                              <div className="hero-cta-row" style={{ display: "flex", alignItems: "center", gap: 14 }}>
                                 <button
+                                  className="hero-cta-btn"
                                   onClick={() => {
                                     if (sIdx === 0) {
                                       const el = document.getElementById("popular-menu-section");
@@ -4821,6 +4827,7 @@ export default function App() {
                                 </button>
 
                                 <button
+                                  className="hero-cta-btn"
                                   onClick={() => setNavTab("tenant")}
                                   style={{
                                     padding: "12px 22px",
@@ -4841,6 +4848,7 @@ export default function App() {
                         ))}
                       </div>
                       <button
+                        className="hero-arrow-btn hero-arrow-prev"
                         onClick={() => setHeroSlide((prev) => (prev - 1 + heroSlides.length) % heroSlides.length)}
                         aria-label="Previous slide"
                         style={{
@@ -4866,6 +4874,7 @@ export default function App() {
                         <ChevronLeft size={20} />
                       </button>
                       <button
+                        className="hero-arrow-btn hero-arrow-next"
                         onClick={() => setHeroSlide((prev) => (prev + 1) % heroSlides.length)}
                         aria-label="Next slide"
                         style={{
@@ -4891,6 +4900,7 @@ export default function App() {
                         <ChevronRight size={20} />
                       </button>
                       <div
+                        className="hero-dots-bar"
                         style={{
                           position: "absolute",
                           bottom: 16,
@@ -9496,6 +9506,7 @@ export default function App() {
           <div style={{ position: "absolute", top: 16, right: 20, zIndex: 10, display: "flex", alignItems: "center", gap: 8 }}>
             <button
               type="button"
+              className="header-lang-btn"
               onClick={() => changeLanguage(lang === "ID" ? "EN" : "ID")}
               style={{
                 display: "flex",
