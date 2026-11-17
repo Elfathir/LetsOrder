@@ -122,8 +122,11 @@ const TRANSLATIONS = {
     tenantTitle: "Tenant",
     tenantSubtitle: "Order ahead and skip the line at the counter.",
     searchFoodPlaceholder: "Search food or drinks…",
+    searchTenantPlaceholder: "Search canteen or tenant…",
     emptyTenantTitle: "No tenants registered yet",
     emptyTenantDesc: "Canteen tenants will appear here after signing up with a Tenant account.",
+    emptyTenantSearchTitle: "No matching tenant found",
+    emptyTenantSearchDesc: "Try searching with another canteen name or clear the search filter.",
     backTenants: "Back to all tenants",
     emptyCartTitle: "Your order cart is empty",
     emptyCartDesc: "Browse foods or drinks from campus canteen tenants before picking a promo and checking out.",
@@ -204,8 +207,11 @@ const TRANSLATIONS = {
     tenantTitle: "Daftar Kantin",
     tenantSubtitle: "Pesan lebih awal tanpa antre panjang di kasir.",
     searchFoodPlaceholder: "Cari makanan atau minuman…",
+    searchTenantPlaceholder: "Cari nama kantin atau tenant…",
     emptyTenantTitle: "Belum ada tenant yang terdaftar",
     emptyTenantDesc: "Tenant kantin akan muncul di sini setelah mendaftar akun Tenant.",
+    emptyTenantSearchTitle: "Tenant tidak ditemukan",
+    emptyTenantSearchDesc: "Coba gunakan kata kunci nama kantin lain atau hapus pencarian.",
     backTenants: "Kembali ke daftar kantin",
     emptyCartTitle: "Keranjang pesanan Anda masih kosong",
     emptyCartDesc: "Pilih makanan atau minuman dari menu kantin terlebih dahulu sebelum memilih promo dan membayar.",
@@ -485,6 +491,7 @@ export default function App() {
     setIsLangMenuOpen(false);
   };
   const [searchQuery, setSearchQuery] = useState("");
+  const [tenantSearchQuery, setTenantSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
 
   const [menusList, setMenusList] = useState([]);
@@ -536,6 +543,7 @@ export default function App() {
   const [reviewComment, setReviewComment] = useState("");
   const [reviewError, setReviewError] = useState("");
   const [activeMenuReviews, setActiveMenuReviews] = useState([]);
+  const [vendorReviews, setVendorReviews] = useState([]);
   const [editingDish, setEditingDish] = useState(null);
   const [editMenuError, setEditMenuError] = useState("");
   const [editDishForm, setEditDishForm] = useState({
@@ -584,8 +592,13 @@ export default function App() {
   const [detailMounted, setDetailMounted] = useState(false);
   const [detailActive, setDetailActive] = useState(false);
   const [detailQuantity, setDetailQuantity] = useState(1);
+  const detailCloseTimerRef = useRef(null);
 
   const openFoodDetail = useCallback((menuItem) => {
+    if (detailCloseTimerRef.current) {
+      clearTimeout(detailCloseTimerRef.current);
+      detailCloseTimerRef.current = null;
+    }
     setActiveMenuDetail(menuItem);
     setDetailQuantity(1);
     setActiveMenuReviews([]);
@@ -606,8 +619,13 @@ export default function App() {
   }, []);
 
   const closeFoodDetail = useCallback(() => {
+    if (detailCloseTimerRef.current) {
+      clearTimeout(detailCloseTimerRef.current);
+      detailCloseTimerRef.current = null;
+    }
     setDetailActive(false);
-    setTimeout(() => {
+    detailCloseTimerRef.current = setTimeout(() => {
+      detailCloseTimerRef.current = null;
       setDetailMounted(false);
       setActiveMenuDetail(null);
       setActiveMenuReviews([]);
@@ -693,8 +711,13 @@ export default function App() {
 
   const [drawerMounted, setDrawerMounted] = useState(false);
   const [drawerActive, setDrawerActive] = useState(false);
+  const drawerCloseTimerRef = useRef(null);
 
   const openDrawer = useCallback(() => {
+    if (drawerCloseTimerRef.current) {
+      clearTimeout(drawerCloseTimerRef.current);
+      drawerCloseTimerRef.current = null;
+    }
     setDrawerMounted(true);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -704,8 +727,13 @@ export default function App() {
   }, []);
 
   const closeDrawer = useCallback(() => {
+    if (drawerCloseTimerRef.current) {
+      clearTimeout(drawerCloseTimerRef.current);
+      drawerCloseTimerRef.current = null;
+    }
     setDrawerActive(false);
-    setTimeout(() => {
+    drawerCloseTimerRef.current = setTimeout(() => {
+      drawerCloseTimerRef.current = null;
       setDrawerMounted(false);
     }, 320);
   }, []);
@@ -926,6 +954,16 @@ export default function App() {
       if (myTenant) {
         setMyTenantInfo(myTenant);
         setIsStoreOpen(Boolean(myTenant.status_buka ?? true));
+        if (isVendor && myTenant.id_tenant) {
+          const vendorRevRes = await api
+            .getReviews({ id_tenant: myTenant.id_tenant })
+            .catch(() => null);
+          if (Array.isArray(vendorRevRes?.data)) {
+            setVendorReviews(vendorRevRes.data);
+          }
+        }
+      } else if (!isVendor) {
+        setVendorReviews([]);
       }
 
       const normalizedMenus = menusRes?.data ? menusRes.data.map(normalizeMenuRecord) : null;
@@ -1310,6 +1348,8 @@ export default function App() {
     setCartItems([]);
     setIncomingOrders([]);
     setTenantMenus([]);
+    setVendorReviews([]);
+    setTenantSearchQuery("");
     setOrdersHistory([]);
     setAuthForm({
       username: "",
@@ -1995,14 +2035,15 @@ export default function App() {
   }, [menusList, searchQuery, selectedCategory]);
 
   const filteredTenants = useMemo(() => {
+    const q = tenantSearchQuery.trim().toLowerCase();
     return tenantsList.filter((t) => {
       return (
-        searchQuery === "" ||
-        t.nama_tenant.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (t.tagline || "").toLowerCase().includes(searchQuery.toLowerCase())
+        !q ||
+        String(t.nama_tenant || "").toLowerCase().includes(q) ||
+        String(t.tagline || t.deskripsi || "").toLowerCase().includes(q)
       );
     });
-  }, [tenantsList, searchQuery]);
+  }, [tenantsList, tenantSearchQuery]);
 
   const tenantMenuItems = useMemo(() => {
     if (!activeTenantView) return [];
@@ -2505,6 +2546,40 @@ export default function App() {
                         {myTenantInfo?.jam_tutup || "21:00"}
                       </span>
                     </button>
+
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "9px 14px",
+                        borderRadius: "var(--radius-pill)",
+                        border: "1px solid var(--border-light)",
+                        backgroundColor: "#FFFDF9",
+                        color: "var(--maroon)",
+                        fontSize: 13,
+                        fontWeight: 800,
+                        boxShadow: "var(--shadow-sm)",
+                      }}
+                      title={lang === "EN" ? "Store rating from customers" : "Rating toko dari pembeli"}
+                    >
+                      <Star size={14} fill="#F8A34B" color="#F8A34B" />
+                      <span className="tabular">
+                        {myTenantInfo?.rating ||
+                          (vendorReviews.length > 0
+                            ? (
+                                vendorReviews.reduce((s, r) => s + Number(r.rating || 0), 0) /
+                                vendorReviews.length
+                              ).toFixed(1)
+                            : lang === "EN"
+                            ? "New"
+                            : "Baru")}
+                      </span>
+                      <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>
+                        ({myTenantInfo?.reviews_count ?? vendorReviews.length}{" "}
+                        {lang === "EN" ? "reviews" : "ulasan"})
+                      </span>
+                    </div>
 
                     <button
                       type="button"
@@ -3212,6 +3287,131 @@ export default function App() {
                         </div>
                       )}
                     </div>
+
+                    <div
+                      style={{
+                        backgroundColor: "#FFFFFF",
+                        borderRadius: "var(--radius-xl)",
+                        border: "1px solid var(--border-light)",
+                        padding: "22px 24px",
+                        boxShadow: "var(--shadow-card)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          marginBottom: 12,
+                          gap: 8,
+                        }}
+                      >
+                        <h3 style={{ fontSize: 17, fontWeight: 800, color: "var(--maroon)" }}>
+                          {lang === "EN" ? "Customer Ratings & Reviews" : "Rating & Ulasan Pembeli"}
+                        </h3>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            padding: "4px 10px",
+                            borderRadius: "var(--radius-pill)",
+                            backgroundColor: "var(--bg-cream)",
+                            color: "var(--maroon)",
+                            fontSize: 12,
+                            fontWeight: 800,
+                          }}
+                        >
+                          <Star size={13} fill="#F8A34B" color="#F8A34B" />
+                          <span className="tabular">
+                            {myTenantInfo?.rating ||
+                              (vendorReviews.length > 0
+                                ? (
+                                    vendorReviews.reduce((s, r) => s + Number(r.rating || 0), 0) /
+                                    vendorReviews.length
+                                  ).toFixed(1)
+                                : "0.0")}
+                          </span>
+                          <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>
+                            ({vendorReviews.length})
+                          </span>
+                        </span>
+                      </div>
+
+                      {vendorReviews.length === 0 ? (
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: "var(--text-muted)",
+                            textAlign: "center",
+                            padding: "12px 0",
+                          }}
+                        >
+                          {lang === "EN"
+                            ? "No customer ratings or reviews yet."
+                            : "Belum ada rating atau ulasan dari pembeli."}
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 8,
+                            maxHeight: 240,
+                            overflowY: "auto",
+                          }}
+                        >
+                          {vendorReviews.map((rev) => (
+                            <div
+                              key={rev.id_review}
+                              style={{
+                                padding: "10px 12px",
+                                borderRadius: 10,
+                                border: "1px solid var(--border-light)",
+                                backgroundColor: "#FAF6F2",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: 8,
+                                  marginBottom: 3,
+                                }}
+                              >
+                                <span style={{ fontSize: 13, fontWeight: 800, color: "var(--maroon)" }}>
+                                  {rev.reviewer_name}
+                                </span>
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 3,
+                                    fontSize: 12,
+                                    fontWeight: 800,
+                                    color: "var(--maroon)",
+                                  }}
+                                >
+                                  <Star size={12} fill="#F8A34B" color="#F8A34B" />
+                                  <span>{rev.rating}.0</span>
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: rev.komentar ? 4 : 0 }}>
+                                {rev.nama_menu}
+                                {rev.nomor_antrean ? ` · ${rev.nomor_antrean}` : ""}
+                                {rev.dibuat_pada ? ` · ${String(rev.dibuat_pada).slice(0, 16)}` : ""}
+                              </div>
+                              {rev.komentar && (
+                                <div style={{ fontSize: 12, color: "var(--maroon)", lineHeight: 1.4 }}>
+                                  "{rev.komentar}"
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3452,6 +3652,26 @@ export default function App() {
                                 </div>
                                 <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                                   {dish.tenant_name}
+                                </div>
+                                <div
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    marginTop: 4,
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    color: "var(--maroon)",
+                                  }}
+                                >
+                                  <Star size={12} fill="#F8A34B" color="#F8A34B" />
+                                  <span>
+                                    {dish.rating
+                                      ? `${dish.rating} (${dish.reviews_count ?? dish.reviews ?? 0})`
+                                      : lang === "EN"
+                                      ? "New"
+                                      : "Baru"}
+                                  </span>
                                 </div>
                               </div>
 
@@ -3981,6 +4201,28 @@ export default function App() {
                                   {order.alasan_batal
                                     ? `${lang === "EN" ? "Reason:" : "Alasan:"} ${order.alasan_batal}`
                                     : `${lang === "EN" ? "Note:" : "Keterangan:"} ${order.catatan}`}
+                                </div>
+                              )}
+                              {Array.isArray(order.reviews) && order.reviews.length > 0 && (
+                                <div
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 5,
+                                    marginTop: 4,
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    color: "var(--maroon)",
+                                    backgroundColor: "var(--bg-cream)",
+                                    padding: "3px 9px",
+                                    borderRadius: "var(--radius-pill)",
+                                  }}
+                                >
+                                  <Star size={11} fill="#F8A34B" color="#F8A34B" />
+                                  <span>
+                                    {order.reviews[0].rating}.0
+                                    {order.reviews[0].komentar ? ` · "${order.reviews[0].komentar}"` : ""}
+                                  </span>
                                 </div>
                               )}
                             </div>
@@ -4680,9 +4922,9 @@ export default function App() {
               >
                 <input
                   type="text"
-                  placeholder={t.searchFoodPlaceholder}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={t.searchTenantPlaceholder}
+                  value={tenantSearchQuery}
+                  onChange={(e) => setTenantSearchQuery(e.target.value)}
                   style={{
                     border: "none",
                     outline: "none",
@@ -4823,11 +5065,30 @@ export default function App() {
                 }}
               >
                 <div style={{ fontSize: 18, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
-                  {t.emptyTenantTitle}
+                  {tenantsList.length > 0 ? t.emptyTenantSearchTitle : t.emptyTenantTitle}
                 </div>
                 <p style={{ fontSize: 14, color: "var(--text-muted)" }}>
-                  {t.emptyTenantDesc}
+                  {tenantsList.length > 0 ? t.emptyTenantSearchDesc : t.emptyTenantDesc}
                 </p>
+                {tenantsList.length > 0 && tenantSearchQuery.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setTenantSearchQuery("")}
+                    style={{
+                      marginTop: 14,
+                      border: "1px solid var(--border-input)",
+                      backgroundColor: "#FFFFFF",
+                      color: "var(--maroon)",
+                      borderRadius: "var(--radius-pill)",
+                      padding: "7px 16px",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {lang === "EN" ? "Clear search" : "Reset pencarian"}
+                  </button>
+                )}
               </div>
             )}
           </div>

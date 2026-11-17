@@ -221,6 +221,64 @@ const INITIAL_DB = {
   passwordResets: {},
 };
 
+function purgeDummySeedRecords(parsed) {
+  let changed = false;
+  const dummyNames = new Set(["tenant dummy", "kantin sejahtera", "warung nusantara"]);
+  const isDummyName = (val) => {
+    const lower = String(val || "").trim().toLowerCase();
+    return dummyNames.has(lower) || /\bdummy\b/i.test(lower);
+  };
+
+  const removedTenantIds = new Set(
+    (parsed.tenants || [])
+      .filter((t) => isDummyName(t.nama_tenant))
+      .map((t) => Number(t.id_tenant))
+  );
+  const removedOwnerIds = new Set(
+    (parsed.tenants || [])
+      .filter((t) => removedTenantIds.has(Number(t.id_tenant)))
+      .map((t) => Number(t.id_user))
+  );
+  const removedUserIds = new Set(
+    (parsed.users || [])
+      .filter(
+        (u) =>
+          removedOwnerIds.has(Number(u.id_user)) ||
+          isDummyName(u.username) ||
+          isDummyName(u.nama) ||
+          /\bdummy\b/i.test(String(u.email || ""))
+      )
+      .map((u) => Number(u.id_user))
+  );
+
+  if (removedTenantIds.size > 0 || removedUserIds.size > 0) {
+    changed = true;
+    parsed.tenants = (parsed.tenants || []).filter(
+      (t) => !removedTenantIds.has(Number(t.id_tenant)) && !removedUserIds.has(Number(t.id_user))
+    );
+    parsed.menus = (parsed.menus || []).filter((m) => !removedTenantIds.has(Number(m.id_tenant)));
+    parsed.promos = (parsed.promos || []).filter((p) => !removedTenantIds.has(Number(p.id_tenant)));
+    parsed.reviews = (parsed.reviews || []).filter(
+      (r) => !removedTenantIds.has(Number(r.id_tenant)) && !removedUserIds.has(Number(r.id_user))
+    );
+    const removedOrderIds = new Set(
+      (parsed.orders || [])
+        .filter((o) => removedTenantIds.has(Number(o.id_tenant)) || removedUserIds.has(Number(o.id_user)))
+        .map((o) => Number(o.id_pesanan))
+    );
+    parsed.orders = (parsed.orders || []).filter((o) => !removedOrderIds.has(Number(o.id_pesanan)));
+    parsed.payments = (parsed.payments || []).filter((p) => !removedOrderIds.has(Number(p.id_pesanan)));
+    parsed.notifications = (parsed.notifications || []).filter(
+      (n) => !removedOrderIds.has(Number(n.id_pesanan)) && !removedUserIds.has(Number(n.id_user))
+    );
+    parsed.users = (parsed.users || []).filter((u) => !removedUserIds.has(Number(u.id_user)));
+    if (parsed.carts && typeof parsed.carts === "object") {
+      for (const uid of removedUserIds) delete parsed.carts[String(uid)];
+    }
+  }
+  return changed;
+}
+
 function saveDb(db) {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
   fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
@@ -243,7 +301,7 @@ function loadDb() {
         if (!Array.isArray(parsed.promos)) {
           parsed.promos = [];
         }
-        let migrated = false;
+        let migrated = purgeDummySeedRecords(parsed);
         for (const u of parsed.users) {
           if (u.password && !String(u.password).startsWith("scrypt:")) {
             u.password = hashPassword(u.password);
@@ -1290,6 +1348,17 @@ const server = http.createServer(async (req, res) => {
         if (idTenantParam && Number(r.id_tenant) !== Number(idTenantParam)) return false;
         if (idOrderParam && Number(r.id_pesanan) !== Number(idOrderParam)) return false;
         return true;
+      })
+      .map((r) => {
+        const menuObj = db.menus.find((m) => Number(m.id_menu) === Number(r.id_menu));
+        const userObj = db.users.find((u) => Number(u.id_user) === Number(r.id_user));
+        const orderObj = db.orders.find((o) => Number(o.id_pesanan) === Number(r.id_pesanan));
+        return {
+          ...r,
+          nama_menu: r.nama_menu || menuObj?.nama_menu || "Menu",
+          reviewer_name: r.reviewer_name || userObj?.nama || userObj?.username || "Pelanggan",
+          nomor_antrean: r.nomor_antrean || orderObj?.nomor_antrean || null,
+        };
       })
       .sort((a, b) => b.id_review - a.id_review);
     return sendJson(req, res, 200, {

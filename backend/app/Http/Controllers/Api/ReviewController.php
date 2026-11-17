@@ -18,7 +18,11 @@ class ReviewController extends Controller
             return response()->json(['success' => true, 'data' => []], 200);
         }
 
-        $query = Review::with(['user:id_user,username,nama', 'menu:id_menu,nama_menu']);
+        $query = Review::with([
+            'user:id_user,username,nama',
+            'menu:id_menu,nama_menu',
+            'order:id_pesanan,nomor_antrean',
+        ]);
 
         if ($request->filled('id_menu')) {
             $query->where('id_menu', (int) $request->query('id_menu'));
@@ -33,6 +37,7 @@ class ReviewController extends Controller
         $rows = $query->orderByDesc('id_review')->get()->map(fn (Review $r) => [
             'id_review' => $r->id_review,
             'id_pesanan' => $r->id_pesanan,
+            'nomor_antrean' => $r->order?->nomor_antrean,
             'id_user' => $r->id_user,
             'id_tenant' => $r->id_tenant,
             'id_menu' => $r->id_menu,

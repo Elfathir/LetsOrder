@@ -36,12 +36,16 @@ class OrderController extends Controller
     {
         $user = $request->user();
 
-        $query = Order::with([
+        $relations = [
             'tenant',
             'orderDetails.menu',
             'payments',
             'statusHistories',
-        ])->where('id_user', $user->id_user);
+        ];
+        if (Schema::hasTable('reviews')) {
+            $relations[] = 'reviews';
+        }
+        $query = Order::with($relations)->where('id_user', $user->id_user);
 
         if ($request->filled('status_pesanan')) {
             $query->where('status_pesanan', $request->query('status_pesanan'));
@@ -262,13 +266,17 @@ class OrderController extends Controller
     {
         $user = $request->user();
 
-        $order = Order::with([
+        $relations = [
             'user',
             'tenant',
             'orderDetails.menu',
             'payments',
             'statusHistories',
-        ])->find($id);
+        ];
+        if (Schema::hasTable('reviews')) {
+            $relations[] = 'reviews';
+        }
+        $order = Order::with($relations)->find($id);
 
         if (!$order) {
             return response()->json([
@@ -299,13 +307,17 @@ class OrderController extends Controller
         $user = $request->user();
         $tenantIds = Tenant::where('id_user', $user->id_user)->pluck('id_tenant');
 
-        $query = Order::with([
+        $relations = [
             'user',
             'tenant',
             'orderDetails.menu',
             'payments',
             'statusHistories',
-        ])->whereIn('id_tenant', $tenantIds);
+        ];
+        if (Schema::hasTable('reviews')) {
+            $relations[] = 'reviews';
+        }
+        $query = Order::with($relations)->whereIn('id_tenant', $tenantIds);
 
         if ($request->filled('status_pesanan')) {
             $query->where('status_pesanan', $request->query('status_pesanan'));
@@ -331,13 +343,17 @@ class OrderController extends Controller
     {
         $user = $request->user();
 
-        $order = Order::with([
+        $relations = [
             'user',
             'tenant',
             'orderDetails.menu',
             'payments',
             'statusHistories',
-        ])->find($id);
+        ];
+        if (Schema::hasTable('reviews')) {
+            $relations[] = 'reviews';
+        }
+        $order = Order::with($relations)->find($id);
 
         if (!$order) {
             return response()->json([
