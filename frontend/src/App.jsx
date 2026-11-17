@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
 import {
   Search,
@@ -280,25 +280,166 @@ const TRANSLATIONS = {
   },
 };
 
+function readStoredTheme() {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem("letsorder_theme") === "dark"
+      ? "dark"
+      : "light";
+  } catch {
+    return "light";
+  }
+}
+
 export function applyDocumentTheme(nextTheme) {
   const resolved = nextTheme === "dark" ? "dark" : "light";
   if (typeof document !== "undefined") {
-    document.documentElement.setAttribute("data-theme", resolved);
-    document.documentElement.style.colorScheme = resolved;
+    if (document.documentElement.getAttribute("data-theme") !== resolved) {
+      document.documentElement.setAttribute("data-theme", resolved);
+    }
     const meta = document.querySelector?.('meta[name="theme-color"]');
     if (meta) {
-      meta.setAttribute("content", resolved === "dark" ? "#171211" : "#FFFFFF");
+      const nextColor = resolved === "dark" ? "#171211" : "#FFFFFF";
+      if (meta.getAttribute("content") !== nextColor) {
+        meta.setAttribute("content", nextColor);
+      }
     }
   }
   return resolved;
 }
 
-function ThemeToggleButton({ theme, onToggle, title, size = 36 }) {
+let currentThemeState = readStoredTheme();
+const themeListeners = new Set();
+let activeThemeTransition = null;
+let themeAnimatingUntil = 0;
+
+function isThemeAnimating() {
+  return (
+    activeThemeTransition !== null ||
+    (typeof performance !== "undefined" && performance.now() < themeAnimatingUntil)
+  );
+}
+
+async function waitForThemeTransitionIdle() {
+  if (!isThemeAnimating()) return;
+  await new Promise((resolve) => {
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const waitMs = Math.min(600, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
+    setTimeout(resolve, waitMs);
+  });
+}
+
+function getThemeSnapshot() {
+  return currentThemeState;
+}
+
+function subscribeTheme(listener) {
+  themeListeners.add(listener);
+  return () => themeListeners.delete(listener);
+}
+
+function commitAppTheme(nextTheme) {
+  const resolved = applyDocumentTheme(nextTheme);
+  currentThemeState = resolved;
+  try {
+    localStorage.setItem("letsorder_theme", resolved);
+  } catch {
+    // ignore storage restrictions
+  }
+  themeListeners.forEach((listener) => listener());
+}
+
+function toggleAppTheme(event) {
+  const nextTheme = currentThemeState === "dark" ? "light" : "dark";
+  const rect = event?.currentTarget?.getBoundingClientRect?.();
+  const rawX = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+  const rawY = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+  const x = Math.round(rawX);
+  const y = Math.round(rawY);
+  const endRadius = Math.ceil(
+    Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
+  );
+
+  const prefersReduced =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  if (typeof document.startViewTransition !== "function" || prefersReduced) {
+    commitAppTheme(nextTheme);
+    return;
+  }
+
+  if (activeThemeTransition) {
+    try {
+      activeThemeTransition.skipTransition?.();
+    } catch {
+      // ignore skipped transition errors
+    }
+    activeThemeTransition = null;
+  }
+
+  themeAnimatingUntil =
+    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 550;
+
+  let transition;
+  try {
+    transition = document.startViewTransition(() => {
+      flushSync(() => {
+        commitAppTheme(nextTheme);
+      });
+    });
+  } catch {
+    themeAnimatingUntil = 0;
+    commitAppTheme(nextTheme);
+    return;
+  }
+
+  activeThemeTransition = transition;
+
+  Promise.resolve(transition.ready)
+    .then(() => {
+      if (activeThemeTransition !== transition) return;
+      if (typeof document.documentElement.animate !== "function") return;
+      document.documentElement.animate(
+        {
+          clipPath: [
+            `circle(0px at ${x}px ${y}px)`,
+            `circle(${endRadius}px at ${x}px ${y}px)`,
+          ],
+        },
+        {
+          duration: 440,
+          easing: "cubic-bezier(0.4, 0, 0.2, 1)",
+          fill: "forwards",
+          pseudoElement: "::view-transition-new(root)",
+        }
+      );
+    })
+    .catch(() => {});
+
+  Promise.resolve(transition.finished)
+    .catch(() => {})
+    .finally(() => {
+      if (activeThemeTransition === transition) {
+        activeThemeTransition = null;
+        themeAnimatingUntil = 0;
+      }
+    });
+}
+
+const ThemeToggleButton = memo(function ThemeToggleButton({ darkTitle, lightTitle, size = 36 }) {
+  const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot);
   const isDark = theme === "dark";
+  const title = isDark ? lightTitle : darkTitle;
+
+  useLayoutEffect(() => {
+    applyDocumentTheme(theme);
+  }, [theme]);
+
   return (
     <button
       type="button"
-      onClick={onToggle}
+      onClick={toggleAppTheme}
       title={title}
       aria-label={title}
       aria-pressed={isDark}
@@ -326,7 +467,20 @@ function ThemeToggleButton({ theme, onToggle, title, size = 36 }) {
       )}
     </button>
   );
-}
+});
+
+const LiveClockText = memo(function LiveClockText() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!isThemeAnimating()) {
+        setNow(new Date());
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+  return <span className="tabular">{formatLiveClock(now)}</span>;
+});
 
 const PROMOS = [
   {
@@ -506,7 +660,7 @@ function isSafeImageSrc(value) {
   }
 }
 
-function SafeImage({ src, alt, className = "", style = {}, fallbackType = "food", iconSize = 28 }) {
+const SafeImage = memo(function SafeImage({ src, alt, className = "", style = {}, fallbackType = "food", iconSize = 28 }) {
   const [failed, setFailed] = useState(false);
   const rawSrc = typeof src === "string" ? src.trim() : "";
   const cleanSrc = isSafeImageSrc(rawSrc) ? rawSrc : "";
@@ -541,11 +695,12 @@ function SafeImage({ src, alt, className = "", style = {}, fallbackType = "food"
       src={cleanSrc}
       alt={alt}
       className={className}
+      decoding="async"
       style={{ width: "100%", height: "100%", objectFit: "cover", ...style }}
       onError={() => setFailed(true)}
     />
   );
-}
+});
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => getStoredUser());
@@ -556,87 +711,8 @@ export default function App() {
 
   const [lang, setLang] = useState(() => localStorage.getItem("letsorder_lang") || "ID");
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
-  const [theme, setTheme] = useState(() => {
-    try {
-      return localStorage.getItem("letsorder_theme") === "dark" ? "dark" : "light";
-    } catch {
-      return "light";
-    }
-  });
   const t = TRANSLATIONS[lang] || TRANSLATIONS.ID;
   const heroSlides = HERO_SLIDES_BY_LANG[lang] || HERO_SLIDES_BY_LANG.ID;
-
-  useLayoutEffect(() => {
-    applyDocumentTheme(theme);
-  }, [theme]);
-
-  const toggleTheme = (event) => {
-    const nextTheme = theme === "dark" ? "light" : "dark";
-    const rect = event?.currentTarget?.getBoundingClientRect?.();
-    const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-    const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-    const endRadius = Math.hypot(
-      Math.max(x, window.innerWidth - x),
-      Math.max(y, window.innerHeight - y)
-    );
-
-    const commitTheme = () => {
-      applyDocumentTheme(nextTheme);
-      try {
-        localStorage.setItem("letsorder_theme", nextTheme);
-      } catch {
-        // ignore storage restrictions
-      }
-      setTheme(nextTheme);
-    };
-
-    const prefersReduced =
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    if (typeof document.startViewTransition !== "function" || prefersReduced) {
-      commitTheme();
-      return;
-    }
-
-    document.documentElement.classList.add("theme-transitioning");
-    const transition = document.startViewTransition(() => {
-      flushSync(() => {
-        commitTheme();
-      });
-    });
-
-    Promise.resolve(transition.ready)
-      .then(() => {
-        if (typeof document.documentElement.animate !== "function") return;
-        const animation = document.documentElement.animate(
-          {
-            clipPath: [
-              `circle(0px at ${x}px ${y}px)`,
-              `circle(${endRadius}px at ${x}px ${y}px)`,
-            ],
-          },
-          {
-            duration: 520,
-            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-            fill: "forwards",
-            pseudoElement: "::view-transition-new(root)",
-          }
-        );
-        return animation?.finished?.catch(() => {});
-      })
-      .catch(() => {})
-      .finally(() => {
-        document.documentElement.classList.remove("theme-transitioning");
-      });
-
-    Promise.resolve(transition.finished)
-      .catch(() => {})
-      .finally(() => {
-        document.documentElement.classList.remove("theme-transitioning");
-      });
-  };
 
   const changeLanguage = (nextLang) => {
     setLang(nextLang);
@@ -1084,6 +1160,8 @@ export default function App() {
         isVendor ? api.getVendorPromos().catch(() => null) : Promise.resolve(null),
       ]);
 
+      await waitForThemeTransitionIdle();
+
       if (tenantsRes?.data) {
         setTenantsList(
           tenantsRes.data.map((t) => ({
@@ -1343,15 +1421,23 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     const pollId = setInterval(() => {
-      syncFromApi();
+      if (!isThemeAnimating()) {
+        syncFromApi();
+      }
     }, 6000);
     return () => clearInterval(pollId);
   }, [currentUser, syncFromApi]);
 
   useEffect(() => {
     const tick = setInterval(() => {
-      setLiveClock(new Date());
-    }, 1000);
+      if (isThemeAnimating()) return;
+      const now = new Date();
+      setLiveClock((prev) =>
+        prev.getHours() === now.getHours() && prev.getMinutes() === now.getMinutes()
+          ? prev
+          : now
+      );
+    }, 10000);
     return () => clearInterval(tick);
   }, []);
 
@@ -1576,7 +1662,9 @@ export default function App() {
   useEffect(() => {
     if (isHeroPaused) return;
     const timer = setInterval(() => {
-      setHeroSlide((prev) => (prev + 1) % heroSlides.length);
+      if (!isThemeAnimating()) {
+        setHeroSlide((prev) => (prev + 1) % heroSlides.length);
+      }
     }, 5000);
     return () => clearInterval(timer);
   }, [isHeroPaused, heroSlides.length]);
@@ -2501,9 +2589,8 @@ export default function App() {
                 </div>
 
                 <ThemeToggleButton
-                  theme={theme}
-                  onToggle={toggleTheme}
-                  title={theme === "dark" ? t.themeToLight : t.themeToDark}
+                  darkTitle={t.themeToDark}
+                  lightTitle={t.themeToLight}
                   size={36}
                 />
 
@@ -2714,7 +2801,7 @@ export default function App() {
                               : t.storeClosed}
                           </span>
                           <span className="tabular" style={{ color: "var(--text-muted)", fontWeight: 600 }}>
-                            · {formatLiveClock(liveClock)} · {lang === "EN" ? "Until" : "s/d"}{" "}
+                            · <LiveClockText /> · {lang === "EN" ? "Until" : "s/d"}{" "}
                             {myTenantInfo?.jam_tutup || "21:00"}
                           </span>
                         </button>
@@ -5315,7 +5402,7 @@ export default function App() {
                             ? `${lang === "EN" ? "Open until" : "Buka sampai"} ${activeTenantView.jam_tutup || "21:00"}`
                             : `${lang === "EN" ? "Closed · Opens at" : "Tutup · Buka pukul"} ${activeTenantView.jam_buka || "07:00"}`}
                           {" · "}
-                          <span className="tabular">{formatLiveClock(liveClock)}</span>
+                          <LiveClockText />
                         </p>
                       </div>
                       <div
@@ -9269,9 +9356,8 @@ export default function App() {
               <span>{lang}</span>
             </button>
             <ThemeToggleButton
-              theme={theme}
-              onToggle={toggleTheme}
-              title={theme === "dark" ? t.themeToLight : t.themeToDark}
+              darkTitle={t.themeToDark}
+              lightTitle={t.themeToLight}
               size={34}
             />
           </div>
