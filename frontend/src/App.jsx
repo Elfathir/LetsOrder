@@ -417,19 +417,7 @@ function toggleAppTheme(event) {
   clone.setAttribute("aria-hidden", "true");
   clone.style.cssText += `;position:absolute;left:${rootRect.left}px;top:${rootRect.top}px;width:${rootRect.width}px;min-height:${Math.max(rootRect.height, viewH)}px;pointer-events:none;margin:0;`;
 
-  // Sticky header in the clone would scroll away (clone is offset by -scrollY); pin it to the viewport top instead
-  const origHeader = rootEl.querySelector("header");
-  const cloneHeader = clone.querySelector("header");
-  if (origHeader && cloneHeader) {
-    const hRect = origHeader.getBoundingClientRect();
-    const cs = window.getComputedStyle(origHeader);
-    if (cs.position === "sticky" || cs.position === "fixed") {
-      cloneHeader.style.position = "absolute";
-      cloneHeader.style.top = `${hRect.top - rootRect.top}px`;
-      cloneHeader.style.left = `${hRect.left - rootRect.left}px`;
-      cloneHeader.style.width = `${hRect.width}px`;
-    }
-  }
+  // Note: sticky header needs no special handling — it sticks to the top of the (non-scrolled) inner container natively.
 
   const origFields = rootEl.querySelectorAll("input, textarea, select");
   const cloneFields = clone.querySelectorAll("input, textarea, select");
