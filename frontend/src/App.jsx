@@ -1129,7 +1129,7 @@ export default function App() {
             clearStoredSession();
             setCurrentUser(null);
             setAuthError(
-              "Sesi login tidak valid atau telah kedaluwarsa. Silakan login kembali."
+              "Sesi login berakhir karena tidak aktif selama 5 hari atau token direset. Silakan login kembali."
             );
             return;
           }

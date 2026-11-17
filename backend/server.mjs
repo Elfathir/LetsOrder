@@ -7,6 +7,12 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.join(__dirname, "storage", "app", "db.json");
 const MAX_BODY_BYTES = 6 * 1024 * 1024; // 6 MB limit per request body
+const SESSION_INACTIVITY_DAYS = Math.max(
+  1,
+  Number.parseInt(process.env.SESSION_INACTIVITY_DAYS || "5", 10) || 5
+);
+const TOKEN_INACTIVITY_TTL_MS = SESSION_INACTIVITY_DAYS * 24 * 60 * 60 * 1000;
+const TOKEN_TOUCH_DEBOUNCE_MS = 5 * 60 * 1000;
 
 function loadEnvFile(filePath) {
   try {
@@ -87,6 +93,22 @@ function sha256Hex(value) {
 
 function hashToken(token) {
   return `sha256:${sha256Hex(token)}`;
+}
+
+function parseTokenEntry(entry, now = Date.now()) {
+  if (typeof entry === "number" || typeof entry === "string") {
+    const userId = Number(entry);
+    if (!Number.isFinite(userId) || userId <= 0) return null;
+    return { userId, createdAt: now, lastActiveAt: now, legacy: true };
+  }
+  if (entry && typeof entry === "object") {
+    const userId = Number(entry.userId);
+    if (!Number.isFinite(userId) || userId <= 0) return null;
+    const createdAt = Number(entry.createdAt) || now;
+    const lastActiveAt = Number(entry.lastActiveAt) || createdAt;
+    return { userId, createdAt, lastActiveAt, legacy: false };
+  }
+  return null;
 }
 
 function logSecurityEvent(event, meta = {}) {
@@ -330,13 +352,26 @@ function loadDb() {
         }
         if (parsed.tokens && typeof parsed.tokens === "object") {
           const nextTokens = {};
-          for (const [rawKey, uid] of Object.entries(parsed.tokens)) {
-            if (String(rawKey).startsWith("sha256:")) {
-              nextTokens[rawKey] = uid;
-            } else {
-              nextTokens[hashToken(rawKey)] = uid;
+          const now = Date.now();
+          for (const [rawKey, entry] of Object.entries(parsed.tokens)) {
+            const parsedEntry = parseTokenEntry(entry, now);
+            if (!parsedEntry) {
+              migrated = true;
+              continue;
+            }
+            if (now - parsedEntry.lastActiveAt > TOKEN_INACTIVITY_TTL_MS) {
+              migrated = true;
+              continue;
+            }
+            const storeKey = String(rawKey).startsWith("sha256:") ? rawKey : hashToken(rawKey);
+            if (storeKey !== rawKey || parsedEntry.legacy) {
               migrated = true;
             }
+            nextTokens[storeKey] = {
+              userId: parsedEntry.userId,
+              createdAt: parsedEntry.createdAt,
+              lastActiveAt: parsedEntry.lastActiveAt,
+            };
           }
           parsed.tokens = nextTokens;
         }
@@ -569,9 +604,48 @@ function getAuthUser(req) {
   const auth = req.headers.authorization || "";
   const token = auth.replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
-  const userId = db.tokens[hashToken(token)] ?? db.tokens[token];
-  if (!userId) return null;
-  return db.users.find((u) => u.id_user === userId) || null;
+  const hashedKey = hashToken(token);
+  const matchedKey = Object.prototype.hasOwnProperty.call(db.tokens, hashedKey)
+    ? hashedKey
+    : Object.prototype.hasOwnProperty.call(db.tokens, token)
+      ? token
+      : null;
+  if (!matchedKey) return null;
+
+  const now = Date.now();
+  const parsed = parseTokenEntry(db.tokens[matchedKey], now);
+  if (!parsed) {
+    delete db.tokens[matchedKey];
+    saveDb(db);
+    return null;
+  }
+
+  if (now - parsed.lastActiveAt > TOKEN_INACTIVITY_TTL_MS) {
+    delete db.tokens[matchedKey];
+    saveDb(db);
+    return null;
+  }
+
+  const user = db.users.find((u) => u.id_user === parsed.userId) || null;
+  if (!user) {
+    delete db.tokens[matchedKey];
+    saveDb(db);
+    return null;
+  }
+
+  if (parsed.legacy || matchedKey !== hashedKey || now - parsed.lastActiveAt >= TOKEN_TOUCH_DEBOUNCE_MS) {
+    db.tokens[hashedKey] = {
+      userId: parsed.userId,
+      createdAt: parsed.createdAt,
+      lastActiveAt: now,
+    };
+    if (matchedKey !== hashedKey) {
+      delete db.tokens[matchedKey];
+    }
+    saveDb(db);
+  }
+
+  return user;
 }
 
 function requireAuth(req, res) {
@@ -628,8 +702,8 @@ function ensureTenantForVendor(user, namaTenantOverride) {
 }
 
 function revokeUserTokens(userId) {
-  for (const [tok, uid] of Object.entries(db.tokens)) {
-    if (uid === userId) {
+  for (const [tok, entry] of Object.entries(db.tokens)) {
+    if (parseTokenEntry(entry)?.userId === userId) {
       delete db.tokens[tok];
     }
   }
@@ -644,7 +718,12 @@ function issueUserSession(user, createTenantName = null) {
   const tenant =
     user.peran === "Vendor" ? ensureTenantForVendor(user, createTenantName || user.nama) : null;
   const token = crypto.randomBytes(24).toString("hex");
-  db.tokens[hashToken(token)] = user.id_user;
+  const now = Date.now();
+  db.tokens[hashToken(token)] = {
+    userId: user.id_user,
+    createdAt: now,
+    lastActiveAt: now,
+  };
   saveDb(db);
   return { token, userPayload: sanitizeUserResponse(user, tenant) };
 }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\ExtendTokenExpirationMiddleware;
 use App\Http\Middleware\RoleMiddleware;
 use App\Http\Middleware\SecurityHeadersMiddleware;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -24,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->append(SecurityHeadersMiddleware::class);
+        $middleware->appendToGroup('api', ExtendTokenExpirationMiddleware::class);
 
         $middleware->redirectGuestsTo(
             fn (Request $request) => $request->is('api/*') ? null : '/login'

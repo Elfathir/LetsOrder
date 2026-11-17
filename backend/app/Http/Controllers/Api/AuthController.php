@@ -55,7 +55,7 @@ class AuthController extends Controller
             $user->setRelation('tenant', $tenant);
         }
 
-        $token = $user->createToken('letsorder-api')->plainTextToken;
+        $token = $this->issueApiToken($user);
 
         return response()->json([
             'success' => true,
@@ -114,7 +114,7 @@ class AuthController extends Controller
             $user->setRelation('tenant', \App\Models\Tenant::where('id_user', $user->id_user)->first());
         }
 
-        $token = $user->createToken('letsorder-api')->plainTextToken;
+        $token = $this->issueApiToken($user);
 
         return response()->json([
             'success' => true,
@@ -587,8 +587,15 @@ class AuthController extends Controller
             ]);
         }
 
-        $token = $user->createToken('letsorder-api')->plainTextToken;
+        $token = $this->issueApiToken($user);
         return ['user' => $user, 'token' => $token];
+    }
+
+    private function issueApiToken(User $user): string
+    {
+        $days = max(1, (int) env('SESSION_INACTIVITY_DAYS', 5));
+
+        return $user->createToken('letsorder-api', ['*'], now()->addDays($days))->plainTextToken;
     }
 
     /**
