@@ -50,9 +50,11 @@ return [
     |
     */
 
-    'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 1440) !== null
-        ? (int) env('SANCTUM_TOKEN_EXPIRATION', 1440)
-        : null,
+    'expiration' => filter_var(
+        env('SANCTUM_TOKEN_EXPIRATION'),
+        FILTER_VALIDATE_INT,
+        ['options' => ['min_range' => 1]]
+    ) ?: null,
 
     /*
     |--------------------------------------------------------------------------

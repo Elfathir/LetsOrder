@@ -757,10 +757,10 @@ async function handleApiRequest(req, res) {
     const password = String(body.password || "");
     const peran = body.peran === "Vendor" ? "Vendor" : "Customer";
 
-    if (!username || !isValidEmail(email) || password.length < 8) {
+    if (!username || !isValidEmail(email) || password.length < 6) {
       return sendJson(req, res, 422, {
         success: false,
-        message: "Username, format email valid, dan password (minimal 8 karakter) wajib diisi.",
+        message: "Username, format email valid, dan password (minimal 6 karakter) wajib diisi.",
       });
     }
 
@@ -1190,11 +1190,11 @@ async function handleApiRequest(req, res) {
     const resetCode = String(body.reset_token || body.code || "").trim();
     const newPassword = String(body.new_password || body.password || "");
 
-    if (!identifier || !resetCode || newPassword.length < 8) {
+    if (!identifier || !resetCode || newPassword.length < 6) {
       return sendJson(req, res, 422, {
         success: false,
         message:
-          "Masukkan username/email, kode verifikasi reset 6 digit, dan password baru minimal 8 karakter.",
+          "Masukkan username/email, kode verifikasi reset 6 digit, dan password baru minimal 6 karakter.",
       });
     }
 
@@ -1247,10 +1247,10 @@ async function handleApiRequest(req, res) {
         message: "Password saat ini tidak sesuai.",
       });
     }
-    if (newPassword.length < 8) {
+    if (newPassword.length < 6) {
       return sendJson(req, res, 422, {
         success: false,
-        message: "Password baru minimal 8 karakter.",
+        message: "Password baru minimal 6 karakter.",
       });
     }
     user.password = hashPassword(newPassword);

@@ -22,8 +22,8 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $passwordRule = $request->has('password_confirmation')
-            ? 'required|string|min:8|confirmed'
-            : 'required|string|min:8';
+            ? 'required|string|min:6|confirmed'
+            : 'required|string|min:6';
 
         $validated = $request->validate([
             'username' => 'required|string|max:50|unique:users,username',
@@ -350,10 +350,10 @@ class AuthController extends Controller
         $resetCode = trim((string) ($request->input('reset_token') ?? $request->input('code') ?? ''));
         $newPassword = (string) ($request->input('new_password') ?? $request->input('password'));
 
-        if (!$identifier || !$resetCode || strlen($newPassword) < 8) {
+        if (!$identifier || !$resetCode || strlen($newPassword) < 6) {
             return response()->json([
                 'success' => false,
-                'message' => 'Masukkan username/email, kode verifikasi reset 6 digit, dan password baru minimal 8 karakter.',
+                'message' => 'Masukkan username/email, kode verifikasi reset 6 digit, dan password baru minimal 6 karakter.',
             ], 422);
         }
 
@@ -411,7 +411,7 @@ class AuthController extends Controller
         $user = $request->user();
         $validated = $request->validate([
             'current_password' => 'required|string',
-            'new_password' => 'required|string|min:8',
+            'new_password' => 'required|string|min:6',
         ]);
 
         if (!Hash::check($validated['current_password'], $user->password)) {
