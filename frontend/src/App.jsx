@@ -324,7 +324,7 @@ async function waitForThemeTransitionIdle() {
   if (!isThemeAnimating()) return;
   await new Promise((resolve) => {
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const waitMs = Math.min(800, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
+    const waitMs = Math.min(720, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
     setTimeout(resolve, waitMs);
   });
 }
@@ -354,14 +354,10 @@ function toggleAppTheme(event) {
   const rect = event?.currentTarget?.getBoundingClientRect?.();
   const vw = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0);
   const vh = Math.max(window.innerHeight || 0, document.documentElement?.clientHeight || 0);
-  const rawX = rect ? rect.left + rect.width / 2 : vw / 2;
-  const rawY = rect ? rect.top + rect.height / 2 : vh / 2;
-  const x = Math.round(rawX);
-  const y = Math.round(rawY);
+  const x = Math.round(rect ? rect.left + rect.width / 2 : vw / 2);
+  const y = Math.round(rect ? rect.top + rect.height / 2 : vh / 2);
   const startRadius = Math.max(14, rect && rect.width > 0 ? Math.round(rect.width / 2) : 18);
-  const cornerDist = Math.hypot(Math.max(x, vw - x), Math.max(y, vh - y));
-  // Overshoot 18% beyond farthest corner so ease-out passes 100% viewport cleanly without stalling at the corner
-  const endRadius = Math.ceil(cornerDist * 1.18);
+  const endRadius = Math.ceil(Math.hypot(Math.max(x, vw - x), Math.max(y, vh - y)));
 
   const prefersReduced =
     typeof window !== "undefined" &&
@@ -383,7 +379,7 @@ function toggleAppTheme(event) {
   }
 
   themeAnimatingUntil =
-    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 720;
+    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 650;
 
   let transition;
   try {
@@ -412,9 +408,9 @@ function toggleAppTheme(event) {
           ],
         },
         {
-          duration: 650,
-          easing: "cubic-bezier(0.25, 0.68, 0.38, 1)",
-          fill: "forwards",
+          duration: 600,
+          easing: "linear",
+          fill: "both",
           pseudoElement: "::view-transition-new(root)",
         }
       );

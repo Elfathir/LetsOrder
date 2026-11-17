@@ -287,14 +287,7 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
   color: var(--maroon);
 }
 
-/* Circular theme switch transition without any shadow or glow */
-::view-transition {
-  pointer-events: none;
-}
-
-::view-transition,
-::view-transition-group(root),
-::view-transition-image-pair(root),
+/* Pure circle theme transition without shadow */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;
@@ -302,7 +295,6 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
   box-shadow: none !important;
   filter: none !important;
   outline: none !important;
-  border: none !important;
 }
 
 ::view-transition-old(root) {
