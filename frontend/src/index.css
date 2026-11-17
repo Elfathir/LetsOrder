@@ -1,4 +1,5 @@
-:root {
+:root,
+[data-theme-scope="light"] {
   --font-main: "Outfit", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
 
@@ -208,7 +209,8 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
   animation: laserScan 2.4s ease-in-out infinite;
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+[data-theme-scope="dark"] {
   --bg-page: #171211;
   --bg-card: #211A18;
   --bg-cream: #2E231F;
@@ -271,55 +273,31 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
   --shadow-float: 0 16px 36px rgba(0, 0, 0, 0.48), 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-:root[data-theme="dark"] ::placeholder {
+:root[data-theme="dark"] ::placeholder,
+[data-theme-scope="dark"] ::placeholder {
   color: var(--text-light);
 }
 
 :root[data-theme="dark"] input,
 :root[data-theme="dark"] textarea,
-:root[data-theme="dark"] select {
+:root[data-theme="dark"] select,
+[data-theme-scope="dark"] input,
+[data-theme-scope="dark"] textarea,
+[data-theme-scope="dark"] select {
   color: var(--maroon);
   color-scheme: dark;
 }
 
-:root[data-theme="dark"] option {
+:root[data-theme="dark"] option,
+[data-theme-scope="dark"] option {
   background-color: var(--bg-card);
   color: var(--maroon);
 }
 
-@property --bg-hero-fade-start {
-  syntax: "<color>";
-  inherits: true;
-  initial-value: rgba(255, 255, 255, 0.96);
-}
-
-@property --bg-hero-fade-mid {
-  syntax: "<color>";
-  inherits: true;
-  initial-value: rgba(255, 255, 255, 0.80);
-}
-
-@property --bg-hero-fade-end {
-  syntax: "<color>";
-  inherits: true;
-  initial-value: rgba(255, 255, 255, 0.18);
-}
-
-#root {
-  position: relative;
-  z-index: 1;
-}
-
-html.theme-wave-active,
-html.theme-wave-active body,
-html.theme-wave-active header {
-  background-color: transparent !important;
-}
-
-html.theme-wave-active:root,
-html.theme-wave-active:root[data-theme="dark"] {
-  --bg-page: transparent;
-  --bg-auth-page: transparent;
+html.theme-wave-active *,
+html.theme-wave-active *::before,
+html.theme-wave-active *::after {
+  transition: none !important;
 }
 
 .theme-toggle-btn:hover {

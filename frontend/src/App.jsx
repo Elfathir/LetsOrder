@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { flushSync } from "react-dom";
 import {
   Search,
   ShoppingBag,
@@ -365,80 +366,58 @@ function toggleAppTheme(event) {
   const prevTheme = currentThemeState === "dark" ? "dark" : "light";
   const nextTheme = prevTheme === "dark" ? "light" : "dark";
   const rect = event?.currentTarget?.getBoundingClientRect?.();
-  const vw = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0);
-  const vh = Math.max(window.innerHeight || 0, document.documentElement?.clientHeight || 0);
+  const vw = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0, 1);
+  const vh = Math.max(window.innerHeight || 0, document.documentElement?.clientHeight || 0, 1);
   const x = Math.round(rect ? rect.left + rect.width / 2 : vw / 2);
   const y = Math.round(rect ? rect.top + rect.height / 2 : vh / 2);
   const startRadius = Math.max(14, rect && rect.width > 0 ? Math.round(rect.width / 2) : 18);
-  const endRadius = Math.ceil(Math.hypot(Math.max(x, vw - x), Math.max(y, vh - y)));
-  const baseRadius = Math.max(startRadius, Math.min(256, endRadius));
-  const startScale = Number((startRadius / baseRadius).toFixed(4));
-  const endScale = Number((endRadius / baseRadius + 0.04).toFixed(4));
+  const endRadius = Math.max(
+    startRadius + 10,
+    Math.ceil(Math.hypot(Math.max(x, vw - x), Math.max(y, vh - y)))
+  );
+  const baseRadius = endRadius;
+  const startScale = Number((startRadius / baseRadius).toFixed(5));
+  const endScale = 1.02;
 
   const prefersReduced =
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  const rootEl = typeof document !== "undefined" ? document.getElementById("root") : null;
+
   if (
     prefersReduced ||
     typeof document === "undefined" ||
     !document.body ||
+    !rootEl ||
     typeof document.createElement("div").animate !== "function"
   ) {
     commitAppTheme(nextTheme);
     return;
   }
 
-  const hasHeader = Boolean(document.querySelector?.("header"));
-  const lightSurface = hasHeader ? "#FFFFFF" : "#FAF6F2";
-  const prevBg = prevTheme === "dark" ? "#171211" : lightSurface;
-  const nextBg = nextTheme === "dark" ? "#171211" : lightSurface;
   const WAVE_DURATION = 420;
-  const spanRadius = Math.max(1, endRadius - startRadius);
+  const scrollX = typeof window !== "undefined" ? window.scrollX || 0 : 0;
+  const scrollY = typeof window !== "undefined" ? window.scrollY || 0 : 0;
 
-  // 1. Pure read pass: measure each visible element's distance from the button center (x, y)
-  const rootEl = document.getElementById("root");
-  const savedTransitions = [];
-  if (rootEl) {
-    const allNodes = rootEl.querySelectorAll("*");
-    const measured = [];
-    for (let i = 0; i < allNodes.length; i += 1) {
-      const el = allNodes[i];
-      if (!el || !el.style || typeof el.getBoundingClientRect !== "function") continue;
-      const r = el.getBoundingClientRect();
-      if (r.width <= 0 && r.height <= 0) continue;
-      const dxNear = Math.max(0, r.left - x, x - r.right);
-      const dyNear = Math.max(0, r.top - y, y - r.bottom);
-      const distNear = Math.hypot(dxNear, dyNear);
-      const dxFar = Math.max(Math.abs(x - r.left), Math.abs(x - r.right));
-      const dyFar = Math.max(Math.abs(y - r.top), Math.abs(y - r.bottom));
-      const distFar = Math.hypot(dxFar, dyFar);
-      const rawEnter = WAVE_DURATION * (Math.max(0, distNear - startRadius) / spanRadius);
-      const rawExit = WAVE_DURATION * (Math.max(0, distFar - startRadius) / spanRadius);
-      const delayMs = Math.min(WAVE_DURATION - 45, Math.max(0, Math.round(rawEnter)));
-      const maxDur = Math.max(40, WAVE_DURATION - delayMs);
-      const durMs = Math.min(maxDur, Math.min(130, Math.max(45, Math.round((rawExit - rawEnter) * 0.55))));
-      measured.push([el, delayMs, durMs]);
-    }
-    // 2. Write pass: register distance-synced transition BEFORE flipping data-theme so elements wait for the circle wave
-    for (let i = 0; i < measured.length; i += 1) {
-      const [el, delayMs, durMs] = measured[i];
-      savedTransitions.push([el, el.style.transition]);
-      const spec = `${durMs}ms linear ${delayMs}ms`;
-      el.style.transition = [
-        `background-color ${spec}`,
-        `color ${spec}`,
-        `border-color ${spec}`,
-        `box-shadow ${spec}`,
-        `fill ${spec}`,
-        `stroke ${spec}`,
-        `--bg-hero-fade-start ${spec}`,
-        `--bg-hero-fade-mid ${spec}`,
-        `--bg-hero-fade-end ${spec}`,
-      ].join(", ");
-    }
-    void rootEl.offsetHeight;
+  document.documentElement.classList.add("theme-wave-active");
+  rootEl.setAttribute("data-theme-scope", prevTheme);
+
+  flushSync(() => {
+    commitAppTheme(nextTheme, true);
+  });
+
+  const clone = rootEl.cloneNode(true);
+  clone.removeAttribute("id");
+  clone.setAttribute("data-theme-scope", nextTheme);
+  clone.setAttribute("aria-hidden", "true");
+  clone.style.cssText += `;position:absolute;left:${-scrollX}px;top:${-scrollY}px;width:${vw}px;min-height:${vh}px;pointer-events:none;margin:0;`;
+
+  const origFields = rootEl.querySelectorAll("input, textarea, select");
+  const cloneFields = clone.querySelectorAll("input, textarea, select");
+  for (let i = 0; i < origFields.length && i < cloneFields.length; i += 1) {
+    cloneFields[i].value = origFields[i].value;
   }
 
   const host = document.createElement("div");
@@ -446,14 +425,14 @@ function toggleAppTheme(event) {
   host.style.cssText = [
     "position:fixed",
     "inset:0",
-    "z-index:0",
+    "z-index:99999",
     "pointer-events:none",
     "overflow:hidden",
-    `background-color:${prevBg}`,
   ].join(";");
 
-  const circle = document.createElement("div");
   const diameter = baseRadius * 2;
+  const circle = document.createElement("div");
+  circle.setAttribute("data-theme-wave-circle", "true");
   circle.style.cssText = [
     "position:fixed",
     `left:${x - baseRadius}px`,
@@ -461,32 +440,57 @@ function toggleAppTheme(event) {
     `width:${diameter}px`,
     `height:${diameter}px`,
     "border-radius:50%",
-    `background-color:${nextBg}`,
+    "overflow:hidden",
     "box-shadow:none",
     "border:none",
     "outline:none",
     "pointer-events:none",
+    "transform-origin:50% 50%",
     "will-change:transform",
     `transform:translateZ(0) scale(${startScale})`,
   ].join(";");
 
+  const inner = document.createElement("div");
+  inner.setAttribute("data-theme-wave-inner", "true");
+  inner.style.cssText = [
+    "position:absolute",
+    `left:${baseRadius - x}px`,
+    `top:${baseRadius - y}px`,
+    `width:${vw}px`,
+    `height:${vh}px`,
+    "overflow:hidden",
+    "pointer-events:none",
+    `transform-origin:${x}px ${y}px`,
+    `transform:translateZ(0) scale(${Number((1 / startScale).toFixed(4))})`,
+  ].join(";");
+
+  inner.appendChild(clone);
+  circle.appendChild(inner);
   host.appendChild(circle);
-  document.body.insertBefore(host, document.body.firstChild);
-  document.documentElement.classList.add("theme-wave-active");
-  commitAppTheme(nextTheme, true);
+  document.body.appendChild(host);
+
+  const STEPS = 64;
+  const scaleRatio = endScale / startScale;
+  const scaleSpan = endScale - startScale;
+  const innerFrames = [];
+  for (let k = 0; k <= STEPS; k += 1) {
+    const s = k === 0 ? startScale : k === STEPS ? endScale : startScale * Math.pow(scaleRatio, k / STEPS);
+    const offset = k === 0 ? 0 : k === STEPS ? 1 : Number(((s - startScale) / scaleSpan).toFixed(5));
+    innerFrames.push({
+      offset,
+      transform: `translateZ(0) scale(${Number((1 / s).toFixed(5))})`,
+    });
+  }
 
   let aborted = false;
   let expandAnim = null;
+  let counterAnim = null;
 
   themeAnimatingUntil =
     (typeof performance !== "undefined" ? performance.now() : Date.now()) + WAVE_DURATION + 40;
 
   const cleanup = () => {
-    for (let i = 0; i < savedTransitions.length; i += 1) {
-      const [el, prev] = savedTransitions[i];
-      el.style.transition = prev;
-    }
-    savedTransitions.length = 0;
+    rootEl.removeAttribute("data-theme-scope");
     if (host.parentNode) host.parentNode.removeChild(host);
     if (cancelActiveThemeWave === abortCurrent) {
       cancelActiveThemeWave = null;
@@ -499,6 +503,7 @@ function toggleAppTheme(event) {
     aborted = true;
     try {
       expandAnim?.cancel?.();
+      counterAnim?.cancel?.();
     } catch {
       // ignore animation cancel errors
     }
@@ -506,6 +511,12 @@ function toggleAppTheme(event) {
   };
 
   cancelActiveThemeWave = abortCurrent;
+
+  counterAnim = inner.animate(innerFrames, {
+    duration: WAVE_DURATION,
+    easing: "linear",
+    fill: "forwards",
+  });
 
   expandAnim = circle.animate(
     [
