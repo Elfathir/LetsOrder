@@ -323,7 +323,7 @@ async function waitForThemeTransitionIdle() {
   if (!isThemeAnimating()) return;
   await new Promise((resolve) => {
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const waitMs = Math.min(720, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
+    const waitMs = Math.min(1020, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
     setTimeout(resolve, waitMs);
   });
 }
@@ -381,7 +381,7 @@ function toggleAppTheme(event) {
   }
 
   themeAnimatingUntil =
-    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 650;
+    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 950;
 
   let transition;
   try {
@@ -410,17 +410,17 @@ function toggleAppTheme(event) {
           ],
         },
         {
-          duration: 560,
+          duration: 850,
           easing: "cubic-bezier(0.16, 1, 0.3, 1)",
           fill: "forwards",
           pseudoElement: "::view-transition-new(root)",
         }
       );
     })
-    .catch(() => {});
+    .catch(() => { });
 
   Promise.resolve(transition.finished)
-    .catch(() => {})
+    .catch(() => { })
     .finally(() => {
       if (activeThemeTransition === transition) {
         activeThemeTransition = null;
@@ -715,6 +715,78 @@ export default function App() {
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
   const t = TRANSLATIONS[lang] || TRANSLATIONS.ID;
   const heroSlides = HERO_SLIDES_BY_LANG[lang] || HERO_SLIDES_BY_LANG.ID;
+
+  useLayoutEffect(() => {
+    applyDocumentTheme(theme);
+  }, [theme]);
+
+  const toggleTheme = (event) => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    const rect = event?.currentTarget?.getBoundingClientRect?.();
+    const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+    const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+    const endRadius = Math.hypot(
+      Math.max(x, window.innerWidth - x),
+      Math.max(y, window.innerHeight - y)
+    );
+
+    const commitTheme = () => {
+      applyDocumentTheme(nextTheme);
+      try {
+        localStorage.setItem("letsorder_theme", nextTheme);
+      } catch {
+        // ignore storage restrictions
+      }
+      setTheme(nextTheme);
+    };
+
+    const prefersReduced =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (typeof document.startViewTransition !== "function" || prefersReduced) {
+      commitTheme();
+      return;
+    }
+
+    document.documentElement.classList.add("theme-transitioning");
+    const transition = document.startViewTransition(() => {
+      flushSync(() => {
+        commitTheme();
+      });
+    });
+
+    Promise.resolve(transition.ready)
+      .then(() => {
+        if (typeof document.documentElement.animate !== "function") return;
+        const animation = document.documentElement.animate(
+          {
+            clipPath: [
+              `circle(0px at ${x}px ${y}px)`,
+              `circle(${endRadius}px at ${x}px ${y}px)`,
+            ],
+          },
+          {
+            duration: 520,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            fill: "forwards",
+            pseudoElement: "::view-transition-new(root)",
+          }
+        );
+        return animation?.finished?.catch(() => { });
+      })
+      .catch(() => { })
+      .finally(() => {
+        document.documentElement.classList.remove("theme-transitioning");
+      });
+
+    Promise.resolve(transition.finished)
+      .catch(() => { })
+      .finally(() => {
+        document.documentElement.classList.remove("theme-transitioning");
+      });
+  };
 
   const changeLanguage = (nextLang) => {
     setLang(nextLang);
