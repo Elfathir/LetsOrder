@@ -1,5 +1,4 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { flushSync } from "react-dom";
 import {
   Search,
   ShoppingBag,
@@ -310,12 +309,12 @@ export function applyDocumentTheme(nextTheme) {
 
 let currentThemeState = readStoredTheme();
 const themeListeners = new Set();
-let activeThemeTransition = null;
+let cancelActiveThemeWave = null;
 let themeAnimatingUntil = 0;
 
 function isThemeAnimating() {
   return (
-    activeThemeTransition !== null ||
+    cancelActiveThemeWave !== null ||
     (typeof performance !== "undefined" && performance.now() < themeAnimatingUntil)
   );
 }
@@ -324,7 +323,7 @@ async function waitForThemeTransitionIdle() {
   if (!isThemeAnimating()) return;
   await new Promise((resolve) => {
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const waitMs = Math.min(520, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
+    const waitMs = Math.min(480, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
     setTimeout(resolve, waitMs);
   });
 }
@@ -358,7 +357,13 @@ function commitAppTheme(nextTheme, deferStorage = false) {
 }
 
 function toggleAppTheme(event) {
-  const nextTheme = currentThemeState === "dark" ? "light" : "dark";
+  if (cancelActiveThemeWave) {
+    cancelActiveThemeWave();
+    cancelActiveThemeWave = null;
+  }
+
+  const prevTheme = currentThemeState === "dark" ? "dark" : "light";
+  const nextTheme = prevTheme === "dark" ? "light" : "dark";
   const rect = event?.currentTarget?.getBoundingClientRect?.();
   const vw = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0);
   const vh = Math.max(window.innerHeight || 0, document.documentElement?.clientHeight || 0);
@@ -366,75 +371,107 @@ function toggleAppTheme(event) {
   const y = Math.round(rect ? rect.top + rect.height / 2 : vh / 2);
   const startRadius = Math.max(14, rect && rect.width > 0 ? Math.round(rect.width / 2) : 18);
   const endRadius = Math.ceil(Math.hypot(Math.max(x, vw - x), Math.max(y, vh - y)));
+  const baseRadius = Math.max(startRadius, Math.min(256, endRadius));
+  const startScale = Number((startRadius / baseRadius).toFixed(4));
+  const endScale = Number((endRadius / baseRadius + 0.04).toFixed(4));
 
   const prefersReduced =
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  if (typeof document.startViewTransition !== "function" || prefersReduced) {
+  if (
+    prefersReduced ||
+    typeof document === "undefined" ||
+    !document.body ||
+    typeof document.createElement("div").animate !== "function"
+  ) {
     commitAppTheme(nextTheme);
     return;
   }
 
-  if (activeThemeTransition) {
-    try {
-      activeThemeTransition.skipTransition?.();
-    } catch {
-      // ignore skipped transition errors
-    }
-    activeThemeTransition = null;
-  }
+  const hasHeader = Boolean(document.querySelector?.("header"));
+  const lightSurface = hasHeader ? "#FFFFFF" : "#FAF6F2";
+  const prevBg = prevTheme === "dark" ? "#171211" : lightSurface;
+  const nextBg = nextTheme === "dark" ? "#171211" : lightSurface;
 
-  document.documentElement.classList.add("theme-transitioning");
+  const host = document.createElement("div");
+  host.setAttribute("data-theme-wave-host", "true");
+  host.style.cssText = [
+    "position:fixed",
+    "inset:0",
+    "z-index:0",
+    "pointer-events:none",
+    "overflow:hidden",
+    `background-color:${prevBg}`,
+  ].join(";");
+
+  const circle = document.createElement("div");
+  const diameter = baseRadius * 2;
+  circle.style.cssText = [
+    "position:fixed",
+    `left:${x - baseRadius}px`,
+    `top:${y - baseRadius}px`,
+    `width:${diameter}px`,
+    `height:${diameter}px`,
+    "border-radius:50%",
+    `background-color:${nextBg}`,
+    "box-shadow:none",
+    "border:none",
+    "outline:none",
+    "pointer-events:none",
+    "will-change:transform",
+    `transform:translateZ(0) scale(${startScale})`,
+  ].join(";");
+
+  host.appendChild(circle);
+  document.body.insertBefore(host, document.body.firstChild);
+  document.documentElement.classList.add("theme-wave-active");
+  commitAppTheme(nextTheme, true);
+
+  let aborted = false;
+  let expandAnim = null;
+
   themeAnimatingUntil =
-    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 460;
+    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 420;
 
-  let transition;
-  try {
-    transition = document.startViewTransition(() => {
-      flushSync(() => {
-        commitAppTheme(nextTheme, true);
-      });
-    });
-  } catch {
-    themeAnimatingUntil = 0;
-    document.documentElement.classList.remove("theme-transitioning");
-    commitAppTheme(nextTheme);
-    return;
-  }
+  const cleanup = () => {
+    if (host.parentNode) host.parentNode.removeChild(host);
+    if (cancelActiveThemeWave === abortCurrent) {
+      cancelActiveThemeWave = null;
+      themeAnimatingUntil = 0;
+      document.documentElement.classList.remove("theme-wave-active");
+    }
+  };
 
-  activeThemeTransition = transition;
+  const abortCurrent = () => {
+    aborted = true;
+    try {
+      expandAnim?.cancel?.();
+    } catch {
+      // ignore animation cancel errors
+    }
+    cleanup();
+  };
 
-  Promise.resolve(transition.ready)
-    .then(() => {
-      if (activeThemeTransition !== transition) return;
-      if (typeof document.documentElement.animate !== "function") return;
-      document.documentElement.animate(
-        {
-          clipPath: [
-            `circle(${startRadius}px at ${x}px ${y}px)`,
-            `circle(${endRadius}px at ${x}px ${y}px)`,
-          ],
-        },
-        {
-          duration: 400,
-          easing: "linear",
-          fill: "both",
-          pseudoElement: "::view-transition-new(root)",
-        }
-      );
-    })
-    .catch(() => { });
+  cancelActiveThemeWave = abortCurrent;
 
-  Promise.resolve(transition.finished)
-    .catch(() => { })
+  expandAnim = circle.animate(
+    [
+      { transform: `translateZ(0) scale(${startScale})` },
+      { transform: `translateZ(0) scale(${endScale})` },
+    ],
+    {
+      duration: 380,
+      easing: "linear",
+      fill: "forwards",
+    }
+  );
+
+  Promise.resolve(expandAnim.finished)
+    .catch(() => {})
     .finally(() => {
-      if (activeThemeTransition === transition) {
-        activeThemeTransition = null;
-        themeAnimatingUntil = 0;
-        document.documentElement.classList.remove("theme-transitioning");
-      }
+      if (!aborted) cleanup();
     });
 }
 

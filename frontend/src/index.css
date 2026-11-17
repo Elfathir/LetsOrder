@@ -287,43 +287,36 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
   color: var(--maroon);
 }
 
-/* Pause competing transitions/animations so ViewTransition snapshots stay 100% static & shadowless */
-html.theme-transitioning *,
-html.theme-transitioning *::before,
-html.theme-transitioning *::after,
-html:active-view-transition *,
-html:active-view-transition *::before,
-html:active-view-transition *::after {
-  transition: none !important;
-  animation-play-state: paused !important;
-}
-
-::view-transition {
-  pointer-events: none;
-}
-
-::view-transition-group(root) {
-  animation-duration: 0s;
-}
-
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
-  box-shadow: none !important;
-  filter: none !important;
-  outline: none !important;
-}
-
-::view-transition-old(root) {
+#root {
+  position: relative;
   z-index: 1;
-  pointer-events: none;
 }
 
-::view-transition-new(root) {
-  z-index: 2;
-  pointer-events: none;
-  will-change: clip-path;
+html.theme-wave-active,
+html.theme-wave-active body {
+  background-color: transparent !important;
+}
+
+html.theme-wave-active:root {
+  --bg-page: transparent;
+  --bg-auth-page: transparent;
+  --bg-card: rgba(255, 255, 255, 0.36);
+  --bg-subtle: rgba(250, 246, 241, 0.36);
+  --bg-footer-drawer: rgba(251, 244, 238, 0.36);
+}
+
+html.theme-wave-active:root[data-theme="dark"] {
+  --bg-page: transparent;
+  --bg-auth-page: transparent;
+  --bg-card: rgba(33, 26, 24, 0.42);
+  --bg-subtle: rgba(28, 22, 20, 0.42);
+  --bg-footer-drawer: rgba(28, 22, 20, 0.42);
+}
+
+html.theme-wave-active *,
+html.theme-wave-active *::before,
+html.theme-wave-active *::after {
+  transition: none !important;
 }
 
 .theme-toggle-btn:hover {
