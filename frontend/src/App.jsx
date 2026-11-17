@@ -375,9 +375,6 @@ function toggleAppTheme(event) {
     startRadius + 10,
     Math.ceil(Math.hypot(Math.max(x, vw - x), Math.max(y, vh - y)))
   );
-  const baseRadius = endRadius;
-  const startScale = Number((startRadius / baseRadius).toFixed(5));
-  const endScale = 1.02;
 
   const prefersReduced =
     typeof window !== "undefined" &&
@@ -449,40 +446,53 @@ function toggleAppTheme(event) {
     "overflow:hidden",
   ].join(";");
 
-  const diameter = baseRadius * 2;
+  // Circle grows by real size (width/height/border-radius), NOT by scale().
+  // The cloned UI inside is only translated by whole pixels, so it is never resampled -> stays 100% crisp, zero wobble.
+  const finalRadius = endRadius + 2;
   const circle = document.createElement("div");
   circle.setAttribute("data-theme-wave-circle", "true");
+  const inner = document.createElement("div");
+  inner.setAttribute("data-theme-wave-inner", "true");
+
+  const applyRadius = (r) => {
+    const left = x - r;
+    const top = y - r;
+    const d = r * 2;
+    circle.style.width = `${d}px`;
+    circle.style.height = `${d}px`;
+    circle.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+    inner.style.transform = `translate3d(${-left}px, ${-top}px, 0)`;
+  };
+
   circle.style.cssText = [
     "position:fixed",
-    `left:${x - baseRadius}px`,
-    `top:${y - baseRadius}px`,
-    `width:${diameter}px`,
-    `height:${diameter}px`,
+    "left:0",
+    "top:0",
     "border-radius:50%",
     "overflow:hidden",
     "box-shadow:none",
     "border:none",
     "outline:none",
     "pointer-events:none",
-    "transform-origin:50% 50%",
-    "will-change:transform",
-    `transform:translateZ(0) scale(${startScale})`,
+    "contain:layout paint",
   ].join(";");
 
-  const inner = document.createElement("div");
-  inner.setAttribute("data-theme-wave-inner", "true");
+  const hasHeader = Boolean(document.querySelector?.("header"));
+  const innerBg = nextTheme === "dark" ? "#171211" : hasHeader ? "#FFFFFF" : "#FAF6F2";
+
   inner.style.cssText = [
     "position:absolute",
-    `left:${baseRadius - x}px`,
-    `top:${baseRadius - y}px`,
+    "left:0",
+    "top:0",
     `width:${viewW}px`,
     `height:${viewH}px`,
+    `background-color:${innerBg}`,
     "overflow:hidden",
     "pointer-events:none",
-    `transform-origin:${x}px ${y}px`,
-    `transform:translateZ(0) scale(${Number((1 / startScale).toFixed(5))})`,
+    "will-change:transform",
   ].join(";");
 
+  applyRadius(startRadius);
   inner.appendChild(clone);
   circle.appendChild(inner);
   host.appendChild(circle);
@@ -493,25 +503,21 @@ function toggleAppTheme(event) {
     el.scrollTop = st;
   }
 
-  const STEPS = 120;
-  const scaleRatio = endScale / startScale;
-  const scaleSpan = endScale - startScale;
-  const innerFrames = [];
-  for (let k = 0; k <= STEPS; k += 1) {
-    const s = k === 0 ? startScale : k === STEPS ? endScale : startScale * Math.pow(scaleRatio, k / STEPS);
-    const offset = k === 0 ? 0 : k === STEPS ? 1 : Number(((s - startScale) / scaleSpan).toFixed(5));
-    innerFrames.push({
-      offset,
-      transform: `translateZ(0) scale(${Number((1 / s).toFixed(5))})`,
-    });
-  }
+  const raf =
+    typeof window.requestAnimationFrame === "function"
+      ? window.requestAnimationFrame.bind(window)
+      : (cb) => setTimeout(() => cb(typeof performance !== "undefined" ? performance.now() : Date.now()), 16);
+  const caf =
+    typeof window.cancelAnimationFrame === "function"
+      ? window.cancelAnimationFrame.bind(window)
+      : (id) => clearTimeout(id);
 
   let aborted = false;
-  let expandAnim = null;
-  let counterAnim = null;
+  let rafId = 0;
+  let startTs = 0;
 
   themeAnimatingUntil =
-    (typeof performance !== "undefined" ? performance.now() : Date.now()) + WAVE_DURATION + 40;
+    (typeof performance !== "undefined" ? performance.now() : Date.now()) + WAVE_DURATION + 60;
 
   const cleanup = () => {
     const isCurrent = cancelActiveThemeWave === abortCurrent;
@@ -533,40 +539,27 @@ function toggleAppTheme(event) {
 
   const abortCurrent = () => {
     aborted = true;
-    try {
-      expandAnim?.cancel?.();
-      counterAnim?.cancel?.();
-    } catch {
-      // ignore animation cancel errors
-    }
+    if (rafId) caf(rafId);
+    rafId = 0;
     cleanup();
   };
 
   cancelActiveThemeWave = abortCurrent;
 
-  counterAnim = inner.animate(innerFrames, {
-    duration: WAVE_DURATION,
-    easing: "linear",
-    fill: "forwards",
-  });
-
-  expandAnim = circle.animate(
-    [
-      { transform: `translateZ(0) scale(${startScale})` },
-      { transform: `translateZ(0) scale(${endScale})` },
-    ],
-    {
-      duration: WAVE_DURATION,
-      easing: "linear",
-      fill: "forwards",
+  const step = (ts) => {
+    if (aborted) return;
+    if (!startTs) startTs = ts;
+    const t = Math.min(1, (ts - startTs) / WAVE_DURATION);
+    // Linear: one start point (button size) -> one end point (full screen), no intermediate stop
+    applyRadius(Math.round(startRadius + (finalRadius - startRadius) * t));
+    if (t < 1) {
+      rafId = raf(step);
+    } else {
+      rafId = 0;
+      cleanup();
     }
-  );
-
-  Promise.resolve(expandAnim.finished)
-    .catch(() => {})
-    .finally(() => {
-      if (!aborted) cleanup();
-    });
+  };
+  rafId = raf(step);
 }
 
 const ThemeToggleButton = memo(function ThemeToggleButton({ darkTitle, lightTitle, size = 36 }) {
