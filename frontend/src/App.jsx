@@ -8982,7 +8982,8 @@ export default function App() {
                   display: "flex",
                   gap: 12,
                   overflowX: "auto",
-                  paddingBottom: 6,
+                  padding: "12px 12px 20px",
+                  margin: "-8px -12px 0",
                   scrollSnapType: "x proximity",
                   WebkitOverflowScrolling: "touch",
                 }}
@@ -9008,10 +9009,12 @@ export default function App() {
                     >
                       <div
                         style={{
+                          position: "relative",
                           height: 75,
                           borderRadius: 8,
                           backgroundColor: "#E2E3E2",
                           overflow: "hidden",
+                          isolation: "isolate",
                           marginBottom: 6,
                         }}
                       >
