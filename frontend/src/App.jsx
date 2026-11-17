@@ -3609,7 +3609,7 @@ export default function App() {
                                         padding: "6px 10px",
                                       }}
                                     >
-                                      View order
+                                      {lang === "EN" ? "View order" : "Lihat pesanan"}
                                     </button>
                                   )}
 
@@ -3628,7 +3628,7 @@ export default function App() {
                                         cursor: "pointer",
                                       }}
                                     >
-                                      Mark ready
+                                      {lang === "EN" ? "Mark ready" : "Siap diambil"}
                                     </button>
                                   )}
 
@@ -3647,7 +3647,7 @@ export default function App() {
                                         cursor: "pointer",
                                       }}
                                     >
-                                      Complete pickup
+                                      {lang === "EN" ? "Complete pickup" : "Selesaikan"}
                                     </button>
                                   )}
 
@@ -4180,7 +4180,7 @@ export default function App() {
                         >
                           <input
                             type="text"
-                            placeholder="Search your menu..."
+                            placeholder={lang === "EN" ? "Search your menu..." : "Cari menu Anda..."}
                             value={tenantMenuSearch}
                             onChange={(e) => setTenantMenuSearch(e.target.value)}
                             style={{
@@ -4729,7 +4729,7 @@ export default function App() {
                                       cursor: "pointer",
                                     }}
                                   >
-                                    Mark ready
+                                    {lang === "EN" ? "Mark ready" : "Siap diambil"}
                                   </button>
                                 )}
 
@@ -4748,7 +4748,7 @@ export default function App() {
                                       cursor: "pointer",
                                     }}
                                   >
-                                    Complete pickup
+                                    {lang === "EN" ? "Complete pickup" : "Selesaikan"}
                                   </button>
                                 )}
 
@@ -7136,7 +7136,7 @@ export default function App() {
                               }}
                             >
                               <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-muted)", marginBottom: 6 }}>
-                                Time to pickup
+                                {lang === "EN" ? "Time to pickup" : "Estimasi waktu siap"}
                               </div>
                               <div
                                 className="tabular"
@@ -7151,7 +7151,9 @@ export default function App() {
                                 {formatTimer(prepTimerSeconds)}
                               </div>
                               <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                                Come by when the timer ends — no need to wait in line.
+                                {lang === "EN"
+                                  ? "Come by when the timer ends — no need to wait in line."
+                                  : "Datang saat timer berakhir — tidak perlu antre lama."}
                               </div>
                             </div>
 
@@ -7174,7 +7176,7 @@ export default function App() {
                                 boxShadow: "var(--shadow-sm)",
                               }}
                             >
-                              <span>I'm at the counter</span>
+                              <span>{lang === "EN" ? "I'm at the counter" : "Saya sudah di konter"}</span>
                               <ArrowRight size={16} />
                             </button>
                             {isOrderChatEligible(activeOrder) && (
@@ -7311,7 +7313,9 @@ export default function App() {
                             </div>
 
                             <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 20 }}>
-                              Show this code to the canteen staff. Tap below once you've received your food.
+                              {lang === "EN"
+                                ? "Show this code to the canteen staff. Tap below once you've received your food."
+                                : "Tunjukkan kode ini ke kasir kantin. Tekan tombol di bawah setelah pesanan diterima."}
                             </p>
 
                             <button
@@ -7334,7 +7338,7 @@ export default function App() {
                               }}
                             >
                               <Check size={18} strokeWidth={2.8} />
-                              <span>Finish order</span>
+                              <span>{lang === "EN" ? "Finish order" : "Selesaikan pesanan"}</span>
                             </button>
                             {isOrderChatEligible(activeOrder) && (
                               <button
@@ -7916,7 +7920,7 @@ export default function App() {
                         marginBottom: 6,
                       }}
                     >
-                      Menu name
+                      {lang === "EN" ? "Menu name" : "Nama Menu"}
                     </label>
                     <input
                       type="text"
@@ -7950,7 +7954,7 @@ export default function App() {
                         marginBottom: 6,
                       }}
                     >
-                      Price
+                      {lang === "EN" ? "Price" : "Harga"}
                     </label>
                     <input
                       type="text"
@@ -7993,7 +7997,7 @@ export default function App() {
                           marginBottom: 2,
                         }}
                       >
-                        Availability
+                        {lang === "EN" ? "Availability" : "Ketersediaan"}
                       </div>
                       <div
                         style={{
@@ -8002,7 +8006,9 @@ export default function App() {
                           lineHeight: 1.4,
                         }}
                       >
-                        Customers can only order this dish when it is available.
+                        {lang === "EN"
+                          ? "Customers can only order this dish when it is available."
+                          : "Pelanggan hanya dapat memesan menu ini saat tersedia."}
                       </div>
                     </div>
 
@@ -8055,7 +8061,9 @@ export default function App() {
                           color: "var(--maroon)",
                         }}
                       >
-                        {editDishForm.available ? "Available" : "Unavailable"}
+                        {editDishForm.available
+                          ? lang === "EN" ? "Available" : "Tersedia"
+                          : lang === "EN" ? "Unavailable" : "Habis"}
                       </span>
                     </div>
                   </div>
@@ -8082,7 +8090,7 @@ export default function App() {
                         cursor: "pointer",
                       }}
                     >
-                      Cancel
+                      {lang === "EN" ? "Cancel" : "Batal"}
                     </button>
 
                     <button
@@ -8100,7 +8108,7 @@ export default function App() {
                         boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
                       }}
                     >
-                      Save changes
+                      {lang === "EN" ? "Save changes" : "Simpan perubahan"}
                     </button>
                   </div>
                   <button
@@ -8127,7 +8135,7 @@ export default function App() {
                     }}
                   >
                     <Trash2 size={14} />
-                    <span>Hapus menu ini</span>
+                    <span>{lang === "EN" ? "Delete this dish" : "Hapus menu ini"}</span>
                   </button>
                 </form>
               </div>
@@ -8175,10 +8183,12 @@ export default function App() {
                 >
                   <div>
                     <h3 style={{ fontSize: 22, fontWeight: 900, color: "var(--maroon)", marginBottom: 2 }}>
-                      Upload Menu Baru
+                      {lang === "EN" ? "Upload New Dish" : "Upload Menu Baru"}
                     </h3>
                     <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                      Tambahkan makanan atau minuman ke kantin {displayName}.
+                      {lang === "EN"
+                        ? `Add a food or drink item to ${displayName}.`
+                        : `Tambahkan makanan atau minuman ke kantin ${displayName}.`}
                     </p>
                   </div>
                   <button
@@ -8271,12 +8281,12 @@ export default function App() {
                   )}
                   <div>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
-                      Nama Menu
+                      {lang === "EN" ? "Menu Name" : "Nama Menu"}
                     </label>
                     <input
                       type="text"
                       required
-                      placeholder="Contoh: Ayam Geprek Sambal Bawang"
+                      placeholder={lang === "EN" ? "e.g. Spicy Smashed Chicken Rice" : "Contoh: Ayam Geprek Sambal Bawang"}
                       value={newDishForm.nama_menu}
                       onChange={(e) => setNewDishForm((p) => ({ ...p, nama_menu: e.target.value }))}
                       style={{
@@ -8294,7 +8304,7 @@ export default function App() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     <div>
                       <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
-                        Harga (Rp)
+                        {lang === "EN" ? "Price (Rp)" : "Harga (Rp)"}
                       </label>
                       <input
                         type="number"
@@ -8317,7 +8327,7 @@ export default function App() {
 
                     <div>
                       <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
-                        Kategori
+                        {lang === "EN" ? "Category" : "Kategori"}
                       </label>
                       <select
                         value={newDishForm.kategori_nama}
@@ -8343,7 +8353,7 @@ export default function App() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     <div>
                       <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
-                        Estimasi Siap (Menit)
+                        {lang === "EN" ? "Prep Time (Min)" : "Estimasi Siap (Menit)"}
                       </label>
                       <input
                         type="number"
@@ -8365,7 +8375,7 @@ export default function App() {
 
                     <div>
                       <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
-                        Upload Foto Menu
+                        {lang === "EN" ? "Upload Dish Photo" : "Upload Foto Menu"}
                       </label>
                       <input
                         type="file"
@@ -8395,7 +8405,7 @@ export default function App() {
 
                   <div>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
-                      Atau Masukkan URL Gambar (Opsional)
+                      {lang === "EN" ? "Or Enter Image URL (Optional)" : "Atau Masukkan URL Gambar (Opsional)"}
                     </label>
                     <input
                       type="text"
@@ -8434,11 +8444,15 @@ export default function App() {
 
                   <div>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 6 }}>
-                      Deskripsi Menu
+                      {lang === "EN" ? "Dish Description" : "Deskripsi Menu"}
                     </label>
                     <textarea
                       rows={2}
-                      placeholder="Jelaskan bahan dan keunggulan menu ini..."
+                      placeholder={
+                        lang === "EN"
+                          ? "Describe ingredients and highlights of this dish..."
+                          : "Jelaskan bahan dan keunggulan menu ini..."
+                      }
                       value={newDishForm.deskripsi}
                       onChange={(e) => setNewDishForm((p) => ({ ...p, deskripsi: e.target.value }))}
                       style={{
@@ -8470,7 +8484,7 @@ export default function App() {
                         cursor: "pointer",
                       }}
                     >
-                      Batal
+                      {lang === "EN" ? "Cancel" : "Batal"}
                     </button>
                     <button
                       type="submit"
@@ -8489,7 +8503,9 @@ export default function App() {
                         boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
                       }}
                     >
-                      {isUploadingMenu ? "Menyimpan..." : "Simpan & Upload"}
+                      {isUploadingMenu
+                        ? lang === "EN" ? "Saving..." : "Menyimpan..."
+                        : lang === "EN" ? "Save & Upload" : "Simpan & Upload"}
                     </button>
                   </div>
                 </form>
@@ -8875,7 +8891,7 @@ export default function App() {
 
                         <div className="profile-field-row">
                           <label className="profile-field-label">
-                            Nama
+                            {lang === "EN" ? "Name" : "Nama"}
                           </label>
                           <input
                             type="text"
@@ -8883,7 +8899,7 @@ export default function App() {
                             onChange={(e) =>
                               setProfileForm((p) => ({ ...p, nama: e.target.value }))
                             }
-                            placeholder="Masukkan nama lengkap Anda"
+                            placeholder={lang === "EN" ? "Enter your full name" : "Masukkan nama lengkap Anda"}
                             style={{
                               width: "100%",
                               padding: "10px 14px",
@@ -8934,7 +8950,7 @@ export default function App() {
                                   cursor: "pointer",
                                 }}
                               >
-                                Selesai
+                                {lang === "EN" ? "Done" : "Selesai"}
                               </button>
                             </div>
                           ) : (
@@ -8948,7 +8964,10 @@ export default function App() {
                                   if (!String(profileForm.no_telp || "").trim()) {
                                     setProfileAlert({
                                       type: "error",
-                                      text: "Tambahkan Nomor Telepon terlebih dahulu sebelum mengubah alamat Email.",
+                                      text:
+                                        lang === "EN"
+                                          ? "Please add your phone number first before changing your email address."
+                                          : "Tambahkan Nomor Telepon terlebih dahulu sebelum mengubah alamat Email.",
                                     });
                                     setIsEditingPhone(true);
                                     return;
@@ -8966,7 +8985,7 @@ export default function App() {
                                   cursor: "pointer",
                                 }}
                               >
-                                Ubah
+                                {lang === "EN" ? "Edit" : "Ubah"}
                               </button>
                             </div>
                           )}
@@ -8974,7 +8993,7 @@ export default function App() {
 
                         <div className="profile-field-row">
                           <label className="profile-field-label">
-                            Nomor Telepon
+                            {lang === "EN" ? "Phone Number" : "Nomor Telepon"}
                           </label>
                           {isEditingPhone ? (
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -9014,7 +9033,7 @@ export default function App() {
                                   cursor: "pointer",
                                 }}
                               >
-                                Selesai
+                                {lang === "EN" ? "Done" : "Selesai"}
                               </button>
                             </div>
                           ) : (
@@ -9037,7 +9056,7 @@ export default function App() {
                                       cursor: "pointer",
                                     }}
                                   >
-                                    Ubah
+                                    {lang === "EN" ? "Edit" : "Ubah"}
                                   </button>
                                 </>
                               ) : (
@@ -9055,7 +9074,7 @@ export default function App() {
                                     padding: 0,
                                   }}
                                 >
-                                  Tambah
+                                  {lang === "EN" ? "Add" : "Tambah"}
                                 </button>
                               )}
                             </div>
@@ -9065,7 +9084,7 @@ export default function App() {
                         {portalMode === "tenant" && (
                           <div className="profile-field-row">
                             <label className="profile-field-label">
-                              Nama Tenant
+                              {lang === "EN" ? "Tenant Name" : "Nama Tenant"}
                             </label>
                             <input
                               type="text"
@@ -9076,7 +9095,7 @@ export default function App() {
                                   nama_tenant: e.target.value,
                                 }))
                               }
-                              placeholder="Masukkan nama tenant kantin"
+                              placeholder={lang === "EN" ? "Enter canteen tenant name" : "Masukkan nama tenant kantin"}
                               style={{
                                 width: "100%",
                                 padding: "10px 14px",
@@ -9092,14 +9111,18 @@ export default function App() {
 
                         <div className="profile-field-row">
                           <span className="profile-field-label">
-                            Jenis Kelamin
+                            {lang === "EN" ? "Gender" : "Jenis Kelamin"}
                           </span>
                           <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
-                            {["Laki-laki", "Perempuan", "Lainnya"].map((g) => {
-                              const checked = profileForm.jenis_kelamin === g;
+                            {[
+                              { val: "Laki-laki", label: lang === "EN" ? "Male" : "Laki-laki" },
+                              { val: "Perempuan", label: lang === "EN" ? "Female" : "Perempuan" },
+                              { val: "Lainnya", label: lang === "EN" ? "Other" : "Lainnya" },
+                            ].map((g) => {
+                              const checked = profileForm.jenis_kelamin === g.val;
                               return (
                                 <label
-                                  key={g}
+                                  key={g.val}
                                   style={{
                                     display: "inline-flex",
                                     alignItems: "center",
@@ -9115,11 +9138,11 @@ export default function App() {
                                     name="jenis_kelamin"
                                     checked={checked}
                                     onChange={() =>
-                                      setProfileForm((p) => ({ ...p, jenis_kelamin: g }))
+                                      setProfileForm((p) => ({ ...p, jenis_kelamin: g.val }))
                                     }
                                     style={{ accentColor: "var(--maroon)", cursor: "pointer" }}
                                   />
-                                  <span>{g}</span>
+                                  <span>{g.label}</span>
                                 </label>
                               );
                             })}
@@ -9128,7 +9151,7 @@ export default function App() {
 
                         <div className="profile-field-row">
                           <label className="profile-field-label">
-                            Tanggal lahir
+                            {lang === "EN" ? "Date of birth" : "Tanggal lahir"}
                           </label>
                           <input
                             type="date"
@@ -9170,7 +9193,7 @@ export default function App() {
                                 boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
                               }}
                             >
-                              Simpan
+                              {lang === "EN" ? "Save" : "Simpan"}
                             </button>
                           </div>
                         </div>
@@ -9222,7 +9245,7 @@ export default function App() {
                             boxShadow: "var(--shadow-sm)",
                           }}
                         >
-                          <span>Pilih Gambar</span>
+                          <span>{lang === "EN" ? "Choose Image" : "Pilih Gambar"}</span>
                           <input
                             type="file"
                             accept=".jpg,.jpeg,.png,image/jpeg,image/png"
@@ -9237,7 +9260,7 @@ export default function App() {
                               } catch (err) {
                                 setProfileAlert({
                                   type: "error",
-                                  text: err.message || "Gagal memproses foto profil.",
+                                  text: err.message || (lang === "EN" ? "Failed to process profile image." : "Gagal memproses foto profil."),
                                 });
                               }
                             }}
@@ -9245,8 +9268,8 @@ export default function App() {
                         </label>
 
                         <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                          <div>Ukuran gambar: maks. 1 MB</div>
-                          <div>Format gambar: .JPEG, .PNG</div>
+                          <div>{lang === "EN" ? "File size: max 1 MB" : "Ukuran gambar: maks. 1 MB"}</div>
+                          <div>{lang === "EN" ? "Format: .JPEG, .PNG" : "Format gambar: .JPEG, .PNG"}</div>
                         </div>
                       </div>
                     </div>
@@ -9395,12 +9418,22 @@ export default function App() {
                 {activeDrawerModal === "help" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
                     <div style={{ padding: "12px 14px", borderRadius: 12, backgroundColor: "var(--bg-auth-page)", border: "1px solid var(--border-light)" }}>
-                      <div style={{ fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>Bagaimana cara memesan makanan?</div>
-                      Pilih menu dari halaman Home atau Tenant, masukkan ke keranjang, lalu selesaikan pembayaran QRIS untuk mendapatkan nomor antrean.
+                      <div style={{ fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>
+                        {lang === "EN" ? "How do I pre-order food?" : "Bagaimana cara memesan makanan?"}
+                      </div>
+                      {lang === "EN"
+                        ? "Choose a dish from Home or Tenant, add it to your cart, and finish QRIS payment to get your pickup queue number."
+                        : "Pilih menu dari halaman Beranda atau Kantin, masukkan ke keranjang, lalu selesaikan pembayaran QRIS untuk mendapatkan nomor antrean."}
                     </div>
                     <div style={{ padding: "12px 14px", borderRadius: 12, backgroundColor: "var(--bg-auth-page)", border: "1px solid var(--border-light)" }}>
-                      <div style={{ fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>Bagaimana cara upload menu bagi Tenant?</div>
-                      Login sebagai Tenant (Vendor), buka tab <strong>Menu</strong>, lalu klik tombol <strong>+ Upload Menu</strong>.
+                      <div style={{ fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>
+                        {lang === "EN" ? "How can a Tenant upload menu items?" : "Bagaimana cara upload menu bagi Tenant?"}
+                      </div>
+                      {lang === "EN" ? (
+                        <>Sign in as a Tenant (Vendor), open the <strong>Menu</strong> tab, then click <strong>+ Upload Menu</strong>.</>
+                      ) : (
+                        <>Masuk sebagai Tenant (Penjual), buka tab <strong>Menu</strong>, lalu klik tombol <strong>+ Tambah Menu</strong>.</>
+                      )}
                     </div>
                   </div>
                 )}
@@ -9718,7 +9751,10 @@ export default function App() {
                         }}
                       >
                         <ShoppingBag size={18} />
-                        <span>Add to cart · {formatRupiah(activeMenuDetail.harga * detailQuantity)}</span>
+                        <span>
+                          {lang === "EN" ? "Add to cart" : "Tambah ke keranjang"} ·{" "}
+                          {formatRupiah(activeMenuDetail.harga * detailQuantity)}
+                        </span>
                       </button>
                     </div>
                   </div>
@@ -9785,7 +9821,7 @@ export default function App() {
                     }}
                   >
                     <h4 style={{ fontSize: 16, fontWeight: 800, color: "var(--maroon)" }}>
-                      You might also like
+                      {lang === "EN" ? "You might also like" : "Menu lain yang mungkin Anda suka"}
                     </h4>
                   </div>
 
@@ -9968,7 +10004,7 @@ export default function App() {
                 textTransform: "uppercase",
               }}
             >
-              FROM OUR CANTEEN TO YOUR HANDS
+              {lang === "EN" ? "FROM OUR CANTEEN TO YOUR HANDS" : "DARI KANTIN KAMPUS KE TANGANMU"}
             </div>
           </div>
 
@@ -10077,8 +10113,14 @@ export default function App() {
                   }}
                 />
                 {[
-                  { role: "Customer", label: "Pengguna (Customer)" },
-                  { role: "Vendor", label: "Tenant (Vendor)" },
+                  {
+                    role: "Customer",
+                    label: lang === "EN" ? "Customer" : "Pengguna (Pembeli)",
+                  },
+                  {
+                    role: "Vendor",
+                    label: lang === "EN" ? "Tenant (Vendor)" : "Tenant (Penjual)",
+                  },
                 ].map((r) => {
                   const active = loginRoleTab === r.role;
                   return (
@@ -10169,7 +10211,11 @@ export default function App() {
             >
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
-                  {authMode === "forgot" ? "Username atau Email" : "Username"}
+                  {authMode === "forgot"
+                    ? lang === "EN"
+                      ? "Username or Email"
+                      : "Username atau Email"
+                    : "Username"}
                 </label>
                 <div
                   style={{
@@ -10188,8 +10234,12 @@ export default function App() {
                     autoComplete="off"
                     placeholder={
                       loginRoleTab === "Vendor"
-                        ? "Masukkan username tenant"
-                        : "Masukkan username Anda"
+                        ? lang === "EN"
+                          ? "Enter tenant username"
+                          : "Masukkan username tenant"
+                        : lang === "EN"
+                          ? "Enter your username"
+                          : "Masukkan username Anda"
                     }
                     value={authForm.username}
                     onChange={(e) => setAuthForm((prev) => ({ ...prev, username: e.target.value }))}
@@ -10209,7 +10259,13 @@ export default function App() {
                 <>
                   <div>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
-                      {loginRoleTab === "Vendor" ? "Nama Kantin / Tenant" : "Nama Lengkap"}
+                      {loginRoleTab === "Vendor"
+                        ? lang === "EN"
+                          ? "Canteen / Tenant Name"
+                          : "Nama Kantin / Tenant"
+                        : lang === "EN"
+                          ? "Full Name"
+                          : "Nama Lengkap"}
                     </label>
                     <div
                       style={{
@@ -10228,8 +10284,12 @@ export default function App() {
                         autoComplete="off"
                         placeholder={
                           loginRoleTab === "Vendor"
-                            ? "Contoh: Kantin Nusantara"
-                            : "Masukkan nama lengkap Anda"
+                            ? lang === "EN"
+                              ? "e.g. Campus Nusantara Canteen"
+                              : "Contoh: Kantin Nusantara"
+                            : lang === "EN"
+                              ? "Enter your full name"
+                              : "Masukkan nama lengkap Anda"
                         }
                         value={loginRoleTab === "Vendor" ? authForm.nama_tenant : authForm.nama}
                         onChange={(e) =>
@@ -10340,7 +10400,7 @@ export default function App() {
 
                     <div>
                       <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
-                        Password Baru
+                        {lang === "EN" ? "New Password" : "Password Baru"}
                       </label>
                       <div
                         style={{
@@ -10357,7 +10417,7 @@ export default function App() {
                           type={showPassword ? "text" : "password"}
                           required
                           autoComplete="new-password"
-                          placeholder="Minimal 6 karakter"
+                          placeholder={lang === "EN" ? "Minimum 6 characters" : "Minimal 6 karakter"}
                           value={authForm.new_password}
                           onChange={(e) => setAuthForm((prev) => ({ ...prev, new_password: e.target.value }))}
                           style={{
@@ -10394,7 +10454,7 @@ export default function App() {
               ) : (
                 <div>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
-                    Password
+                    {lang === "EN" ? "Password" : "Kata Sandi"}
                   </label>
                   <div
                     style={{
@@ -10411,7 +10471,7 @@ export default function App() {
                       type={showPassword ? "text" : "password"}
                       required
                       autoComplete={authMode === "login" ? "current-password" : "new-password"}
-                      placeholder={authMode === "register" ? "Minimal 6 karakter" : "••••••••"}
+                      placeholder={authMode === "register" ? (lang === "EN" ? "Minimum 6 characters" : "Minimal 6 karakter") : "••••••••"}
                       value={authForm.password}
                       onChange={(e) => setAuthForm((prev) => ({ ...prev, password: e.target.value }))}
                       style={{
@@ -10465,7 +10525,9 @@ export default function App() {
                 }}
               >
                 {authLoading
-                  ? "Processing..."
+                  ? lang === "EN"
+                    ? "Processing..."
+                    : "Memproses..."
                   : authMode === "forgot"
                     ? forgotStep === 1
                       ? lang === "EN"
@@ -10475,8 +10537,12 @@ export default function App() {
                         ? "Save New Password"
                         : "Simpan Password Baru"
                     : authMode === "login"
-                      ? "Log in"
-                      : "Sign up"}
+                      ? lang === "EN"
+                        ? "Log in"
+                        : "Masuk"
+                      : lang === "EN"
+                        ? "Sign up"
+                        : "Daftar"}
               </button>
 
               {authMode !== "forgot" &&
@@ -10488,7 +10554,7 @@ export default function App() {
                   <>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "2px 0" }}>
                       <div style={{ flex: 1, height: 1, backgroundColor: "var(--border-light)" }} />
-                      <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700 }}>OR</span>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700 }}>{lang === "EN" ? "OR" : "ATAU"}</span>
                       <div style={{ flex: 1, height: 1, backgroundColor: "var(--border-light)" }} />
                     </div>
 
@@ -10531,7 +10597,9 @@ export default function App() {
                         />
                       </svg>
                       <span>
-                        Continue with Google ({loginRoleTab === "Vendor" ? "Tenant" : "Pengguna"})
+                        {lang === "EN"
+                          ? `Continue with Google (${loginRoleTab === "Vendor" ? "Tenant" : "Customer"})`
+                          : `Lanjutkan dengan Google (${loginRoleTab === "Vendor" ? "Tenant" : "Pengguna"})`}
                       </span>
                     </button>
                   </>
@@ -10566,7 +10634,7 @@ export default function App() {
                       textDecoration: "underline",
                     }}
                   >
-                    Forgot password?
+                    {lang === "EN" ? "Forgot password?" : "Lupa kata sandi?"}
                   </button>
                 </div>
               ) : authMode === "forgot" ? (
@@ -10597,7 +10665,7 @@ export default function App() {
                       textDecoration: "underline",
                     }}
                   >
-                    ← Kembali ke halaman Log in
+                    {lang === "EN" ? "← Back to Log in" : "← Kembali ke halaman Masuk"}
                   </button>
                 </div>
               ) : (
@@ -10609,7 +10677,9 @@ export default function App() {
                     color: "var(--text-muted)",
                   }}
                 >
-                  By signing up you agree to the canteen's terms of service.
+                  {lang === "EN"
+                    ? "By signing up you agree to the canteen's terms of service."
+                    : "Dengan mendaftar, Anda menyetujui syarat dan ketentuan layanan kantin."}
                 </div>
               )}
             </form>
@@ -10626,7 +10696,7 @@ export default function App() {
           >
             {authMode === "login" ? (
               <span>
-                Don't have an account?{" "}
+                {lang === "EN" ? "Don't have an account? " : "Belum punya akun? "}
                 <button
                   type="button"
                   onClick={() => {
@@ -10651,12 +10721,12 @@ export default function App() {
                     cursor: "pointer",
                   }}
                 >
-                  Sign up here
+                  {lang === "EN" ? "Sign up here" : "Daftar di sini"}
                 </button>
               </span>
             ) : (
               <span>
-                Already have an account?{" "}
+                {lang === "EN" ? "Already have an account? " : "Sudah punya akun? "}
                 <button
                   type="button"
                   onClick={() => {
@@ -10681,7 +10751,7 @@ export default function App() {
                     cursor: "pointer",
                   }}
                 >
-                  Log in here
+                  {lang === "EN" ? "Log in here" : "Masuk di sini"}
                 </button>
               </span>
             )}
@@ -10756,7 +10826,7 @@ export default function App() {
                   type="text"
                   value={storeForm.booth}
                   onChange={(e) => setStoreForm((p) => ({ ...p, booth: e.target.value }))}
-                  placeholder="Contoh: Stand #1 · Kantin Gedung A"
+                  placeholder={lang === "EN" ? "e.g. Booth #1 · Building A Canteen" : "Contoh: Stand #1 · Kantin Gedung A"}
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
                 />
               </div>
@@ -10898,7 +10968,7 @@ export default function App() {
                   required
                   value={promoForm.kode_promo}
                   onChange={(e) => setPromoForm((p) => ({ ...p, kode_promo: e.target.value.toUpperCase() }))}
-                  placeholder="Contoh: KANTIN10"
+                  placeholder={lang === "EN" ? "e.g. CANTEEN10" : "Contoh: KANTIN10"}
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
                 />
               </div>
@@ -10911,7 +10981,7 @@ export default function App() {
                   required
                   value={promoForm.judul}
                   onChange={(e) => setPromoForm((p) => ({ ...p, judul: e.target.value }))}
-                  placeholder="Contoh: Diskon Spesial Jam Makan Siang"
+                  placeholder={lang === "EN" ? "e.g. Lunch Hour Special Discount" : "Contoh: Diskon Spesial Jam Makan Siang"}
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
                 />
               </div>
@@ -10925,13 +10995,15 @@ export default function App() {
                     onChange={(e) => setPromoForm((p) => ({ ...p, tipe: e.target.value }))}
                     style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
                   >
-                    <option value="fixed">Nominal (Rp)</option>
-                    <option value="percentage">Persen (%)</option>
+                    <option value="fixed">{lang === "EN" ? "Fixed (Rp)" : "Nominal (Rp)"}</option>
+                    <option value="percentage">{lang === "EN" ? "Percentage (%)" : "Persen (%)"}</option>
                   </select>
                 </div>
                 <div>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
-                    {promoForm.tipe === "percentage" ? "Persentase (%)" : "Potongan (Rp)"}
+                    {promoForm.tipe === "percentage"
+                      ? lang === "EN" ? "Percentage (%)" : "Persentase (%)"
+                      : lang === "EN" ? "Discount (Rp)" : "Potongan (Rp)"}
                   </label>
                   <input
                     type="number"
