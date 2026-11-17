@@ -287,26 +287,6 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
   color: var(--maroon);
 }
 
-/* Pure circle theme transition without shadow */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
-  box-shadow: none !important;
-  filter: none !important;
-  outline: none !important;
-}
-
-::view-transition-old(root) {
-  z-index: 1;
-  pointer-events: none;
-}
-
-::view-transition-new(root) {
-  z-index: 2;
-  pointer-events: none;
-}
-
 .theme-toggle-btn:hover {
   border-color: var(--border-input) !important;
   background-color: var(--bg-subtle) !important;

@@ -1,5 +1,4 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { flushSync } from "react-dom";
 import {
   Search,
   ShoppingBag,
@@ -310,12 +309,12 @@ export function applyDocumentTheme(nextTheme) {
 
 let currentThemeState = readStoredTheme();
 const themeListeners = new Set();
-let activeThemeTransition = null;
+let cancelActiveThemeOverlay = null;
 let themeAnimatingUntil = 0;
 
 function isThemeAnimating() {
   return (
-    activeThemeTransition !== null ||
+    cancelActiveThemeOverlay !== null ||
     (typeof performance !== "undefined" && performance.now() < themeAnimatingUntil)
   );
 }
@@ -324,7 +323,7 @@ async function waitForThemeTransitionIdle() {
   if (!isThemeAnimating()) return;
   await new Promise((resolve) => {
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const waitMs = Math.min(720, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
+    const waitMs = Math.min(700, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
     setTimeout(resolve, waitMs);
   });
 }
@@ -350,6 +349,11 @@ function commitAppTheme(nextTheme) {
 }
 
 function toggleAppTheme(event) {
+  if (cancelActiveThemeOverlay) {
+    cancelActiveThemeOverlay();
+    cancelActiveThemeOverlay = null;
+  }
+
   const nextTheme = currentThemeState === "dark" ? "light" : "dark";
   const rect = event?.currentTarget?.getBoundingClientRect?.();
   const vw = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0);
@@ -358,72 +362,128 @@ function toggleAppTheme(event) {
   const y = Math.round(rect ? rect.top + rect.height / 2 : vh / 2);
   const startRadius = Math.max(14, rect && rect.width > 0 ? Math.round(rect.width / 2) : 18);
   const endRadius = Math.ceil(Math.hypot(Math.max(x, vw - x), Math.max(y, vh - y)));
+  const baseRadius = Math.max(startRadius, Math.min(256, endRadius));
+  const startScale = Number((startRadius / baseRadius).toFixed(4));
+  const endScale = Number((endRadius / baseRadius + 0.04).toFixed(4));
 
   const prefersReduced =
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  if (typeof document.startViewTransition !== "function" || prefersReduced) {
+  if (
+    prefersReduced ||
+    typeof document === "undefined" ||
+    !document.body ||
+    typeof document.createElement("div").animate !== "function"
+  ) {
     commitAppTheme(nextTheme);
     return;
   }
 
-  if (activeThemeTransition) {
-    try {
-      activeThemeTransition.skipTransition?.();
-    } catch {
-      // ignore skipped transition errors
-    }
-    activeThemeTransition = null;
-  }
+  const host = document.createElement("div");
+  host.style.cssText =
+    "position:fixed;inset:0;z-index:99999;pointer-events:none;overflow:hidden;";
+
+  const circle = document.createElement("div");
+  const diameter = baseRadius * 2;
+  const fillBg = nextTheme === "dark" ? "#171211" : "#FFFFFF";
+  circle.style.cssText = [
+    "position:fixed",
+    `left:${x - baseRadius}px`,
+    `top:${y - baseRadius}px`,
+    `width:${diameter}px`,
+    `height:${diameter}px`,
+    "border-radius:50%",
+    `background-color:${fillBg}`,
+    "box-shadow:none",
+    "border:none",
+    "outline:none",
+    "pointer-events:none",
+    "will-change:transform,opacity",
+    `transform:translateZ(0) scale(${startScale})`,
+  ].join(";");
+
+  host.appendChild(circle);
+  document.body.appendChild(host);
+
+  let aborted = false;
+  let committed = false;
+  let expandAnim = null;
+  let fadeAnim = null;
 
   themeAnimatingUntil =
-    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 650;
+    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 620;
 
-  let transition;
-  try {
-    transition = document.startViewTransition(() => {
-      flushSync(() => {
-        commitAppTheme(nextTheme);
-      });
-    });
-  } catch {
-    themeAnimatingUntil = 0;
-    commitAppTheme(nextTheme);
-    return;
-  }
+  const cleanup = () => {
+    if (host.parentNode) host.parentNode.removeChild(host);
+    if (cancelActiveThemeOverlay === abortCurrent) {
+      cancelActiveThemeOverlay = null;
+      themeAnimatingUntil = 0;
+    }
+  };
 
-  activeThemeTransition = transition;
+  const abortCurrent = () => {
+    aborted = true;
+    try {
+      expandAnim?.cancel?.();
+      fadeAnim?.cancel?.();
+    } catch {
+      // ignore animation cancel errors
+    }
+    if (!committed) {
+      committed = true;
+      commitAppTheme(nextTheme);
+    }
+    cleanup();
+  };
 
-  Promise.resolve(transition.ready)
+  cancelActiveThemeOverlay = abortCurrent;
+
+  expandAnim = circle.animate(
+    [
+      { transform: `translateZ(0) scale(${startScale})` },
+      { transform: `translateZ(0) scale(${endScale})` },
+    ],
+    {
+      duration: 380,
+      easing: "linear",
+      fill: "forwards",
+    }
+  );
+
+  Promise.resolve(expandAnim.finished)
     .then(() => {
-      if (activeThemeTransition !== transition) return;
-      if (typeof document.documentElement.animate !== "function") return;
-      document.documentElement.animate(
-        {
-          clipPath: [
-            `circle(${startRadius}px at ${x}px ${y}px)`,
-            `circle(${endRadius}px at ${x}px ${y}px)`,
-          ],
-        },
-        {
-          duration: 600,
-          easing: "linear",
-          fill: "both",
-          pseudoElement: "::view-transition-new(root)",
-        }
-      );
-    })
-    .catch(() => { });
-
-  Promise.resolve(transition.finished)
-    .catch(() => { })
-    .finally(() => {
-      if (activeThemeTransition === transition) {
-        activeThemeTransition = null;
-        themeAnimatingUntil = 0;
+      if (aborted) return;
+      if (!committed) {
+        committed = true;
+        commitAppTheme(nextTheme);
       }
+      return new Promise((resolve) => {
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => resolve());
+        } else {
+          setTimeout(resolve, 16);
+        }
+      });
+    })
+    .then(() => {
+      if (aborted) return;
+      fadeAnim = circle.animate([{ opacity: 1 }, { opacity: 0 }], {
+        duration: 180,
+        easing: "ease-out",
+        fill: "forwards",
+      });
+      return fadeAnim.finished;
+    })
+    .catch(() => {
+      if (!aborted && !committed) {
+        committed = true;
+        commitAppTheme(nextTheme);
+      }
+    })
+    .finally(() => {
+      if (!aborted) cleanup();
     });
 }
 
