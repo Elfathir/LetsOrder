@@ -7,10 +7,12 @@ use App\Models\Cart;
 use App\Models\Notification;
 use App\Models\Order;
 use App\Models\OrderDetail;
+use App\Models\Promo;
 use App\Models\StatusHistory;
 use App\Models\Tenant;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class OrderController extends Controller
@@ -119,14 +121,14 @@ class OrderController extends Controller
             ], 404);
         }
 
-        if (!$tenant->status_buka) {
+        if (!$tenant->isCurrentlyOpen()) {
             return response()->json([
                 'success' => false,
                 'message' => "Tenant '{$tenant->nama_tenant}' sedang tutup dan tidak dapat menerima pesanan.",
             ], 422);
         }
 
-        // Hitung total harga & diskon promo secara server-side
+        // Hitung total harga & diskon promo secara server-side (custom tenant promo + promo sistem)
         $totalHarga = 0;
         $itemNotes = [];
         foreach ($cartItems as $item) {
@@ -138,19 +140,40 @@ class OrderController extends Controller
         }
 
         $promoCode = strtoupper(trim((string) ($validated['promo_code'] ?? '')));
-        $promoRules = [
-            'COMBO3K' => ['type' => 'fixed', 'discount' => 3000, 'minSpend' => 20000],
-            'STUDENT10' => ['type' => 'percentage', 'discount' => 0.1, 'minSpend' => 25000],
-            'HEMAT5K' => ['type' => 'fixed', 'discount' => 5000, 'minSpend' => 30000],
-            'EARLYBIRD' => ['type' => 'percentage', 'discount' => 0.15, 'minSpend' => 15000],
-        ];
-        if (isset($promoRules[$promoCode]) && $totalHarga >= $promoRules[$promoCode]['minSpend']) {
-            $rule = $promoRules[$promoCode];
-            $discount = $rule['type'] === 'percentage'
-                ? (int) round($totalHarga * $rule['discount'])
-                : (int) $rule['discount'];
-            $totalHarga = max(0, $totalHarga - min($totalHarga, $discount));
+        $appliedDiscount = 0;
+        if ($promoCode !== '' && Schema::hasTable('promos')) {
+            $customPromo = Promo::where('kode_promo', $promoCode)
+                ->where('aktif', true)
+                ->where(function ($q) use ($idTenant) {
+                    $q->whereNull('id_tenant')->orWhere('id_tenant', $idTenant);
+                })
+                ->first();
+            if ($customPromo && $totalHarga >= (int) $customPromo->minimal_belanja) {
+                if ($customPromo->tipe === 'percentage') {
+                    $pct = $customPromo->diskon > 1 ? min(100, $customPromo->diskon) / 100 : $customPromo->diskon;
+                    $appliedDiscount = (int) round($totalHarga * $pct);
+                } else {
+                    $appliedDiscount = (int) $customPromo->diskon;
+                }
+            }
         }
+
+        if ($appliedDiscount === 0 && $promoCode !== '') {
+            $promoRules = [
+                'COMBO3K' => ['type' => 'fixed', 'discount' => 3000, 'minSpend' => 20000],
+                'STUDENT10' => ['type' => 'percentage', 'discount' => 0.1, 'minSpend' => 25000],
+                'HEMAT5K' => ['type' => 'fixed', 'discount' => 5000, 'minSpend' => 30000],
+                'EARLYBIRD' => ['type' => 'percentage', 'discount' => 0.15, 'minSpend' => 15000],
+            ];
+            if (isset($promoRules[$promoCode]) && $totalHarga >= $promoRules[$promoCode]['minSpend']) {
+                $rule = $promoRules[$promoCode];
+                $appliedDiscount = $rule['type'] === 'percentage'
+                    ? (int) round($totalHarga * $rule['discount'])
+                    : (int) $rule['discount'];
+            }
+        }
+
+        $totalHarga = max(0, $totalHarga - min($totalHarga, $appliedDiscount));
 
         $orderNote = $validated['catatan'] ?? '';
         if ($orderNote === '' && !empty($itemNotes)) {
@@ -419,6 +442,91 @@ class OrderController extends Controller
     }
 
     /**
+     * Pembatalan pesanan oleh Customer (sebelum Siap Diambil) atau Vendor pemilik tenant / Admin.
+     */
+    public function cancel(Request $request, int $id)
+    {
+        $user = $request->user();
+        $order = Order::with(['tenant', 'user'])->find($id);
+
+        if (!$order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pesanan tidak ditemukan.',
+            ], 404);
+        }
+
+        $isAdmin = strtolower((string) $user->peran) === 'administrator';
+        $isVendorOwner = $order->tenant && (int) $order->tenant->id_user === (int) $user->id_user;
+        $isCustomerOwner = (int) $order->id_user === (int) $user->id_user;
+
+        if (!$isAdmin && !$isVendorOwner && !$isCustomerOwner) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda tidak memiliki hak akses untuk membatalkan pesanan ini.',
+            ], 403);
+        }
+
+        if (in_array($order->status_pesanan, ['Selesai', 'Dibatalkan'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Pesanan berstatus '{$order->status_pesanan}' tidak dapat dibatalkan.",
+            ], 422);
+        }
+
+        if ($isCustomerOwner && !$isVendorOwner && !$isAdmin && $order->status_pesanan === 'Siap Diambil') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pesanan sudah siap diambil dan tidak dapat dibatalkan oleh pelanggan.',
+            ], 422);
+        }
+
+        $reason = trim((string) ($request->input('alasan') ?? $request->input('reason') ?? ''));
+        $reason = mb_substr($reason, 0, 300);
+        $actorLabel = $isVendorOwner ? 'Tenant' : ($isAdmin ? 'Admin' : 'Pelanggan');
+        $cancelLine = $reason !== '' ? "Dibatalkan ({$actorLabel}): {$reason}" : "Dibatalkan oleh {$actorLabel}";
+        $updatedNote = trim(($order->catatan ? $order->catatan . ' | ' : '') . $cancelLine);
+
+        $now = now();
+        DB::transaction(function () use ($order, $updatedNote, $cancelLine, $user, $now) {
+            $order->update([
+                'status_pesanan' => 'Dibatalkan',
+                'catatan' => $updatedNote,
+            ]);
+
+            StatusHistory::create([
+                'id_pesanan' => $order->id_pesanan,
+                'status' => 'Dibatalkan',
+                'waktu' => $now,
+            ]);
+
+            Notification::create([
+                'id_user' => $order->id_user,
+                'id_pesanan' => $order->id_pesanan,
+                'pesan' => "Pesanan {$order->nomor_antrean} {$cancelLine}.",
+                'status_baca' => false,
+            ]);
+
+            if ($order->tenant && $order->tenant->id_user && (int) $order->tenant->id_user !== (int) $user->id_user) {
+                Notification::create([
+                    'id_user' => $order->tenant->id_user,
+                    'id_pesanan' => $order->id_pesanan,
+                    'pesan' => "Pesanan {$order->nomor_antrean} {$cancelLine}.",
+                    'status_baca' => false,
+                ]);
+            }
+        });
+
+        $order->load(['user', 'tenant', 'orderDetails.menu', 'payments', 'statusHistories']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pesanan berhasil dibatalkan.',
+            'data' => $this->formatOrderResponse($order),
+        ], 200);
+    }
+
+    /**
      * Melihat status terkini pesanan (Order Tracking API).
      */
     public function status(Request $request, int $id)
@@ -583,6 +691,13 @@ class OrderController extends Controller
             ? $order->payments->sortByDesc('id_pembayaran')->first()
             : null;
 
+        $reviews = [];
+        if (Schema::hasTable('reviews')) {
+            $reviews = $order->relationLoaded('reviews')
+                ? $order->reviews->toArray()
+                : \App\Models\Review::where('id_pesanan', $order->id_pesanan)->get()->toArray();
+        }
+
         return [
             'id_pesanan' => $order->id_pesanan,
             'id_user' => $order->id_user,
@@ -598,6 +713,8 @@ class OrderController extends Controller
             'order_details' => $details,
             'payment' => $latestPayment,
             'payments' => $order->relationLoaded('payments') ? $order->payments : [],
+            'reviews' => $reviews,
+            'has_reviewed' => count($reviews) > 0,
             'status_histories' => $order->relationLoaded('statusHistories') ? $order->statusHistories : [],
         ];
     }

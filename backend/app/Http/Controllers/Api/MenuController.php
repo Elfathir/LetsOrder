@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Menu;
 use App\Models\Tenant;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class MenuController extends Controller
 {
@@ -46,7 +47,7 @@ class MenuController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Daftar menu berhasil diambil.',
-            'data' => $menus,
+            'data' => $this->attachReviewStats($menus),
         ], 200);
     }
 
@@ -101,7 +102,7 @@ class MenuController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Daftar menu tenant berhasil diambil.',
-            'data' => $menus,
+            'data' => $this->attachReviewStats($menus),
         ], 200);
     }
 
@@ -178,13 +179,44 @@ class MenuController extends Controller
             'status_tersedia' => $validated['status_tersedia'] ?? true,
         ]);
 
+        if (!empty($menu->gambar) && (!$tenant->logo || $tenant->logo === 'tenant/default.png')) {
+            $tenant->logo = $menu->gambar;
+            $tenant->save();
+        }
+
         $menu->load(['tenant', 'category']);
 
         return response()->json([
             'success' => true,
             'message' => 'Menu berhasil ditambahkan.',
-            'data' => $menu,
+            'data' => $this->attachReviewStats(collect([$menu]))->first(),
         ], 201);
+    }
+
+    private function attachReviewStats($menus)
+    {
+        $statsByMenu = [];
+        if (Schema::hasTable('reviews') && $menus->isNotEmpty()) {
+            $rows = \App\Models\Review::whereIn('id_menu', $menus->pluck('id_menu'))
+                ->selectRaw('id_menu, COUNT(*) as cnt, AVG(rating) as avg_rating')
+                ->groupBy('id_menu')
+                ->get();
+            foreach ($rows as $row) {
+                $statsByMenu[(int) $row->id_menu] = [
+                    'cnt' => (int) $row->cnt,
+                    'avg' => number_format((float) $row->avg_rating, 1, '.', ''),
+                ];
+            }
+        }
+
+        return $menus->map(function (Menu $menu) use ($statsByMenu) {
+            $arr = $menu->toArray();
+            $st = $statsByMenu[(int) $menu->id_menu] ?? null;
+            $arr['rating'] = $st ? $st['avg'] : null;
+            $arr['reviews'] = $st ? $st['cnt'] : 0;
+            $arr['reviews_count'] = $st ? $st['cnt'] : 0;
+            return $arr;
+        })->values();
     }
 
     /**

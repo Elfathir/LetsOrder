@@ -8,6 +8,8 @@ use App\Http\Controllers\Api\MenuController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\PromoController;
+use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\TenantController;
 use Illuminate\Support\Facades\Route;
 
@@ -63,6 +65,8 @@ $registerApiRoutes = function () {
 
     Route::get('/menus', [MenuController::class, 'index']);
     Route::get('/menus/{id}', [MenuController::class, 'show'])->whereNumber('id');
+    Route::get('/promos', [PromoController::class, 'index']);
+    Route::get('/reviews', [ReviewController::class, 'index']);
 
     // Protected Endpoints (Sanctum)
     Route::middleware('auth:sanctum')->group(function () {
@@ -104,6 +108,14 @@ $registerApiRoutes = function () {
         Route::patch('/orders/{id}/status', [OrderController::class, 'updateStatus'])
             ->whereNumber('id')
             ->middleware('role:Vendor,Administrator');
+
+        Route::post('/orders/{id}/cancel', [OrderController::class, 'cancel'])
+            ->whereNumber('id')
+            ->middleware('role:Customer,Vendor,Administrator');
+
+        Route::post('/orders/{id}/reviews', [ReviewController::class, 'storeForOrder'])
+            ->whereNumber('id')
+            ->middleware('role:Customer');
 
         Route::post('/orders/{id}/payment', [PaymentController::class, 'store'])
             ->whereNumber('id')
@@ -149,6 +161,13 @@ $registerApiRoutes = function () {
                 Route::get('/orders', [OrderController::class, 'vendorOrders']);
                 Route::get('/orders/{id}', [OrderController::class, 'vendorOrderShow'])->whereNumber('id');
                 Route::patch('/orders/{id}/status', [OrderController::class, 'updateStatus'])->whereNumber('id');
+                Route::post('/orders/{id}/cancel', [OrderController::class, 'cancel'])->whereNumber('id');
+
+                Route::get('/promos', [PromoController::class, 'vendorIndex']);
+                Route::post('/promos', [PromoController::class, 'store']);
+                Route::put('/promos/{id}', [PromoController::class, 'update'])->whereNumber('id');
+                Route::patch('/promos/{id}', [PromoController::class, 'update'])->whereNumber('id');
+                Route::delete('/promos/{id}', [PromoController::class, 'destroy'])->whereNumber('id');
             });
         });
 

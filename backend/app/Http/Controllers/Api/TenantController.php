@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Menu;
 use App\Models\Tenant;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class TenantController extends Controller
 {
@@ -31,9 +32,11 @@ class TenantController extends Controller
         }
 
         $tenants = $query
+            ->with(['user:id_user,avatar', 'menus' => fn ($q) => $q->select('id_menu', 'id_tenant', 'gambar')])
             ->orderByDesc('status_buka')
             ->orderBy('id_tenant', 'asc')
-            ->get();
+            ->get()
+            ->map(fn (Tenant $t) => $this->formatTenant($t));
 
         return response()->json([
             'success' => true,
@@ -130,7 +133,7 @@ class TenantController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Informasi tenant berhasil diambil.',
-            'data' => $tenant,
+            'data' => $this->formatTenant($tenant),
         ], 200);
     }
 
@@ -186,11 +189,18 @@ class TenantController extends Controller
      */
     private function performTenantUpdate(Request $request, Tenant $tenant)
     {
+        if ($request->has('gambar') && !$request->has('logo')) {
+            $request->merge(['logo' => $request->input('gambar')]);
+        }
+
         $validated = $request->validate([
             'nama_tenant' => 'sometimes|required|string|max:100',
             'deskripsi' => 'nullable|string',
             'logo' => 'nullable|string',
             'status_buka' => 'sometimes|boolean',
+            'jam_buka' => 'nullable|string|max:10',
+            'jam_tutup' => 'nullable|string|max:10',
+            'auto_schedule' => 'sometimes|boolean',
         ]);
 
         if (array_key_exists('deskripsi', $validated) && $validated['deskripsi'] === null) {
@@ -201,13 +211,55 @@ class TenantController extends Controller
             $validated['logo'] = $tenant->logo ?? '';
         }
 
+        if (!Schema::hasColumn('tenants', 'jam_buka')) {
+            unset($validated['jam_buka'], $validated['jam_tutup'], $validated['auto_schedule']);
+        }
+
         $tenant->update($validated);
 
         return response()->json([
             'success' => true,
             'message' => 'Informasi tenant berhasil diperbarui.',
-            'data' => $tenant,
+            'data' => $this->formatTenant($tenant->fresh()),
         ], 200);
+    }
+
+    private function formatTenant(Tenant $tenant): array
+    {
+        $rawLogo = $tenant->logo && $tenant->logo !== 'tenant/default.png' ? $tenant->logo : '';
+        $userAvatar = $tenant->relationLoaded('user') ? ($tenant->user?->avatar ?? '') : '';
+        $menuImg = $tenant->relationLoaded('menus')
+            ? ($tenant->menus->first(fn ($m) => !empty($m->gambar) && $m->gambar !== 'menu/default.png')?->gambar ?? '')
+            : '';
+        $effectiveImage = $rawLogo ?: ($userAvatar ?: $menuImg);
+
+        $reviewsCount = 0;
+        $avgRating = null;
+        if (Schema::hasTable('reviews')) {
+            $stats = \App\Models\Review::where('id_tenant', $tenant->id_tenant)
+                ->selectRaw('COUNT(*) as cnt, AVG(rating) as avg_rating')
+                ->first();
+            $reviewsCount = (int) ($stats->cnt ?? 0);
+            if ($reviewsCount > 0) {
+                $avgRating = number_format((float) $stats->avg_rating, 1, '.', '');
+            }
+        }
+
+        return [
+            'id_tenant' => $tenant->id_tenant,
+            'id_user' => $tenant->id_user,
+            'nama_tenant' => $tenant->nama_tenant,
+            'deskripsi' => $tenant->deskripsi,
+            'logo' => $rawLogo ?: $effectiveImage,
+            'gambar' => $effectiveImage,
+            'status_buka' => (bool) $tenant->status_buka,
+            'jam_buka' => $tenant->jam_buka ?? '07:00',
+            'jam_tutup' => $tenant->jam_tutup ?? '21:00',
+            'auto_schedule' => (bool) ($tenant->auto_schedule ?? false),
+            'status_buka_efektif' => $tenant->isCurrentlyOpen(),
+            'rating' => $avgRating,
+            'reviews_count' => $reviewsCount,
+        ];
     }
 }
 

@@ -88,4 +88,9 @@ class Menu extends Model
             'id_menu'
         );
     }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class, 'id_menu', 'id_menu');
+    }
 }

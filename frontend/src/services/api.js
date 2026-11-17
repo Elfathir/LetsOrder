@@ -190,6 +190,18 @@ export const api = {
   getOrder: (id) => request(`/orders/${id}`),
   getOrderStatus: (id) => request(`/orders/${id}/status`),
   getOrderStatusHistory: (id) => request(`/orders/${id}/status-history`),
+  cancelOrder: (id, alasan = "") =>
+    request(`/orders/${id}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ alasan }),
+    }),
+  getReviews: (params) => request(`/reviews${buildQuery(params)}`),
+  submitOrderReview: (orderId, data) =>
+    request(`/orders/${orderId}/reviews`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  getPromos: (params) => request(`/promos${buildQuery(params)}`),
 
   createPayment: (orderId, data) =>
     request(`/orders/${orderId}/payment`, {
@@ -250,6 +262,21 @@ export const api = {
     request(`/vendor/orders/${id}/status`, {
       method: "PATCH",
       body: JSON.stringify({ status_pesanan }),
+    }),
+  getVendorPromos: () => request("/vendor/promos"),
+  createVendorPromo: (data) =>
+    request("/vendor/promos", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateVendorPromo: (id, data) =>
+    request(`/vendor/promos/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteVendorPromo: (id) =>
+    request(`/vendor/promos/${id}`, {
+      method: "DELETE",
     }),
 
   getAdminUsers: (params) => request(`/admin/users${buildQuery(params)}`),

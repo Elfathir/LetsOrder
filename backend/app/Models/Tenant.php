@@ -27,13 +27,33 @@ class Tenant extends Model
         'deskripsi',
         'logo',
         'status_buka',
+        'jam_buka',
+        'jam_tutup',
+        'auto_schedule',
     ];
 
     protected function casts(): array
     {
         return [
             'status_buka' => 'boolean',
+            'auto_schedule' => 'boolean',
         ];
+    }
+
+    public function isCurrentlyOpen(): bool
+    {
+        if (!$this->auto_schedule) {
+            return (bool) $this->status_buka;
+        }
+        if ($this->status_buka === false) {
+            return false;
+        }
+        $open = substr((string) ($this->jam_buka ?? '07:00'), 0, 5);
+        $close = substr((string) ($this->jam_tutup ?? '21:00'), 0, 5);
+        $now = now()->format('H:i');
+        return $open <= $close
+            ? ($now >= $open && $now < $close)
+            : ($now >= $open || $now < $close);
     }
 
     /**
@@ -70,5 +90,15 @@ class Tenant extends Model
             'id_tenant',
             'id_tenant'
         );
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class, 'id_tenant', 'id_tenant');
+    }
+
+    public function promos(): HasMany
+    {
+        return $this->hasMany(Promo::class, 'id_tenant', 'id_tenant');
     }
 }

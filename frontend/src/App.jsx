@@ -369,15 +369,46 @@ function normalizeCategoryName(rawName) {
 }
 
 function normalizeMenuRecord(m) {
+  const revCount = Number(m.reviews_count ?? (Array.isArray(m.reviews) ? m.reviews.length : m.reviews) ?? 0);
   return {
     ...m,
     available: Boolean(m.status_tersedia ?? m.available ?? true),
     kategori_nama: normalizeCategoryName(m.kategori_nama || m.category?.nama_kategori),
-    tenant_name: m.tenant_name || m.tenant?.nama_tenant || "Canteen Tenant",
+    tenant_name: m.tenant_name || m.tenant?.nama_tenant || "Kantin",
     sold_today: Number(m.sold_today || 0),
-    rating: m.rating || "5.0",
-    reviews: m.reviews || 1,
+    rating: revCount > 0 && m.rating ? String(m.rating) : null,
+    reviews: revCount,
+    reviews_count: revCount,
   };
+}
+
+function getLocalDateKey(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function formatLiveClock(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function isTenantOpenAt(tenant, nowDate = new Date()) {
+  if (!tenant) return false;
+  if (!tenant.auto_schedule) return Boolean(tenant.status_buka ?? true);
+  if (tenant.status_buka === false) return false;
+  const openStr = String(tenant.jam_buka || "07:00").slice(0, 5);
+  const closeStr = String(tenant.jam_tutup || "21:00").slice(0, 5);
+  const pad = (n) => String(n).padStart(2, "0");
+  const cur = `${pad(nowDate.getHours())}:${pad(nowDate.getMinutes())}`;
+  return openStr <= closeStr ? cur >= openStr && cur < closeStr : cur >= openStr || cur < closeStr;
+}
+
+function formatPercentDelta(todayVal, yesterdayVal) {
+  if (yesterdayVal > 0) {
+    const pct = Math.round(((todayVal - yesterdayVal) / yesterdayVal) * 100);
+    return `${pct >= 0 ? "+" : ""}${pct}%`;
+  }
+  return todayVal > 0 ? "+100%" : "0%";
 }
 
 function formatRupiah(num) {
@@ -459,13 +490,52 @@ export default function App() {
   const [menusList, setMenusList] = useState([]);
   const [tenantsList, setTenantsList] = useState([]);
 
+  const [liveClock, setLiveClock] = useState(() => new Date());
   const [isStoreOpen, setIsStoreOpen] = useState(true);
+  const [myTenantInfo, setMyTenantInfo] = useState(null);
+  const [isStoreSettingsOpen, setIsStoreSettingsOpen] = useState(false);
+  const [storeForm, setStoreForm] = useState({
+    nama_tenant: "",
+    deskripsi: "",
+    booth: "",
+    logo: "",
+    jam_buka: "07:00",
+    jam_tutup: "21:00",
+    auto_schedule: false,
+    status_buka: true,
+  });
+  const [storeSettingsError, setStoreSettingsError] = useState("");
   const [ordersTodayCount, setOrdersTodayCount] = useState(0);
   const [revenueTodayTotal, setRevenueTodayTotal] = useState(0);
+  const [kpiStats, setKpiStats] = useState({
+    ordersDelta: "0%",
+    revenueDelta: "0%",
+    avgPrepText: "0 min",
+    prepDelta: "0 min",
+  });
+  const [topSellersToday, setTopSellersToday] = useState([]);
+  const [publicPromos, setPublicPromos] = useState([]);
+  const [vendorPromos, setVendorPromos] = useState([]);
+  const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);
+  const [promoForm, setPromoForm] = useState({
+    kode_promo: "",
+    judul: "",
+    tipe: "fixed",
+    diskon: "",
+    minimal_belanja: "0",
+  });
+  const [promoFormError, setPromoFormError] = useState("");
   const [tenantMenus, setTenantMenus] = useState([]);
   const [tenantMenuFilter, setTenantMenuFilter] = useState("All");
   const [tenantMenuSearch, setTenantMenuSearch] = useState("");
   const [incomingOrders, setIncomingOrders] = useState([]);
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [reviewTarget, setReviewTarget] = useState(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewError, setReviewError] = useState("");
+  const [activeMenuReviews, setActiveMenuReviews] = useState([]);
   const [editingDish, setEditingDish] = useState(null);
   const [editMenuError, setEditMenuError] = useState("");
   const [editDishForm, setEditDishForm] = useState({
@@ -518,6 +588,15 @@ export default function App() {
   const openFoodDetail = useCallback((menuItem) => {
     setActiveMenuDetail(menuItem);
     setDetailQuantity(1);
+    setActiveMenuReviews([]);
+    if (menuItem?.id_menu) {
+      api
+        .getReviews({ id_menu: menuItem.id_menu })
+        .then((res) => {
+          if (Array.isArray(res?.data)) setActiveMenuReviews(res.data);
+        })
+        .catch(() => {});
+    }
     setDetailMounted(true);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -531,11 +610,13 @@ export default function App() {
     setTimeout(() => {
       setDetailMounted(false);
       setActiveMenuDetail(null);
+      setActiveMenuReviews([]);
     }, 320);
   }, []);
 
   const [cartItems, setCartItems] = useState([]);
-  const [selectedPromo, setSelectedPromo] = useState(PROMOS[0]);
+  const [selectedPromo, setSelectedPromo] = useState(null);
+  const [orderNote, setOrderNote] = useState("");
 
   const [checkoutStep, setCheckoutStep] = useState(1);
   const [activeOrderId, setActiveOrderId] = useState(null);
@@ -792,42 +873,71 @@ export default function App() {
         }
       }
       const isVendor = currentUser?.peran === "Vendor";
-      const [tenantsRes, menusRes, vendorTenantRes, vendorMenusRes, ordersRes, cartRes, notifRes] =
-        await Promise.all([
-          api.getTenants().catch(() => null),
-          api.getMenus({ include_unavailable: true }).catch(() => null),
-          isVendor ? api.getVendorTenant().catch(() => null) : Promise.resolve(null),
-          isVendor ? api.getVendorMenus().catch(() => null) : Promise.resolve(null),
-          isVendor
-            ? api.getVendorOrders().catch(() => null)
-            : api.getOrders().catch(() => null),
-          !isVendor && currentUser ? api.getCart().catch(() => null) : Promise.resolve(null),
-          currentUser ? api.getNotifications().catch(() => null) : Promise.resolve(null),
-        ]);
+      const [
+        tenantsRes,
+        menusRes,
+        vendorTenantRes,
+        vendorMenusRes,
+        ordersRes,
+        cartRes,
+        notifRes,
+        promosRes,
+        vendorPromosRes,
+      ] = await Promise.all([
+        api.getTenants().catch(() => null),
+        api.getMenus({ include_unavailable: true }).catch(() => null),
+        isVendor ? api.getVendorTenant().catch(() => null) : Promise.resolve(null),
+        isVendor ? api.getVendorMenus().catch(() => null) : Promise.resolve(null),
+        isVendor
+          ? api.getVendorOrders().catch(() => null)
+          : api.getOrders().catch(() => null),
+        !isVendor && currentUser ? api.getCart().catch(() => null) : Promise.resolve(null),
+        currentUser ? api.getNotifications().catch(() => null) : Promise.resolve(null),
+        api.getPromos().catch(() => null),
+        isVendor ? api.getVendorPromos().catch(() => null) : Promise.resolve(null),
+      ]);
 
       if (tenantsRes?.data) {
         setTenantsList(
           tenantsRes.data.map((t) => ({
             ...t,
-            tagline: t.deskripsi || t.tagline || "Campus Canteen Tenant",
-            gambar: t.gambar || t.logo || "",
+            tagline: t.deskripsi || t.tagline || "",
+            gambar: t.gambar || t.logo || t.user?.avatar || "",
+            jam_buka: t.jam_buka || "07:00",
+            jam_tutup: t.jam_tutup || "21:00",
+            auto_schedule: Boolean(t.auto_schedule),
+            status_buka_efektif:
+              t.status_buka_efektif !== undefined
+                ? Boolean(t.status_buka_efektif)
+                : isTenantOpenAt(t),
           }))
         );
+      }
+      if (Array.isArray(promosRes?.data)) {
+        setPublicPromos(promosRes.data);
+      }
+      if (Array.isArray(vendorPromosRes?.data)) {
+        setVendorPromos(vendorPromosRes.data);
       }
       const myTenant =
         vendorTenantRes?.data ||
         tenantsRes?.data?.find((t) => t.id_user === currentUser?.id_user) ||
         null;
       if (myTenant) {
+        setMyTenantInfo(myTenant);
         setIsStoreOpen(Boolean(myTenant.status_buka ?? true));
       }
 
-      if (menusRes?.data) {
-        setMenusList(menusRes.data.map(normalizeMenuRecord));
+      const normalizedMenus = menusRes?.data ? menusRes.data.map(normalizeMenuRecord) : null;
+      if (normalizedMenus) {
+        setMenusList(normalizedMenus);
       }
 
-      if (vendorMenusRes?.data) {
-        setTenantMenus(vendorMenusRes.data.map(normalizeMenuRecord));
+      const normalizedVendorMenus = vendorMenusRes?.data
+        ? vendorMenusRes.data.map(normalizeMenuRecord)
+        : null;
+      if (normalizedVendorMenus) {
+        setTenantMenus(normalizedVendorMenus);
       }
 
       if (cartRes?.data?.items) {
@@ -838,7 +948,7 @@ export default function App() {
             id_menu: Number(ci.id_menu),
             id_tenant: Number(ci.id_tenant || ci.menu?.id_tenant || 0),
             tenant_name:
-              ci.tenant_name || ci.nama_tenant || ci.menu?.tenant?.nama_tenant || "Canteen Tenant",
+              ci.tenant_name || ci.nama_tenant || ci.menu?.tenant?.nama_tenant || "Kantin",
             harga: Number(ci.harga || 0),
             jumlah: Number(ci.jumlah || 1),
           }))
@@ -855,7 +965,7 @@ export default function App() {
             (o) => Number(o.id_pesanan) === Number(activeOrderId)
           );
           if (live) {
-            const firstItem = live.details?.[0]?.nama_menu || "Canteen Order";
+            const firstItem = live.details?.[0]?.nama_menu || "Pesanan Kantin";
             const extra =
               (live.details?.length || 0) > 1
                 ? ` + ${live.details.length - 1} more`
@@ -865,48 +975,132 @@ export default function App() {
               ...live,
               items_summary: `${firstItem}${extra}`,
               tenant_name:
-                live.tenant?.nama_tenant || prev?.tenant_name || "Canteen Tenant",
+                live.tenant?.nama_tenant || prev?.tenant_name || "Kantin",
               booth: live.tenant?.booth || prev?.booth || "",
             }));
           }
         }
+        const statusMap = {
+          "Menunggu Pembayaran": "Awaiting payment",
+          "Sedang Diproses": "Preparing",
+          Diproses: "Preparing",
+          "Siap Diambil": "Ready for pickup",
+          Selesai: "Completed",
+          Dibatalkan: "Cancelled",
+        };
         const mappedHistory = ordersRes.data.map((o) => {
-          const firstItem = o.details?.[0]?.nama_menu || "Canteen Order";
+          const detailsList = o.details || o.order_details || [];
+          const firstItem = detailsList[0]?.nama_menu || "Pesanan Kantin";
           const extra =
-            (o.details?.length || 0) > 1
-              ? ` + ${o.details.length - 1} more`
-              : "";
-          const statusMap = {
-            "Menunggu Pembayaran": "Awaiting payment",
-            "Sedang Diproses": "Preparing",
-            Diproses: "Preparing",
-            "Siap Diambil": "Ready for pickup",
-            Selesai: "Completed",
-            Dibatalkan: "Cancelled",
-          };
+            detailsList.length > 1 ? ` + ${detailsList.length - 1} more` : "";
+          const itemsBreakdown = detailsList
+            .map((d) => `${d.jumlah || 1}x ${d.nama_menu || "Menu"}`)
+            .join(", ");
           return {
             id_pesanan: o.id_pesanan,
             nomor_antrean: o.nomor_antrean,
             items_summary: `${firstItem}${extra}`,
-            tenant_name: o.tenant?.nama_tenant || "Canteen Tenant",
+            items_breakdown: itemsBreakdown || firstItem,
+            tenant_name: o.tenant?.nama_tenant || "Kantin",
             booth: o.tenant?.booth || "",
-            tanggal: o.waktu_pesan ? o.waktu_pesan.slice(11, 16) : "Just now",
-            total: o.total_harga,
+            user_name: o.user_name || o.user?.nama || o.user?.username || "Pelanggan",
+            tanggal: o.waktu_pesan ? o.waktu_pesan.slice(0, 16) : "Baru saja",
+            jam: o.waktu_pesan ? o.waktu_pesan.slice(11, 16) : "",
+            total: Number(o.total_harga || 0),
             total_harga: Number(o.total_harga || 0),
+            catatan: o.catatan || "",
+            alasan_batal: o.alasan_batal || "",
+            promo_code: o.promo_code || null,
+            has_reviewed: Boolean(o.has_reviewed || (Array.isArray(o.reviews) && o.reviews.length > 0)),
+            reviews: Array.isArray(o.reviews) ? o.reviews : [],
             status: statusMap[o.status_pesanan] || "Preparing",
             status_pesanan: o.status_pesanan,
             raw_status: o.status_pesanan,
-            details: o.details || [],
+            details: detailsList,
           };
         });
         setOrdersHistory(mappedHistory);
 
-        const completedOrders = ordersRes.data.filter(
-          (o) => o.status_pesanan === "Selesai"
+        const todayKey = getLocalDateKey(new Date());
+        const yDate = new Date();
+        yDate.setDate(yDate.getDate() - 1);
+        const yesterdayKey = getLocalDateKey(yDate);
+
+        const nonCancelled = (list) => list.filter((o) => o.status_pesanan !== "Dibatalkan");
+        const isRevOrder = (o) =>
+          ["Sedang Diproses", "Diproses", "Siap Diambil", "Selesai"].includes(o.status_pesanan);
+
+        const ordersTodayList = nonCancelled(
+          ordersRes.data.filter((o) => String(o.waktu_pesan || "").startsWith(todayKey))
         );
-        setOrdersTodayCount(ordersRes.data.length);
-        setRevenueTodayTotal(
-          completedOrders.reduce((sum, o) => sum + Number(o.total_harga || 0), 0)
+        const ordersYestList = nonCancelled(
+          ordersRes.data.filter((o) => String(o.waktu_pesan || "").startsWith(yesterdayKey))
+        );
+
+        const revToday = ordersTodayList
+          .filter(isRevOrder)
+          .reduce((sum, o) => sum + Number(o.total_harga || 0), 0);
+        const revYest = ordersYestList
+          .filter(isRevOrder)
+          .reduce((sum, o) => sum + Number(o.total_harga || 0), 0);
+
+        const sourceMenus = normalizedVendorMenus || normalizedMenus || [];
+        const prepValuesToday = ordersTodayList.flatMap((o) =>
+          (o.details || o.order_details || []).map((d) => {
+            const m = sourceMenus.find((x) => Number(x.id_menu) === Number(d.id_menu));
+            return Number(d.estimasi_menit || d.menu?.estimasi_menit || m?.estimasi_menit || 0);
+          })
+        ).filter((n) => n > 0);
+        const baselinePreps = sourceMenus.map((m) => Number(m.estimasi_menit || 0)).filter((n) => n > 0);
+        const avgPrepToday = prepValuesToday.length
+          ? Math.round(prepValuesToday.reduce((a, b) => a + b, 0) / prepValuesToday.length)
+          : baselinePreps.length
+          ? Math.round(baselinePreps.reduce((a, b) => a + b, 0) / baselinePreps.length)
+          : 0;
+        const avgBaselinePrep = baselinePreps.length
+          ? Math.round(baselinePreps.reduce((a, b) => a + b, 0) / baselinePreps.length)
+          : avgPrepToday;
+        const prepDiff = avgPrepToday - avgBaselinePrep;
+
+        setOrdersTodayCount(ordersTodayList.length);
+        setRevenueTodayTotal(revToday);
+        setKpiStats({
+          ordersDelta: formatPercentDelta(ordersTodayList.length, ordersYestList.length),
+          revenueDelta: formatPercentDelta(revToday, revYest),
+          avgPrepText: avgPrepToday > 0 ? `${avgPrepToday} min` : "—",
+          prepDelta:
+            avgPrepToday === 0
+              ? "—"
+              : prepDiff === 0
+              ? "On track"
+              : `${prepDiff > 0 ? "+" : ""}${prepDiff} min`,
+        });
+
+        const sellerMap = new Map();
+        for (const ord of ordersTodayList) {
+          for (const d of ord.details || ord.order_details || []) {
+            const idM = Number(d.id_menu);
+            if (!idM) continue;
+            const qty = Number(d.jumlah || 1);
+            const sub = Number(d.subtotal ?? Number(d.harga || d.menu?.harga || 0) * qty);
+            const catalogItem = sourceMenus.find((m) => Number(m.id_menu) === idM);
+            const existing = sellerMap.get(idM) || {
+              id_menu: idM,
+              nama_menu: d.nama_menu || d.menu?.nama_menu || catalogItem?.nama_menu || "Menu",
+              gambar: d.gambar || d.menu?.gambar || catalogItem?.gambar || "",
+              harga: Number(d.harga || d.menu?.harga || catalogItem?.harga || 0),
+              sold_today: 0,
+              revenue: 0,
+            };
+            existing.sold_today += qty;
+            existing.revenue += sub;
+            sellerMap.set(idM, existing);
+          }
+        }
+        setTopSellersToday(
+          Array.from(sellerMap.values())
+            .sort((a, b) => b.sold_today - a.sold_today || b.revenue - a.revenue)
+            .slice(0, 5)
         );
 
         const activeQueue = ordersRes.data
@@ -915,20 +1109,29 @@ export default function App() {
               o.status_pesanan
             )
           )
-          .map((o) => ({
-            id: o.id_pesanan,
-            code: o.nomor_antrean,
-            item_name: o.details?.[0]?.nama_menu || "Canteen Meal",
-            user_name: o.user_name || o.user?.nama || o.user?.username || "Customer",
-            items_count: (o.details || []).reduce((s, d) => s + (d.jumlah || 1), 0) || 1,
-            total: o.total_harga,
-            status:
-              o.status_pesanan === "Menunggu Pembayaran"
-                ? "Awaiting payment"
-                : o.status_pesanan === "Siap Diambil"
-                ? "Ready for pickup"
-                : "Preparing",
-          }));
+          .map((o) => {
+            const dList = o.details || o.order_details || [];
+            return {
+              id: o.id_pesanan,
+              code: o.nomor_antrean,
+              item_name: dList[0]?.nama_menu || "Pesanan",
+              items_breakdown: dList
+                .map((d) => `${d.jumlah || 1}x ${d.nama_menu || "Menu"}`)
+                .join(", "),
+              user_name: o.user_name || o.user?.nama || o.user?.username || "Pelanggan",
+              items_count: dList.reduce((s, d) => s + (d.jumlah || 1), 0) || 1,
+              total: Number(o.total_harga || 0),
+              catatan: o.catatan || "",
+              promo_code: o.promo_code || null,
+              status_pesanan: o.status_pesanan,
+              status:
+                o.status_pesanan === "Menunggu Pembayaran"
+                  ? "Awaiting payment"
+                  : o.status_pesanan === "Siap Diambil"
+                  ? "Ready for pickup"
+                  : "Preparing",
+            };
+          });
         setIncomingOrders(activeQueue);
       }
     } catch {
@@ -947,6 +1150,13 @@ export default function App() {
     }, 6000);
     return () => clearInterval(pollId);
   }, [currentUser, syncFromApi]);
+
+  useEffect(() => {
+    const tick = setInterval(() => {
+      setLiveClock(new Date());
+    }, 1000);
+    return () => clearInterval(tick);
+  }, []);
 
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
@@ -1196,12 +1406,55 @@ export default function App() {
     return cartItems.reduce((acc, item) => acc + item.harga * item.jumlah, 0);
   }, [cartItems]);
 
-  const promoDiscount = useMemo(() => {
-    if (!selectedPromo || subtotal < selectedPromo.minSpend) return 0;
-    if (selectedPromo.type === "percentage") {
-      return Math.round(subtotal * selectedPromo.discount);
+  const cartTenantId = useMemo(() => {
+    if (cartItems.length === 0) return null;
+    const first = cartItems[0];
+    return (
+      Number(first.id_tenant || 0) ||
+      Number(menusList.find((m) => Number(m.id_menu) === Number(first.id_menu))?.id_tenant || 0) ||
+      null
+    );
+  }, [cartItems, menusList]);
+
+  const availablePromos = useMemo(() => {
+    const normalizedCustom = (publicPromos || [])
+      .filter((p) => Boolean(p.aktif) && (!p.id_tenant || !cartTenantId || Number(p.id_tenant) === Number(cartTenantId)))
+      .map((p) => {
+        const minSpend = Number(p.minimal_belanja || 0);
+        const disc = Number(p.diskon || 0);
+        const isPct = p.tipe === "percentage";
+        const discText = isPct ? `${disc}%` : formatRupiah(disc);
+        return {
+          id_promo: p.id_promo,
+          id_tenant: p.id_tenant,
+          code: String(p.kode_promo || "").toUpperCase(),
+          title: p.judul || `Diskon ${discText}`,
+          subtitle: `${String(p.kode_promo || "").toUpperCase()} · ${
+            minSpend > 0 ? `Min. ${formatRupiah(minSpend)}` : "Tanpa min. belanja"
+          }`,
+          discount: isPct ? (disc > 1 ? disc / 100 : disc) : disc,
+          minSpend,
+          type: isPct ? "percentage" : "fixed",
+          isTenantPromo: Boolean(p.id_tenant),
+        };
+      });
+    return [...normalizedCustom, ...PROMOS];
+  }, [publicPromos, cartTenantId]);
+
+  useEffect(() => {
+    if (selectedPromo?.id_tenant && cartTenantId && Number(selectedPromo.id_tenant) !== Number(cartTenantId)) {
+      setSelectedPromo(null);
     }
-    return selectedPromo.discount;
+  }, [selectedPromo, cartTenantId]);
+
+  const promoDiscount = useMemo(() => {
+    if (!selectedPromo || subtotal < Number(selectedPromo.minSpend || 0)) return 0;
+    const disc = Number(selectedPromo.discount ?? selectedPromo.diskon ?? 0);
+    if (selectedPromo.type === "percentage") {
+      const pct = disc > 1 ? disc / 100 : disc;
+      return Math.min(subtotal, Math.round(subtotal * pct));
+    }
+    return Math.min(subtotal, disc);
   }, [selectedPromo, subtotal]);
 
   const orderTotal = useMemo(() => {
@@ -1385,6 +1638,7 @@ export default function App() {
         const created = await api.createOrder({
           items: cartItems,
           promo_code: selectedPromo?.code || null,
+          catatan: orderNote.trim(),
         });
         createdOrder = created?.data;
         oid = createdOrder?.id_pesanan;
@@ -1404,6 +1658,8 @@ export default function App() {
           });
           setActiveQueueCode(createdOrder.nomor_antrean || `A-${oid}`);
           setCartItems([]);
+          setOrderNote("");
+          setSelectedPromo(null);
         }
       }
 
@@ -1499,6 +1755,155 @@ export default function App() {
         : 3
     );
     setNavTab("orders");
+  };
+
+  const handleOpenCancelModal = (orderObj) => {
+    if (!orderObj) return;
+    const oid = orderObj.id_pesanan || orderObj.id;
+    const code = orderObj.nomor_antrean || orderObj.code || `#${oid}`;
+    setCancelReason("");
+    setCancelTarget({ id: oid, code });
+  };
+
+  const handleConfirmCancelOrder = async (e) => {
+    if (e?.preventDefault) e.preventDefault();
+    if (!cancelTarget?.id) return;
+    try {
+      await api.cancelOrder(cancelTarget.id, cancelReason.trim());
+      notify(
+        lang === "EN"
+          ? `Order ${cancelTarget.code} cancelled.`
+          : `Pesanan ${cancelTarget.code} berhasil dibatalkan.`,
+        "info"
+      );
+      if (Number(activeOrderId) === Number(cancelTarget.id)) {
+        setActiveOrderId(null);
+        setActiveOrder(null);
+        setCheckoutStep(1);
+        setNavTab("history");
+      }
+      setCancelTarget(null);
+      setCancelReason("");
+      await syncFromApi();
+    } catch (err) {
+      notify(err?.message || "Gagal membatalkan pesanan.", "error");
+    }
+  };
+
+  const handleOpenReviewModal = (order) => {
+    if (!order?.id_pesanan) return;
+    setReviewTarget(order);
+    setReviewRating(5);
+    setReviewComment("");
+    setReviewError("");
+  };
+
+  const handleSubmitReview = async (e) => {
+    e.preventDefault();
+    if (!reviewTarget?.id_pesanan) return;
+    setReviewError("");
+    try {
+      await api.submitOrderReview(reviewTarget.id_pesanan, {
+        rating: reviewRating,
+        komentar: reviewComment.trim(),
+      });
+      notify(
+        lang === "EN" ? "Thank you for your rating & review!" : "Terima kasih atas rating & ulasan Anda!",
+        "success"
+      );
+      setReviewTarget(null);
+      await syncFromApi();
+    } catch (err) {
+      setReviewError(err?.message || "Gagal menyimpan ulasan.");
+    }
+  };
+
+  const openStoreSettingsModal = () => {
+    setStoreSettingsError("");
+    setStoreForm({
+      nama_tenant: myTenantInfo?.nama_tenant || displayName || "",
+      deskripsi: myTenantInfo?.deskripsi || "",
+      booth: myTenantInfo?.booth || "",
+      logo: myTenantInfo?.logo || myTenantInfo?.gambar || "",
+      jam_buka: myTenantInfo?.jam_buka || "07:00",
+      jam_tutup: myTenantInfo?.jam_tutup || "21:00",
+      auto_schedule: Boolean(myTenantInfo?.auto_schedule),
+      status_buka: Boolean(myTenantInfo?.status_buka ?? isStoreOpen),
+    });
+    setIsStoreSettingsOpen(true);
+  };
+
+  const handleSaveStoreSettings = async (e) => {
+    e.preventDefault();
+    setStoreSettingsError("");
+    try {
+      const res = await api.updateVendorTenant({
+        nama_tenant: storeForm.nama_tenant.trim(),
+        deskripsi: storeForm.deskripsi.trim(),
+        booth: storeForm.booth.trim(),
+        logo: storeForm.logo,
+        gambar: storeForm.logo,
+        jam_buka: storeForm.jam_buka,
+        jam_tutup: storeForm.jam_tutup,
+        auto_schedule: Boolean(storeForm.auto_schedule),
+        status_buka: Boolean(storeForm.status_buka),
+      });
+      if (res?.data) {
+        setMyTenantInfo(res.data);
+        setIsStoreOpen(Boolean(res.data.status_buka ?? storeForm.status_buka));
+      }
+      setIsStoreSettingsOpen(false);
+      notify(
+        lang === "EN" ? "Store settings updated!" : "Pengaturan kantin berhasil disimpan!",
+        "success"
+      );
+      await syncFromApi();
+    } catch (err) {
+      setStoreSettingsError(err?.message || "Gagal menyimpan pengaturan kantin.");
+    }
+  };
+
+  const handleCreatePromo = async (e) => {
+    e.preventDefault();
+    setPromoFormError("");
+    try {
+      await api.createVendorPromo({
+        kode_promo: promoForm.kode_promo.trim().toUpperCase(),
+        judul: promoForm.judul.trim(),
+        tipe: promoForm.tipe,
+        diskon: Number(String(promoForm.diskon || "0").replace(/\D/g, "")),
+        minimal_belanja: Number(String(promoForm.minimal_belanja || "0").replace(/\D/g, "")),
+        aktif: true,
+      });
+      setIsPromoModalOpen(false);
+      setPromoForm({ kode_promo: "", judul: "", tipe: "fixed", diskon: "", minimal_belanja: "0" });
+      notify(
+        lang === "EN" ? "Tenant promo created!" : "Promo khusus tenant berhasil dibuat!",
+        "success"
+      );
+      await syncFromApi();
+    } catch (err) {
+      setPromoFormError(err?.message || "Gagal membuat promo.");
+    }
+  };
+
+  const handleTogglePromo = async (promo) => {
+    try {
+      await api.updateVendorPromo(promo.id_promo, { aktif: !promo.aktif });
+      await syncFromApi();
+    } catch (err) {
+      notify(err?.message || "Gagal mengubah status promo.", "error");
+    }
+  };
+
+  const handleDeletePromo = async (promoId) => {
+    try {
+      await api.deleteVendorPromo(promoId);
+      notify(lang === "EN" ? "Promo deleted" : "Promo dihapus", "info");
+      await syncFromApi();
+    } catch (err) {
+      notify(err?.message || "Gagal menghapus promo.", "error");
+    }
   };
 
   const handleFinishOrder = async () => {
@@ -2059,41 +2464,70 @@ export default function App() {
                     </p>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      const next = !isStoreOpen;
-                      setIsStoreOpen(next);
-                      api.updateVendorTenant({ status_buka: next }).catch(() => {});
-                    }}
-                    className="btn-interactive"
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "9px 18px",
-                      borderRadius: "var(--radius-pill)",
-                      border: "1px solid var(--border-light)",
-                      backgroundColor: "#FFFFFF",
-                      boxShadow: "var(--shadow-sm)",
-                      cursor: "pointer",
-                      fontSize: 13,
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        backgroundColor: isStoreOpen ? "var(--orange)" : "#9CA3AF",
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => {
+                        const next = !isStoreOpen;
+                        setIsStoreOpen(next);
+                        api.updateVendorTenant({ status_buka: next }).then(() => syncFromApi()).catch(() => {});
                       }}
-                    />
-                    <span style={{ fontWeight: 800, color: "var(--maroon)" }}>
-                      {isStoreOpen ? t.storeOpen : t.storeClosed}
-                    </span>
-                    <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>
-                      · 18:00
-                    </span>
-                  </button>
+                      className="btn-interactive"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "9px 18px",
+                        borderRadius: "var(--radius-pill)",
+                        border: "1px solid var(--border-light)",
+                        backgroundColor: "#FFFFFF",
+                        boxShadow: "var(--shadow-sm)",
+                        cursor: "pointer",
+                        fontSize: 13,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          backgroundColor: isTenantOpenAt(myTenantInfo || { status_buka: isStoreOpen }, liveClock)
+                            ? "var(--orange)"
+                            : "#9CA3AF",
+                        }}
+                      />
+                      <span style={{ fontWeight: 800, color: "var(--maroon)" }}>
+                        {isTenantOpenAt(myTenantInfo || { status_buka: isStoreOpen }, liveClock)
+                          ? t.storeOpen
+                          : t.storeClosed}
+                      </span>
+                      <span className="tabular" style={{ color: "var(--text-muted)", fontWeight: 600 }}>
+                        · {formatLiveClock(liveClock)} · {lang === "EN" ? "Until" : "s/d"}{" "}
+                        {myTenantInfo?.jam_tutup || "21:00"}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={openStoreSettingsModal}
+                      className="btn-interactive"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "9px 16px",
+                        borderRadius: "var(--radius-pill)",
+                        border: "1px solid var(--border-input)",
+                        backgroundColor: "#FFFFFF",
+                        color: "var(--maroon)",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Pencil size={13} />
+                      <span>{lang === "EN" ? "Store Settings" : "Pengaturan Kantin"}</span>
+                    </button>
+                  </div>
                 </div>
                 <div
                   className="grid-kpi-4"
@@ -2105,25 +2539,30 @@ export default function App() {
                     {
                       label: t.kpiOrders,
                       value: String(ordersTodayCount),
-                      badge: "+18%",
+                      badge: kpiStats.ordersDelta,
                       icon: Receipt,
                     },
                     {
                       label: t.kpiRevenue,
                       value: formatRupiah(revenueTodayTotal),
-                      badge: "+12%",
+                      badge: kpiStats.revenueDelta,
                       icon: Banknote,
                     },
                     {
                       label: t.kpiQueue,
                       value: String(incomingOrders.length),
-                      badge: "Live",
+                      badge:
+                        incomingOrders.length > 0
+                          ? "Live"
+                          : lang === "EN"
+                          ? "Clear"
+                          : "Kosong",
                       icon: Users,
                     },
                     {
                       label: t.kpiPrep,
-                      value: "7 min",
-                      badge: "−2 min",
+                      value: kpiStats.avgPrepText,
+                      badge: kpiStats.prepDelta,
                       icon: Timer,
                     },
                   ].map((kpi) => {
@@ -2316,13 +2755,19 @@ export default function App() {
                                     marginBottom: 2,
                                   }}
                                 >
-                                  {ord.item_name}
+                                  {ord.items_breakdown || ord.item_name}
                                 </div>
                                 <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                                   {ord.user_name} · {ord.items_count}{" "}
                                   {ord.items_count > 1 ? "items" : "item"} ·{" "}
                                   {formatRupiah(ord.total)}
+                                  {ord.promo_code ? ` · Promo ${ord.promo_code}` : ""}
                                 </div>
+                                {ord.catatan && (
+                                  <div style={{ fontSize: 11, color: "var(--maroon)", marginTop: 2, fontWeight: 600 }}>
+                                    {lang === "EN" ? "Note:" : "Catatan:"} {ord.catatan}
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -2412,6 +2857,24 @@ export default function App() {
                                   Complete pickup
                                 </button>
                               )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCancelModal(ord)}
+                                className="btn-interactive"
+                                style={{
+                                  padding: "7px 12px",
+                                  borderRadius: "var(--radius-pill)",
+                                  border: "1px solid #F2CCC7",
+                                  backgroundColor: "#FDF0EE",
+                                  color: "#C84336",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {lang === "EN" ? "Cancel" : "Batal"}
+                              </button>
                             </div>
                           </div>
                         );
@@ -2567,16 +3030,18 @@ export default function App() {
                       </h3>
 
                       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                        {tenantMenus.slice(0, 3).map((topItem, idx) => (
+                        {topSellersToday.slice(0, 3).map((topItem, idx) => (
                           <div
                             key={topItem.id_menu}
                             style={{
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "space-between",
-                              paddingBottom: idx < 2 ? 12 : 0,
+                              paddingBottom: idx < Math.min(3, topSellersToday.length) - 1 ? 12 : 0,
                               borderBottom:
-                                idx < 2 ? "1px solid var(--border-light)" : "none",
+                                idx < Math.min(3, topSellersToday.length) - 1
+                                  ? "1px solid var(--border-light)"
+                                  : "none",
                             }}
                           >
                             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -2590,17 +3055,11 @@ export default function App() {
                                   flexShrink: 0,
                                 }}
                               >
-                                {topItem.gambar ? (
-                                  <img
-                                    src={topItem.gambar}
-                                    alt={topItem.nama_menu}
-                                    style={{
-                                      width: "100%",
-                                      height: "100%",
-                                      objectFit: "cover",
-                                    }}
-                                  />
-                                ) : null}
+                                <SafeImage
+                                  src={topItem.gambar}
+                                  alt={topItem.nama_menu}
+                                  iconSize={18}
+                                />
                               </div>
 
                               <div>
@@ -2614,7 +3073,7 @@ export default function App() {
                                   {topItem.nama_menu}
                                 </div>
                                 <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                                  {topItem.sold_today || 0} sold
+                                  {topItem.sold_today} {lang === "EN" ? "sold" : "terjual"}
                                 </div>
                               </div>
                             </div>
@@ -2627,16 +3086,131 @@ export default function App() {
                                 color: "var(--maroon)",
                               }}
                             >
-                              {formatRupiah(topItem.harga * (topItem.sold_today || 0))}
+                              {formatRupiah(topItem.revenue)}
                             </div>
                           </div>
                         ))}
-                        {tenantMenus.length === 0 && (
+                        {topSellersToday.length === 0 && (
                           <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "12px 0" }}>
-                            {t.noMenuUploadedShort}
+                            {lang === "EN"
+                              ? "No sales recorded today yet."
+                              : "Belum ada penjualan tercatat hari ini."}
                           </div>
                         )}
                       </div>
+                    </div>
+
+                    <div
+                      style={{
+                        backgroundColor: "#FFFFFF",
+                        borderRadius: "var(--radius-xl)",
+                        border: "1px solid var(--border-light)",
+                        padding: "22px 24px",
+                        boxShadow: "var(--shadow-card)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          marginBottom: 12,
+                        }}
+                      >
+                        <h3 style={{ fontSize: 17, fontWeight: 800, color: "var(--maroon)" }}>
+                          {lang === "EN" ? "Tenant Promos" : "Promo Khusus Tenant"}
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPromoFormError("");
+                            setIsPromoModalOpen(true);
+                          }}
+                          className="btn-interactive"
+                          style={{
+                            border: "none",
+                            backgroundColor: "var(--orange)",
+                            color: "var(--maroon)",
+                            borderRadius: "var(--radius-pill)",
+                            padding: "6px 12px",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            cursor: "pointer",
+                          }}
+                        >
+                          + Promo
+                        </button>
+                      </div>
+
+                      {vendorPromos.length === 0 ? (
+                        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "10px 0" }}>
+                          {lang === "EN"
+                            ? "Create custom discount codes exclusively for your canteen."
+                            : "Buat kode diskon khusus untuk pelanggan kantin Anda."}
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {vendorPromos.map((vp) => (
+                            <div
+                              key={vp.id_promo}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                padding: "10px 12px",
+                                borderRadius: 10,
+                                border: "1px solid var(--border-light)",
+                                backgroundColor: vp.aktif ? "#FAF6F2" : "#F9FAFB",
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 800, color: "var(--maroon)" }}>
+                                  {vp.kode_promo} ·{" "}
+                                  {vp.tipe === "percentage" ? `${vp.diskon}%` : formatRupiah(vp.diskon)}
+                                </div>
+                                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                                  {vp.judul}
+                                  {Number(vp.minimal_belanja) > 0
+                                    ? ` · Min. ${formatRupiah(vp.minimal_belanja)}`
+                                    : ""}
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleTogglePromo(vp)}
+                                  style={{
+                                    border: "1px solid var(--border-input)",
+                                    backgroundColor: vp.aktif ? "var(--maroon)" : "#FFFFFF",
+                                    color: vp.aktif ? "#FFFFFF" : "var(--text-muted)",
+                                    borderRadius: "var(--radius-pill)",
+                                    padding: "3px 10px",
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  {vp.aktif ? "Aktif" : "Off"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePromo(vp.id_promo)}
+                                  aria-label="Delete promo"
+                                  style={{
+                                    border: "none",
+                                    background: "transparent",
+                                    color: "#C84336",
+                                    cursor: "pointer",
+                                    padding: 4,
+                                  }}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3150,11 +3724,17 @@ export default function App() {
                             </div>
                             <div>
                               <div style={{ fontSize: 15, fontWeight: 800, color: "var(--maroon)", marginBottom: 2 }}>
-                                {ord.item_name}
+                                {ord.items_breakdown || ord.item_name}
                               </div>
                               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                                 {ord.user_name} · {ord.items_count} item · {formatRupiah(ord.total)}
+                                {ord.promo_code ? ` · Promo ${ord.promo_code}` : ""}
                               </div>
+                              {ord.catatan && (
+                                <div style={{ fontSize: 11, color: "var(--maroon)", marginTop: 2, fontWeight: 600 }}>
+                                  {lang === "EN" ? "Note:" : "Catatan:"} {ord.catatan}
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -3231,6 +3811,24 @@ export default function App() {
                                 Complete pickup
                               </button>
                             )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCancelModal(ord)}
+                              className="btn-interactive"
+                              style={{
+                                padding: "7px 12px",
+                                borderRadius: "var(--radius-pill)",
+                                border: "1px solid #F2CCC7",
+                                backgroundColor: "#FDF0EE",
+                                color: "#C84336",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {lang === "EN" ? "Cancel" : "Batal"}
+                            </button>
                           </div>
                         </div>
                       );
@@ -3300,20 +3898,40 @@ export default function App() {
                     gap: 14,
                   }}
                 >
-                  {ordersHistory
-                    .filter((ord) => {
+                  {(() => {
+                    const filteredTenantHist = ordersHistory.filter((ord) => {
+                      const inProg = ["Awaiting payment", "Preparing", "Ready for pickup"].includes(ord.status);
                       if (tenantHistoryFilter === "All") return true;
-                      if (tenantHistoryFilter === "In progress")
-                        return ord.status === "Preparing";
+                      if (tenantHistoryFilter === "In progress") return inProg;
                       return ord.status === tenantHistoryFilter;
-                    })
-                    .map((order) => {
-                      const isPrep = order.status === "Preparing";
+                    });
+
+                    if (filteredTenantHist.length === 0) {
+                      return (
+                        <div style={{ textAlign: "center", padding: "32px 16px", color: "var(--text-muted)", fontSize: 14 }}>
+                          {lang === "EN"
+                            ? "No tenant orders matching this filter yet."
+                            : "Belum ada riwayat pesanan tenant pada kategori ini."}
+                        </div>
+                      );
+                    }
+
+                    const statusLabels = {
+                      "Awaiting payment": lang === "EN" ? "Awaiting payment" : "Menunggu bayar",
+                      Preparing: lang === "EN" ? "Preparing" : "Diproses",
+                      "Ready for pickup": lang === "EN" ? "Ready for pickup" : "Siap diambil",
+                      Completed: lang === "EN" ? "Completed" : "Selesai",
+                      Cancelled: lang === "EN" ? "Cancelled" : "Dibatalkan",
+                    };
+
+                    return filteredTenantHist.map((order) => {
+                      const isPrep = ["Awaiting payment", "Preparing", "Ready for pickup"].includes(order.status);
                       const isCompleted = order.status === "Completed";
+                      const isCancelled = order.status === "Cancelled";
                       return (
                         <div
                           key={order.id_pesanan}
-                          className="card-hover"
+                          className="card-hover order-row-card"
                           style={{
                             borderRadius: "var(--radius-lg)",
                             border: "1px solid var(--border-light)",
@@ -3322,6 +3940,7 @@ export default function App() {
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "space-between",
+                            gap: 12,
                           }}
                         >
                           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -3330,10 +3949,18 @@ export default function App() {
                                 width: 52,
                                 height: 52,
                                 borderRadius: 12,
-                                backgroundColor: "var(--bg-warm-img)",
+                                backgroundColor: isCancelled ? "var(--status-cancelled-bg)" : "var(--maroon)",
+                                color: isCancelled ? "var(--text-muted)" : "#FFFFFF",
+                                fontSize: 12,
+                                fontWeight: 900,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
                                 flexShrink: 0,
                               }}
-                            />
+                            >
+                              {order.nomor_antrean || `#${order.id_pesanan}`}
+                            </div>
                             <div>
                               <div
                                 style={{
@@ -3343,15 +3970,23 @@ export default function App() {
                                   marginBottom: 2,
                                 }}
                               >
-                                {order.items_summary}
+                                {order.items_breakdown || order.items_summary}
                               </div>
-                              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                                {order.tanggal} · {formatRupiah(order.total)}
+                              <div className="tabular" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                {order.user_name} · {order.tanggal} · {formatRupiah(order.total)}
+                                {order.promo_code ? ` · Promo ${order.promo_code}` : ""}
                               </div>
+                              {(order.catatan || order.alasan_batal) && (
+                                <div style={{ fontSize: 11, color: isCancelled ? "#C84336" : "var(--maroon)", marginTop: 3, fontWeight: 600 }}>
+                                  {order.alasan_batal
+                                    ? `${lang === "EN" ? "Reason:" : "Alasan:"} ${order.alasan_batal}`
+                                    : `${lang === "EN" ? "Note:" : "Keterangan:"} ${order.catatan}`}
+                                </div>
+                              )}
                             </div>
                           </div>
 
-                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                          <div className="order-row-actions" style={{ display: "flex", alignItems: "center", gap: 12 }}>
                             <span
                               style={{
                                 display: "inline-flex",
@@ -3363,11 +3998,7 @@ export default function App() {
                                   ? "var(--maroon)"
                                   : isPrep
                                   ? "var(--bg-cream)"
-                                  : "#FFFFFF",
-                                border:
-                                  !isCompleted && !isPrep
-                                    ? "1px solid var(--border-input)"
-                                    : "none",
+                                  : "var(--status-cancelled-bg)",
                                 color: isCompleted
                                   ? "#FFFFFF"
                                   : isPrep
@@ -3377,25 +4008,13 @@ export default function App() {
                                 fontWeight: 700,
                               }}
                             >
-                              <span
-                                style={{
-                                  width: 6,
-                                  height: 6,
-                                  borderRadius: "50%",
-                                  backgroundColor:
-                                    isCompleted || isPrep
-                                      ? "var(--orange)"
-                                      : "#9CA3AF",
-                                }}
-                              />
-                              <span>{order.status}</span>
+                              <span>{statusLabels[order.status] || order.status}</span>
                             </span>
-
-                            <ChevronRight size={16} color="var(--maroon)" />
                           </div>
                         </div>
                       );
-                    })}
+                    });
+                  })()}
                 </div>
               </div>
             )}
@@ -3909,7 +4528,7 @@ export default function App() {
                         }}
                       >
                         <Star size={12} fill="#F8A34B" color="#F8A34B" />
-                        <span>{item.rating}</span>
+                        <span>{item.rating || (lang === "EN" ? "New" : "Baru")}</span>
                       </div>
                     </div>
                     <div
@@ -4117,20 +4736,46 @@ export default function App() {
                       justifyContent: "center",
                     }}
                   >
-                    {tenant.gambar ? (
-                      <img
-                        src={tenant.gambar}
-                        alt={tenant.nama_tenant}
-                        className="img-zoom-child"
+                    <SafeImage
+                      src={tenant.gambar || tenant.logo}
+                      alt={tenant.nama_tenant}
+                      className="img-zoom-child"
+                      fallbackType="store"
+                      iconSize={42}
+                    />
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 10,
+                        left: 10,
+                        padding: "4px 10px",
+                        borderRadius: "var(--radius-pill)",
+                        backgroundColor: isTenantOpenAt(tenant, liveClock)
+                          ? "rgba(255,255,255,0.94)"
+                          : "rgba(55,65,81,0.88)",
+                        color: isTenantOpenAt(tenant, liveClock) ? "var(--maroon)" : "#FFFFFF",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                        boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+                      }}
+                    >
+                      <span
                         style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
+                          width: 6,
+                          height: 6,
+                          borderRadius: "50%",
+                          backgroundColor: isTenantOpenAt(tenant, liveClock) ? "#16A34A" : "#D1D5DB",
                         }}
                       />
-                    ) : (
-                      <Store size={42} color="var(--maroon)" style={{ opacity: 0.45 }} />
-                    )}
+                      <span>
+                        {isTenantOpenAt(tenant, liveClock)
+                          ? `${lang === "EN" ? "Open until" : "Buka s/d"} ${tenant.jam_tutup || "21:00"}`
+                          : `${lang === "EN" ? "Closed · Opens" : "Tutup · Buka"} ${tenant.jam_buka || "07:00"}`}
+                      </span>
+                    </div>
                   </div>
                   <div
                     style={{
@@ -4160,7 +4805,7 @@ export default function App() {
                       }}
                     >
                       <Star size={14} fill="#F8A34B" color="#F8A34B" />
-                      <span>{tenant.rating || "5.0"}</span>
+                      <span>{tenant.rating || (lang === "EN" ? "New" : "Baru")}</span>
                     </span>
                   </div>
                 </div>
@@ -4232,7 +4877,12 @@ export default function App() {
                   {t.navMenu}
                 </h1>
                 <p style={{ fontSize: 14, color: "var(--text-muted)" }}>
-                  {tenantMenuItems.length} {t.itemsUnit} · {activeTenantView.nama_tenant}
+                  {tenantMenuItems.length} {t.itemsUnit} · {activeTenantView.nama_tenant} ·{" "}
+                  {isTenantOpenAt(activeTenantView, liveClock)
+                    ? `${lang === "EN" ? "Open until" : "Buka sampai"} ${activeTenantView.jam_tutup || "21:00"}`
+                    : `${lang === "EN" ? "Closed · Opens at" : "Tutup · Buka pukul"} ${activeTenantView.jam_buka || "07:00"}`}
+                  {" · "}
+                  <span className="tabular">{formatLiveClock(liveClock)}</span>
                 </p>
               </div>
               <div
@@ -4356,7 +5006,7 @@ export default function App() {
                         }}
                       >
                         <Star size={12} fill="#F8A34B" color="#F8A34B" />
-                        <span>{item.rating}</span>
+                        <span>{item.rating || (lang === "EN" ? "New" : "Baru")}</span>
                       </div>
                     </div>
 
@@ -4824,6 +5474,39 @@ export default function App() {
                           </div>
                         </div>
                       ))}
+
+                      <div style={{ paddingTop: 6 }}>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: "var(--maroon)",
+                            marginBottom: 6,
+                          }}
+                        >
+                          {lang === "EN" ? "Order note (optional)" : "Keterangan / catatan pesanan (opsional)"}
+                        </label>
+                        <input
+                          type="text"
+                          value={orderNote}
+                          onChange={(e) => setOrderNote(e.target.value)}
+                          placeholder={
+                            lang === "EN"
+                              ? "e.g. Less spicy, separate sambal, extra spoon..."
+                              : "Contoh: Tidak pedas, sambal dipisah, minta sendok..."
+                          }
+                          style={{
+                            width: "100%",
+                            padding: "10px 14px",
+                            borderRadius: "var(--radius-md)",
+                            border: "1px solid var(--border-input)",
+                            fontSize: 13,
+                            color: "var(--maroon)",
+                            outline: "none",
+                          }}
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -4843,12 +5526,32 @@ export default function App() {
                     {t.pickPromo}
                   </p>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
-                    {PROMOS.map((promo) => {
+                    <div
+                      onClick={() => setSelectedPromo(null)}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: "var(--radius-md)",
+                        backgroundColor: !selectedPromo ? "var(--bg-cream)" : "#FFFFFF",
+                        border: !selectedPromo ? "1.5px solid var(--maroon)" : "1px solid var(--border-input)",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "var(--maroon)",
+                      }}
+                    >
+                      <span>{lang === "EN" ? "Do not use promo" : "Tidak pakai promo"}</span>
+                      {!selectedPromo && <Check size={14} strokeWidth={3} />}
+                    </div>
+
+                    {availablePromos.map((promo) => {
                       const isSelected = selectedPromo?.code === promo.code;
                       return (
                         <div
                           key={promo.code}
-                          onClick={() => setSelectedPromo(promo)}
+                          onClick={() => setSelectedPromo(isSelected ? null : promo)}
                           style={{
                             padding: "12px 14px",
                             borderRadius: "var(--radius-md)",
@@ -4876,8 +5579,13 @@ export default function App() {
                               <Tag size={16} />
                             </div>
                             <div>
-                              <div style={{ fontSize: 13, fontWeight: 800, color: "var(--maroon)" }}>
-                                {promo.title}
+                              <div style={{ fontSize: 13, fontWeight: 800, color: "var(--maroon)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                <span>{promo.title}</span>
+                                {promo.isTenantPromo && (
+                                  <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 999, backgroundColor: "var(--maroon)", color: "#FFFFFF" }}>
+                                    {lang === "EN" ? "Tenant Promo" : "Khusus Tenant"}
+                                  </span>
+                                )}
                               </div>
                               <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                                 {promo.subtitle}
@@ -5310,6 +6018,26 @@ export default function App() {
                         : t.completePaymentBtn}
                     </span>
                   </button>
+                  {activeOrder?.id_pesanan && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenCancelModal(activeOrder)}
+                      style={{
+                        width: "100%",
+                        marginTop: 10,
+                        padding: "11px",
+                        borderRadius: "var(--radius-pill)",
+                        border: "1px solid #F2CCC7",
+                        backgroundColor: "#FDF0EE",
+                        color: "#C84336",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {lang === "EN" ? "Cancel order" : "Batalkan pesanan"}
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -5460,6 +6188,28 @@ export default function App() {
                   <span>I'm at the counter</span>
                   <ArrowRight size={16} />
                 </button>
+                {activeOrder?.id_pesanan &&
+                  activeOrder?.status_pesanan !== "Siap Diambil" &&
+                  activeOrder?.status_pesanan !== "Selesai" && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenCancelModal(activeOrder)}
+                      style={{
+                        width: "100%",
+                        marginTop: 10,
+                        padding: "11px",
+                        borderRadius: "var(--radius-pill)",
+                        border: "1px solid #F2CCC7",
+                        backgroundColor: "#FDF0EE",
+                        color: "#C84336",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {lang === "EN" ? "Cancel order" : "Batalkan pesanan"}
+                    </button>
+                  )}
               </div>
             )}
             {checkoutStep === 4 && (
@@ -5719,20 +6469,35 @@ export default function App() {
 
                         <div>
                           <div style={{ fontSize: 16, fontWeight: 800, color: "var(--maroon)" }}>
-                            {order.items_summary}
+                            {order.items_breakdown || order.items_summary}
                           </div>
                           <div
                             className="tabular"
                             style={{ fontSize: 13, color: "var(--text-muted)" }}
                           >
                             {order.tenant_name} · {order.tanggal} · {formatRupiah(order.total)}
+                            {order.promo_code ? ` · Promo ${order.promo_code}` : ""}
                           </div>
+                          {(order.catatan || order.alasan_batal) && (
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: order.status === "Cancelled" ? "#C84336" : "var(--maroon)",
+                                marginTop: 3,
+                                fontWeight: 600,
+                              }}
+                            >
+                              {order.alasan_batal
+                                ? `${lang === "EN" ? "Cancelled:" : "Alasan batal:"} ${order.alasan_batal}`
+                                : `${lang === "EN" ? "Note:" : "Keterangan:"} ${order.catatan}`}
+                            </div>
+                          )}
                         </div>
                       </div>
 
                       <div
                         className="order-row-actions"
-                        style={{ display: "flex", alignItems: "center", gap: 12 }}
+                        style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
                       >
                         <span
                           style={{
@@ -5766,53 +6531,121 @@ export default function App() {
                         </span>
 
                         {isInProgress ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleResumeOrder(order);
-                            }}
-                            style={{
-                              border: "1px solid var(--border-input)",
-                              backgroundColor: "#FFFFFF",
-                              color: "var(--maroon)",
-                              borderRadius: "var(--radius-pill)",
-                              padding: "6px 12px",
-                              fontSize: 12,
-                              fontWeight: 700,
-                              cursor: "pointer",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                            }}
-                          >
-                            <span>{lang === "EN" ? "Track" : "Lihat"}</span>
-                            <ChevronRight size={14} />
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleResumeOrder(order);
+                              }}
+                              style={{
+                                border: "1px solid var(--border-input)",
+                                backgroundColor: "#FFFFFF",
+                                color: "var(--maroon)",
+                                borderRadius: "var(--radius-pill)",
+                                padding: "6px 12px",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                              }}
+                            >
+                              <span>{lang === "EN" ? "Track" : "Lihat"}</span>
+                              <ChevronRight size={14} />
+                            </button>
+                            {!isReadyStatus && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenCancelModal(order);
+                                }}
+                                style={{
+                                  border: "1px solid #F2CCC7",
+                                  backgroundColor: "#FDF0EE",
+                                  color: "#C84336",
+                                  borderRadius: "var(--radius-pill)",
+                                  padding: "6px 12px",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {lang === "EN" ? "Cancel" : "Batal"}
+                              </button>
+                            )}
+                          </>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleReorder(order);
-                            }}
-                            title={lang === "EN" ? "Reorder items" : "Pesan ulang"}
-                            style={{
-                              border: "none",
-                              background: "transparent",
-                              cursor: "pointer",
-                              color: "var(--text-muted)",
-                              padding: 4,
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                              fontSize: 12,
-                              fontWeight: 700,
-                            }}
-                          >
-                            <RotateCcw size={14} />
-                            <ChevronRight size={16} />
-                          </button>
+                          <>
+                            {order.status === "Completed" && !order.has_reviewed && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenReviewModal(order);
+                                }}
+                                style={{
+                                  border: "none",
+                                  backgroundColor: "var(--orange)",
+                                  color: "var(--maroon)",
+                                  borderRadius: "var(--radius-pill)",
+                                  padding: "6px 12px",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                }}
+                              >
+                                <Star size={12} fill="var(--maroon)" color="var(--maroon)" />
+                                <span>{lang === "EN" ? "Rate" : "Beri Rating"}</span>
+                              </button>
+                            )}
+                            {order.status === "Completed" && order.has_reviewed && (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  color: "var(--orange-tag)",
+                                }}
+                              >
+                                <Star size={12} fill="#F8A34B" color="#F8A34B" />
+                                <span>
+                                  {order.reviews?.[0]?.rating || 5}.0 ·{" "}
+                                  {lang === "EN" ? "Reviewed" : "Sudah diulas"}
+                                </span>
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleReorder(order);
+                              }}
+                              title={lang === "EN" ? "Reorder items" : "Pesan ulang"}
+                              style={{
+                                border: "none",
+                                background: "transparent",
+                                cursor: "pointer",
+                                color: "var(--text-muted)",
+                                padding: 4,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                                fontSize: 12,
+                                fontWeight: 700,
+                              }}
+                            >
+                              <RotateCcw size={14} />
+                              <ChevronRight size={16} />
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -7639,7 +8472,15 @@ export default function App() {
                   }}
                 >
                   <Star size={13} fill="#F8A34B" color="#F8A34B" />
-                  <span>{activeMenuDetail.rating} ({activeMenuDetail.reviews} reviews)</span>
+                  <span>
+                    {activeMenuDetail.rating
+                      ? `${activeMenuDetail.rating} (${activeMenuDetail.reviews_count ?? activeMenuDetail.reviews ?? 0} ${
+                          lang === "EN" ? "reviews" : "ulasan"
+                        })`
+                      : lang === "EN"
+                      ? "New"
+                      : "Baru"}
+                  </span>
                 </div>
               </div>
 
@@ -7653,6 +8494,7 @@ export default function App() {
                       fontSize: 13,
                       color: "var(--text-muted)",
                       marginBottom: 8,
+                      flexWrap: "wrap",
                     }}
                   >
                     <span style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 700, color: "var(--maroon)" }}>
@@ -7664,6 +8506,15 @@ export default function App() {
                       <Clock size={14} />
                       Ready in {activeMenuDetail.estimasi_menit} min
                     </span>
+                    {activeMenuDetail.tenant?.jam_tutup && (
+                      <>
+                        <span>·</span>
+                        <span>
+                          {lang === "EN" ? "Open until" : "Buka s/d"}{" "}
+                          {activeMenuDetail.tenant.jam_tutup}
+                        </span>
+                      </>
+                    )}
                   </div>
 
                   <h2
@@ -7798,6 +8649,57 @@ export default function App() {
                   </button>
                 </div>
               </div>
+            </div>
+
+            <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 16, marginBottom: 18 }}>
+              <h4 style={{ fontSize: 16, fontWeight: 800, color: "var(--maroon)", marginBottom: 10 }}>
+                {lang === "EN" ? "Customer Reviews" : "Rating & Ulasan Pembeli"} (
+                {activeMenuReviews.length})
+              </h4>
+              {activeMenuReviews.length === 0 ? (
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "var(--text-muted)",
+                    backgroundColor: "#FAF6F2",
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                  }}
+                >
+                  {lang === "EN"
+                    ? "No reviews yet for this dish. Order and be the first to rate it!"
+                    : "Belum ada ulasan untuk menu ini."}
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 160, overflowY: "auto" }}>
+                  {activeMenuReviews.map((rev) => (
+                    <div
+                      key={rev.id_review}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 12,
+                        backgroundColor: "#FAF6F2",
+                        border: "1px solid var(--border-light)",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: "var(--maroon)" }}>
+                          {rev.reviewer_name}
+                        </span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 12, fontWeight: 800, color: "var(--maroon)" }}>
+                          <Star size={12} fill="#F8A34B" color="#F8A34B" />
+                          <span>{rev.rating}.0</span>
+                        </span>
+                      </div>
+                      {rev.komentar && (
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>
+                          {rev.komentar}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 18 }}>
@@ -8709,6 +9611,437 @@ export default function App() {
                 </button>
               </span>
             )}
+          </div>
+        </div>
+      )}
+
+      {isStoreSettingsOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1300,
+            backgroundColor: "rgba(82, 42, 40, 0.38)",
+            backdropFilter: "blur(5px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+          onClick={() => setIsStoreSettingsOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 480,
+              maxHeight: "90vh",
+              overflowY: "auto",
+              backgroundColor: "#FFFFFF",
+              borderRadius: "var(--radius-xl)",
+              padding: "26px",
+              boxShadow: "var(--shadow-card)",
+              border: "1px solid var(--border-light)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ fontSize: 19, fontWeight: 900, color: "var(--maroon)" }}>
+                {lang === "EN" ? "Canteen Store Settings" : "Pengaturan Kantin & Jam Buka"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsStoreSettingsOpen(false)}
+                style={{ border: "none", background: "var(--bg-cream)", borderRadius: "50%", width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <X size={16} color="var(--maroon)" />
+              </button>
+            </div>
+            {storeSettingsError && (
+              <div role="alert" style={{ padding: "10px 12px", borderRadius: 10, backgroundColor: "#FDF0EE", color: "#C84336", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
+                {storeSettingsError}
+              </div>
+            )}
+            <form onSubmit={handleSaveStoreSettings} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                  {lang === "EN" ? "Tenant Name" : "Nama Tenant"}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={storeForm.nama_tenant}
+                  onChange={(e) => setStoreForm((p) => ({ ...p, nama_tenant: e.target.value }))}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                  {lang === "EN" ? "Booth / Location" : "Lokasi / Stand"}
+                </label>
+                <input
+                  type="text"
+                  value={storeForm.booth}
+                  onChange={(e) => setStoreForm((p) => ({ ...p, booth: e.target.value }))}
+                  placeholder="Contoh: Stand #1 · Kantin Gedung A"
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                  {lang === "EN" ? "Description" : "Deskripsi Kantin"}
+                </label>
+                <textarea
+                  rows={2}
+                  value={storeForm.deskripsi}
+                  onChange={(e) => setStoreForm((p) => ({ ...p, deskripsi: e.target.value }))}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                    {lang === "EN" ? "Opening Time" : "Jam Buka"}
+                  </label>
+                  <input
+                    type="time"
+                    value={storeForm.jam_buka}
+                    onChange={(e) => setStoreForm((p) => ({ ...p, jam_buka: e.target.value }))}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                    {lang === "EN" ? "Closing Time" : "Jam Tutup"}
+                  </label>
+                  <input
+                    type="time"
+                    value={storeForm.jam_tutup}
+                    onChange={(e) => setStoreForm((p) => ({ ...p, jam_tutup: e.target.value }))}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                  />
+                </div>
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "var(--maroon)", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={storeForm.auto_schedule}
+                  onChange={(e) => setStoreForm((p) => ({ ...p, auto_schedule: e.target.checked }))}
+                />
+                <span>
+                  {lang === "EN"
+                    ? "Automatically open/close based on schedule hours"
+                    : "Buka/tutup otomatis mengikuti jam operasional"}
+                </span>
+              </label>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 6 }}>
+                  {lang === "EN" ? "Store Banner / Logo Photo" : "Foto / Logo Kantin"}
+                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 64, height: 64, borderRadius: 12, overflow: "hidden", backgroundColor: "var(--bg-warm-img)", flexShrink: 0 }}>
+                    <SafeImage src={storeForm.logo} alt="Tenant preview" fallbackType="store" iconSize={24} />
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      try {
+                        const dataUrl = await readAndCompressImageFile(f, 900, 0.8);
+                        setStoreForm((p) => ({ ...p, logo: dataUrl }));
+                      } catch (err) {
+                        setStoreSettingsError(err.message);
+                      }
+                    }}
+                    style={{ fontSize: 12 }}
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                className="btn-interactive btn-lift"
+                style={{ width: "100%", padding: "12px", borderRadius: "var(--radius-pill)", border: "none", backgroundColor: "var(--orange)", color: "var(--maroon)", fontSize: 14, fontWeight: 800, cursor: "pointer", marginTop: 4 }}
+              >
+                {lang === "EN" ? "Save Store Settings" : "Simpan Pengaturan Kantin"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isPromoModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1300,
+            backgroundColor: "rgba(82, 42, 40, 0.38)",
+            backdropFilter: "blur(5px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+          onClick={() => setIsPromoModalOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              backgroundColor: "#FFFFFF",
+              borderRadius: "var(--radius-xl)",
+              padding: "26px",
+              boxShadow: "var(--shadow-card)",
+              border: "1px solid var(--border-light)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 900, color: "var(--maroon)" }}>
+                {lang === "EN" ? "Create Tenant Promo" : "Buat Promo Khusus Tenant"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsPromoModalOpen(false)}
+                style={{ border: "none", background: "var(--bg-cream)", borderRadius: "50%", width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <X size={16} color="var(--maroon)" />
+              </button>
+            </div>
+            {promoFormError && (
+              <div role="alert" style={{ padding: "10px 12px", borderRadius: 10, backgroundColor: "#FDF0EE", color: "#C84336", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
+                {promoFormError}
+              </div>
+            )}
+            <form onSubmit={handleCreatePromo} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                  {lang === "EN" ? "Promo Code" : "Kode Promo"}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={promoForm.kode_promo}
+                  onChange={(e) => setPromoForm((p) => ({ ...p, kode_promo: e.target.value.toUpperCase() }))}
+                  placeholder="Contoh: KANTIN10"
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                  {lang === "EN" ? "Promo Title" : "Judul Promo"}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={promoForm.judul}
+                  onChange={(e) => setPromoForm((p) => ({ ...p, judul: e.target.value }))}
+                  placeholder="Contoh: Diskon Spesial Jam Makan Siang"
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                    {lang === "EN" ? "Discount Type" : "Tipe Diskon"}
+                  </label>
+                  <select
+                    value={promoForm.tipe}
+                    onChange={(e) => setPromoForm((p) => ({ ...p, tipe: e.target.value }))}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                  >
+                    <option value="fixed">Nominal (Rp)</option>
+                    <option value="percentage">Persen (%)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                    {promoForm.tipe === "percentage" ? "Persentase (%)" : "Potongan (Rp)"}
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={promoForm.diskon}
+                    onChange={(e) => setPromoForm((p) => ({ ...p, diskon: e.target.value }))}
+                    placeholder={promoForm.tipe === "percentage" ? "10" : "5000"}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                  />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                  {lang === "EN" ? "Minimum Spend (Rp)" : "Minimal Belanja (Rp)"}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={promoForm.minimal_belanja}
+                  onChange={(e) => setPromoForm((p) => ({ ...p, minimal_belanja: e.target.value }))}
+                  placeholder="0"
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                />
+              </div>
+              <button
+                type="submit"
+                className="btn-interactive btn-lift"
+                style={{ width: "100%", padding: "12px", borderRadius: "var(--radius-pill)", border: "none", backgroundColor: "var(--orange)", color: "var(--maroon)", fontSize: 14, fontWeight: 800, cursor: "pointer" }}
+              >
+                {lang === "EN" ? "Publish Promo" : "Simpan Promo"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {cancelTarget && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1350,
+            backgroundColor: "rgba(82, 42, 40, 0.42)",
+            backdropFilter: "blur(5px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+          onClick={() => setCancelTarget(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              backgroundColor: "#FFFFFF",
+              borderRadius: "var(--radius-xl)",
+              padding: "24px",
+              boxShadow: "var(--shadow-card)",
+              border: "1px solid var(--border-light)",
+            }}
+          >
+            <h3 style={{ fontSize: 18, fontWeight: 900, color: "var(--maroon)", marginBottom: 6 }}>
+              {lang === "EN" ? `Cancel Order ${cancelTarget.code}?` : `Batalkan Pesanan ${cancelTarget.code}?`}
+            </h3>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 14 }}>
+              {lang === "EN"
+                ? "Add an optional reason so the other party knows why this order was cancelled."
+                : "Tuliskan alasan pembatalan (opsional) sebagai keterangan di riwayat."}
+            </p>
+            <form onSubmit={handleConfirmCancelOrder} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <input
+                type="text"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder={lang === "EN" ? "e.g. Changed my mind / Out of stock" : "Contoh: Salah pesan / Bahan habis"}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+              />
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setCancelTarget(null)}
+                  style={{ flex: 1, padding: "10px", borderRadius: "var(--radius-pill)", border: "1px solid var(--border-input)", backgroundColor: "#FFFFFF", color: "var(--maroon)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                >
+                  {lang === "EN" ? "Keep order" : "Kembali"}
+                </button>
+                <button
+                  type="submit"
+                  style={{ flex: 1, padding: "10px", borderRadius: "var(--radius-pill)", border: "none", backgroundColor: "#C84336", color: "#FFFFFF", fontSize: 13, fontWeight: 800, cursor: "pointer" }}
+                >
+                  {lang === "EN" ? "Confirm cancel" : "Ya, Batalkan"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {reviewTarget && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1350,
+            backgroundColor: "rgba(82, 42, 40, 0.42)",
+            backdropFilter: "blur(5px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+          onClick={() => setReviewTarget(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              backgroundColor: "#FFFFFF",
+              borderRadius: "var(--radius-xl)",
+              padding: "24px",
+              boxShadow: "var(--shadow-card)",
+              border: "1px solid var(--border-light)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 900, color: "var(--maroon)" }}>
+                {lang === "EN" ? `Rate Order ${reviewTarget.nomor_antrean}` : `Beri Rating ${reviewTarget.nomor_antrean}`}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setReviewTarget(null)}
+                style={{ border: "none", background: "var(--bg-cream)", borderRadius: "50%", width: 30, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <X size={15} color="var(--maroon)" />
+              </button>
+            </div>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 14 }}>
+              {reviewTarget.items_breakdown || reviewTarget.items_summary} · {reviewTarget.tenant_name}
+            </p>
+            {reviewError && (
+              <div role="alert" style={{ padding: "8px 12px", borderRadius: 10, backgroundColor: "#FDF0EE", color: "#C84336", fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+                {reviewError}
+              </div>
+            )}
+            <form onSubmit={handleSubmitReview} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", justifyContent: "center", gap: 10, padding: "6px 0" }}>
+                {[1, 2, 3, 4, 5].map((starVal) => (
+                  <button
+                    key={starVal}
+                    type="button"
+                    onClick={() => setReviewRating(starVal)}
+                    aria-label={`Rate ${starVal} stars`}
+                    style={{ border: "none", background: "transparent", cursor: "pointer", padding: 4 }}
+                  >
+                    <Star
+                      size={30}
+                      fill={starVal <= reviewRating ? "#F8A34B" : "none"}
+                      color={starVal <= reviewRating ? "#F8A34B" : "#D1D5DB"}
+                    />
+                  </button>
+                ))}
+              </div>
+              <textarea
+                rows={3}
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+                placeholder={
+                  lang === "EN"
+                    ? "Share your experience with the food & service..."
+                    : "Tulis ulasan rasa makanan atau kecepatan layanan..."
+                }
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+              />
+              <button
+                type="submit"
+                className="btn-interactive btn-lift"
+                style={{ width: "100%", padding: "12px", borderRadius: "var(--radius-pill)", border: "none", backgroundColor: "var(--orange)", color: "var(--maroon)", fontSize: 14, fontWeight: 800, cursor: "pointer" }}
+              >
+                {lang === "EN" ? "Submit Rating" : "Kirim Rating & Ulasan"}
+              </button>
+            </form>
           </div>
         </div>
       )}

@@ -110,4 +110,9 @@ class Order extends Model
             'id_pesanan'
         );
     }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class, 'id_pesanan', 'id_pesanan');
+    }
 }

@@ -473,9 +473,19 @@ class AuthController extends Controller
 
         if ($user->peran === 'Vendor') {
             $tenant = \App\Models\Tenant::where('id_user', $user->id_user)->first();
-            if ($tenant && !empty($validated['nama_tenant'])) {
-                $tenant->nama_tenant = trim((string) $validated['nama_tenant']);
-                $tenant->save();
+            if ($tenant) {
+                $changed = false;
+                if (!empty($validated['nama_tenant'])) {
+                    $tenant->nama_tenant = trim((string) $validated['nama_tenant']);
+                    $changed = true;
+                }
+                if (!empty($validated['avatar']) && (!$tenant->logo || $tenant->logo === 'tenant/default.png')) {
+                    $tenant->logo = $validated['avatar'];
+                    $changed = true;
+                }
+                if ($changed) {
+                    $tenant->save();
+                }
             }
             $user->setRelation('tenant', $tenant);
         }

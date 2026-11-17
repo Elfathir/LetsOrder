@@ -171,8 +171,29 @@ function isSafeImageInput(value) {
   }
 }
 
-function calculateServerPromoDiscount(promoCode, subtotal) {
+function calculateServerPromoDiscount(promoCode, subtotal, tenantId = null) {
   const code = String(promoCode || "").trim().toUpperCase();
+  if (!code) return 0;
+
+  if (Array.isArray(db?.promos)) {
+    const customPromo = db.promos.find(
+      (p) =>
+        String(p.kode_promo || "").trim().toUpperCase() === code &&
+        Boolean(p.aktif) &&
+        (!p.id_tenant || Number(p.id_tenant) === Number(tenantId))
+    );
+    if (customPromo) {
+      const minSpend = Math.max(0, Number(customPromo.minimal_belanja || 0));
+      if (subtotal < minSpend) return 0;
+      const val = Math.max(0, Number(customPromo.diskon || 0));
+      if (customPromo.tipe === "percentage") {
+        const pct = val > 1 ? Math.min(100, val) / 100 : val;
+        return Math.min(subtotal, Math.round(subtotal * pct));
+      }
+      return Math.min(subtotal, val);
+    }
+  }
+
   const promo = SERVER_PROMOS[code];
   if (!promo || subtotal < promo.minSpend) return 0;
   if (promo.type === "percentage") {
@@ -193,6 +214,8 @@ const INITIAL_DB = {
   carts: {},
   orders: [],
   payments: [],
+  reviews: [],
+  promos: [],
   notifications: [],
   tokens: {},
   passwordResets: {},
@@ -213,6 +236,12 @@ function loadDb() {
         }
         if (!Array.isArray(parsed.payments)) {
           parsed.payments = [];
+        }
+        if (!Array.isArray(parsed.reviews)) {
+          parsed.reviews = [];
+        }
+        if (!Array.isArray(parsed.promos)) {
+          parsed.promos = [];
         }
         let migrated = false;
         for (const u of parsed.users) {
@@ -236,7 +265,51 @@ function loadDb() {
 let db = loadDb();
 
 function formatDbTimestamp(date = new Date()) {
-  return date.toISOString().slice(0, 19).replace("T", " ");
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function isTenantOpenNow(tenant) {
+  if (!tenant) return false;
+  if (!tenant.auto_schedule) return Boolean(tenant.status_buka);
+  if (tenant.status_buka === false) return false;
+  const openStr = String(tenant.jam_buka || "07:00").slice(0, 5);
+  const closeStr = String(tenant.jam_tutup || "21:00").slice(0, 5);
+  const now = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  if (openStr <= closeStr) return hhmm >= openStr && hhmm < closeStr;
+  return hhmm >= openStr || hhmm < closeStr;
+}
+
+function enrichTenant(tenant) {
+  if (!tenant) return null;
+  const owner = db.users.find((u) => u.id_user === tenant.id_user) || null;
+  const tenantReviews = (db.reviews || []).filter(
+    (r) => Number(r.id_tenant) === Number(tenant.id_tenant)
+  );
+  const avgRating =
+    tenantReviews.length > 0
+      ? (
+          tenantReviews.reduce((s, r) => s + Number(r.rating || 5), 0) /
+          tenantReviews.length
+        ).toFixed(1)
+      : "0.0";
+  const tenantMenus = db.menus.filter((m) => Number(m.id_tenant) === Number(tenant.id_tenant));
+  const menuImgFallback = tenantMenus.find((m) => m.gambar)?.gambar || "";
+  const effectiveImage = tenant.gambar || tenant.logo || owner?.avatar || menuImgFallback || "";
+  return {
+    ...tenant,
+    logo: tenant.logo || effectiveImage,
+    gambar: effectiveImage,
+    jam_buka: tenant.jam_buka || "07:00",
+    jam_tutup: tenant.jam_tutup || "21:00",
+    auto_schedule: Boolean(tenant.auto_schedule),
+    status_buka_efektif: isTenantOpenNow(tenant),
+    rating: tenantReviews.length > 0 ? avgRating : null,
+    reviews_count: tenantReviews.length,
+  };
 }
 
 function pushNotification(idUser, idPesanan, pesan) {
@@ -253,30 +326,49 @@ function pushNotification(idUser, idPesanan, pesan) {
 }
 
 function enrichMenu(menu) {
-  const tenant = db.tenants.find((t) => t.id_tenant === menu.id_tenant) || null;
+  const rawTenant = db.tenants.find((t) => t.id_tenant === menu.id_tenant) || null;
+  const tenant = rawTenant ? enrichTenant(rawTenant) : null;
   const category = db.categories.find((c) => c.id_kategori === menu.id_kategori) || null;
+  const menuReviews = (db.reviews || []).filter(
+    (r) => Number(r.id_menu) === Number(menu.id_menu)
+  );
+  const avgRating =
+    menuReviews.length > 0
+      ? (
+          menuReviews.reduce((s, r) => s + Number(r.rating || 5), 0) /
+          menuReviews.length
+        ).toFixed(1)
+      : null;
   return {
     ...menu,
     available: Boolean(menu.status_tersedia),
     tenant_name: tenant?.nama_tenant || menu.tenant_name || "Canteen Tenant",
     kategori_nama: category?.nama_kategori || menu.kategori_nama || "Rice & Mains",
+    rating: avgRating,
+    reviews: menuReviews.length,
+    reviews_count: menuReviews.length,
     tenant,
     category,
   };
 }
 
 function enrichOrder(order) {
-  const tenant = db.tenants.find((t) => t.id_tenant === order.id_tenant) || null;
+  const rawTenant = db.tenants.find((t) => t.id_tenant === order.id_tenant) || null;
+  const tenant = rawTenant ? enrichTenant(rawTenant) : null;
   const user = db.users.find((u) => u.id_user === order.id_user) || null;
   const payment =
     db.payments
       .filter((p) => p.id_pesanan === order.id_pesanan)
       .sort((a, b) => b.id_pembayaran - a.id_pembayaran)[0] || null;
+  const orderReviews = (db.reviews || []).filter(
+    (r) => Number(r.id_pesanan) === Number(order.id_pesanan)
+  );
   const details = (order.details || []).map((d) => {
     const m = db.menus.find((x) => x.id_menu === d.id_menu);
     return {
       ...d,
       gambar: m?.gambar || d.gambar || "",
+      estimasi_menit: m?.estimasi_menit || d.estimasi_menit || 8,
       menu: m || null,
     };
   });
@@ -284,6 +376,8 @@ function enrichOrder(order) {
     ...order,
     tenant,
     payment,
+    reviews: orderReviews,
+    has_reviewed: orderReviews.length > 0,
     user: user
       ? {
           id_user: user.id_user,
@@ -416,11 +510,13 @@ function ensureTenantForVendor(user, namaTenantOverride) {
       nama_tenant: namaTenantOverride || user.nama || user.username,
       deskripsi: "Campus Canteen Tenant",
       booth: `Stand #${nextTenantId} · Campus Canteen`,
-      rating: "5.0",
       estimasi_menit: "5-10 min",
       kategori_utama: "Rice & Mains",
-      logo: "",
-      gambar: "",
+      logo: user.avatar || "",
+      gambar: user.avatar || "",
+      jam_buka: "07:00",
+      jam_tutup: "21:00",
+      auto_schedule: false,
       status_buka: true,
     };
     db.tenants.push(tenant);
@@ -1110,6 +1206,11 @@ const server = http.createServer(async (req, res) => {
       if (body.nama_tenant) tenant.nama_tenant = String(body.nama_tenant).trim().slice(0, 100);
       if (body.deskripsi !== undefined) tenant.deskripsi = String(body.deskripsi).slice(0, 500);
       if (body.booth !== undefined) tenant.booth = String(body.booth).slice(0, 100);
+      if (body.avatar !== undefined && body.avatar && !tenant.logo) {
+        tenant.logo = body.avatar;
+        tenant.gambar = body.avatar;
+      }
+      tenant = enrichTenant(tenant);
     }
     saveDb(db);
     const userPayload = sanitizeUserResponse(user, tenant);
@@ -1160,7 +1261,40 @@ const server = http.createServer(async (req, res) => {
     return sendJson(req, res, 200, {
       success: true,
       message: "Daftar tenant berhasil diambil.",
-      data: db.tenants,
+      data: db.tenants.map(enrichTenant),
+    });
+  }
+
+  if (pathname === "/promos" && method === "GET") {
+    const idTenantParam = urlObj.searchParams.get("id_tenant");
+    const list = (db.promos || []).filter((p) => {
+      if (!p.aktif) return false;
+      if (idTenantParam) {
+        return !p.id_tenant || Number(p.id_tenant) === Number(idTenantParam);
+      }
+      return true;
+    });
+    return sendJson(req, res, 200, {
+      success: true,
+      data: list,
+    });
+  }
+
+  if (pathname === "/reviews" && method === "GET") {
+    const idMenuParam = urlObj.searchParams.get("id_menu");
+    const idTenantParam = urlObj.searchParams.get("id_tenant");
+    const idOrderParam = urlObj.searchParams.get("id_pesanan");
+    const list = (db.reviews || [])
+      .filter((r) => {
+        if (idMenuParam && Number(r.id_menu) !== Number(idMenuParam)) return false;
+        if (idTenantParam && Number(r.id_tenant) !== Number(idTenantParam)) return false;
+        if (idOrderParam && Number(r.id_pesanan) !== Number(idOrderParam)) return false;
+        return true;
+      })
+      .sort((a, b) => b.id_review - a.id_review);
+    return sendJson(req, res, 200, {
+      success: true,
+      data: list,
     });
   }
 
@@ -1475,7 +1609,7 @@ const server = http.createServer(async (req, res) => {
 
     const targetTenantId = Array.from(tenantIds)[0];
     const tenant = db.tenants.find((t) => t.id_tenant === targetTenantId);
-    if (!tenant || !tenant.status_buka) {
+    if (!tenant || !isTenantOpenNow(tenant)) {
       return sendJson(req, res, 422, {
         success: false,
         message: "Tenant sedang tutup dan tidak dapat menerima pesanan.",
@@ -1483,7 +1617,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     const subtotal = details.reduce((s, d) => s + d.subtotal, 0);
-    const promoDiscount = calculateServerPromoDiscount(body.promo_code, subtotal);
+    const promoDiscount = calculateServerPromoDiscount(body.promo_code, subtotal, targetTenantId);
     const totalHarga = Math.max(0, subtotal - promoDiscount);
 
     const nextOrderId = Math.max(100, ...db.orders.map((o) => o.id_pesanan)) + 1;
@@ -1786,7 +1920,147 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
-  // ---- Protected Vendor Tenant & Menu Management Routes ----
+  const orderCancelMatch = pathname.match(/^\/(?:vendor\/)?orders\/(\d+)\/cancel$/);
+  if (orderCancelMatch && method === "POST") {
+    const user = requireAuth(req, res);
+    if (!user) return;
+    const orderId = Number(orderCancelMatch[1]);
+    const ord = db.orders.find((o) => o.id_pesanan === orderId);
+    if (!ord) {
+      return sendJson(req, res, 404, { success: false, message: "Pesanan tidak ditemukan." });
+    }
+    const vendorTenant = db.tenants.find((t) => t.id_user === user.id_user);
+    const isAdmin = String(user.peran).toLowerCase() === "administrator";
+    const isVendorOwner = Boolean(vendorTenant && ord.id_tenant === vendorTenant.id_tenant);
+    const isCustomerOwner = ord.id_user === user.id_user;
+
+    if (!isAdmin && !isVendorOwner && !isCustomerOwner) {
+      return sendJson(req, res, 403, {
+        success: false,
+        message: "Anda tidak memiliki hak akses untuk membatalkan pesanan ini.",
+      });
+    }
+    if (ord.status_pesanan === "Selesai" || ord.status_pesanan === "Dibatalkan") {
+      return sendJson(req, res, 422, {
+        success: false,
+        message: `Pesanan berstatus '${ord.status_pesanan}' tidak dapat dibatalkan.`,
+      });
+    }
+    if (isCustomerOwner && !isVendorOwner && !isAdmin && ord.status_pesanan === "Siap Diambil") {
+      return sendJson(req, res, 422, {
+        success: false,
+        message: "Pesanan sudah siap diambil dan tidak dapat dibatalkan oleh pelanggan.",
+      });
+    }
+
+    const body = await parseBody(req);
+    const reason = String(body.alasan || body.reason || "").trim().slice(0, 300);
+    const actorRole = isVendorOwner ? "Tenant" : isAdmin ? "Admin" : "Pelanggan";
+    ord.status_pesanan = "Dibatalkan";
+    ord.alasan_batal = reason || `Dibatalkan oleh ${actorRole}`;
+    ord.status_history = ord.status_history || [];
+    ord.status_history.push({
+      status: "Dibatalkan",
+      waktu: formatDbTimestamp(),
+      oleh: user.nama || user.username,
+      catatan: ord.alasan_batal,
+    });
+
+    const reasonSuffix = reason ? ` Alasan: ${reason}` : "";
+    pushNotification(
+      ord.id_user,
+      ord.id_pesanan,
+      `Pesanan ${ord.nomor_antrean} dibatalkan (${actorRole}).${reasonSuffix}`
+    );
+    const orderTenant = db.tenants.find((t) => t.id_tenant === ord.id_tenant);
+    if (orderTenant?.id_user && orderTenant.id_user !== user.id_user) {
+      pushNotification(
+        orderTenant.id_user,
+        ord.id_pesanan,
+        `Pesanan ${ord.nomor_antrean} dibatalkan oleh ${actorRole}.${reasonSuffix}`
+      );
+    }
+
+    saveDb(db);
+    return sendJson(req, res, 200, {
+      success: true,
+      message: "Pesanan berhasil dibatalkan.",
+      data: enrichOrder(ord),
+    });
+  }
+
+  const orderReviewMatch = pathname.match(/^\/orders\/(\d+)\/reviews$/);
+  if (orderReviewMatch && method === "POST") {
+    const user = requireAuth(req, res);
+    if (!user || !requireRole(req, res, user, "Customer")) return;
+    const orderId = Number(orderReviewMatch[1]);
+    const ord = db.orders.find((o) => o.id_pesanan === orderId);
+    if (!ord) {
+      return sendJson(req, res, 404, { success: false, message: "Pesanan tidak ditemukan." });
+    }
+    if (ord.id_user !== user.id_user) {
+      return sendJson(req, res, 403, { success: false, message: "Akses ditolak." });
+    }
+    if (ord.status_pesanan !== "Selesai") {
+      return sendJson(req, res, 422, {
+        success: false,
+        message: "Rating & ulasan hanya dapat diberikan setelah pesanan selesai.",
+      });
+    }
+    const body = await parseBody(req);
+    const ratingVal = Math.max(1, Math.min(5, Math.round(Number(body.rating || 5))));
+    const komentar = String(body.komentar || body.comment || "").trim().slice(0, 500);
+    const targetMenus = body.id_menu
+      ? [Number(body.id_menu)]
+      : Array.from(new Set((ord.details || []).map((d) => Number(d.id_menu))));
+
+    const existing = (db.reviews || []).some((r) => Number(r.id_pesanan) === orderId);
+    if (existing) {
+      return sendJson(req, res, 409, {
+        success: false,
+        message: "Pesanan ini sudah diberi ulasan sebelumnya.",
+      });
+    }
+
+    const createdReviews = [];
+    for (const mid of targetMenus) {
+      const nextReviewId =
+        Math.max(0, ...(db.reviews || []).map((r) => Number(r.id_review) || 0)) + 1;
+      const itemInfo = (ord.details || []).find((d) => Number(d.id_menu) === mid);
+      const rev = {
+        id_review: nextReviewId,
+        id_pesanan: orderId,
+        id_user: user.id_user,
+        id_tenant: ord.id_tenant,
+        id_menu: mid,
+        nama_menu: itemInfo?.nama_menu || "Menu",
+        reviewer_name: user.nama || user.username,
+        rating: ratingVal,
+        komentar,
+        dibuat_pada: formatDbTimestamp(),
+      };
+      db.reviews.push(rev);
+      createdReviews.push(rev);
+    }
+
+    const orderTenant = db.tenants.find((t) => t.id_tenant === ord.id_tenant);
+    if (orderTenant?.id_user) {
+      pushNotification(
+        orderTenant.id_user,
+        orderId,
+        `${user.nama || user.username} memberi rating ${ratingVal}/5 untuk pesanan ${ord.nomor_antrean}.`
+      );
+    }
+
+    saveDb(db);
+    return sendJson(req, res, 201, {
+      success: true,
+      message: "Terima kasih atas rating & ulasan Anda.",
+      data: createdReviews,
+    });
+  }
+
+  // ---- Protected Vendor Tenant, Promo & Menu Management Routes ----
 
   if (pathname === "/vendor/tenant" && method === "GET") {
     const user = requireAuth(req, res);
@@ -1796,7 +2070,7 @@ const server = http.createServer(async (req, res) => {
     return sendJson(req, res, 200, {
       success: true,
       message: "Informasi tenant berhasil diambil.",
-      data: tenant,
+      data: enrichTenant(tenant),
     });
   }
 
@@ -1807,24 +2081,138 @@ const server = http.createServer(async (req, res) => {
     if (body.__tooLarge) {
       return sendJson(req, res, 413, { success: false, message: "Payload terlalu besar." });
     }
-    if (body.gambar !== undefined && !isSafeImageInput(body.gambar)) {
+    const imgInput = body.logo !== undefined ? body.logo : body.gambar;
+    if (imgInput !== undefined && !isSafeImageInput(imgInput)) {
       return sendJson(req, res, 422, { success: false, message: "Format gambar tenant tidak valid." });
     }
     const tenant = ensureTenantForVendor(user);
     if (body.nama_tenant !== undefined) tenant.nama_tenant = String(body.nama_tenant).trim().slice(0, 100);
     if (body.deskripsi !== undefined) tenant.deskripsi = String(body.deskripsi).slice(0, 500);
     if (body.booth !== undefined) tenant.booth = String(body.booth).slice(0, 100);
-    if (body.gambar !== undefined) {
-      tenant.gambar = body.gambar;
-      tenant.logo = body.gambar;
+    if (imgInput !== undefined) {
+      tenant.gambar = imgInput;
+      tenant.logo = imgInput;
+    }
+    if (body.jam_buka !== undefined && /^\d{2}:\d{2}/.test(String(body.jam_buka))) {
+      tenant.jam_buka = String(body.jam_buka).slice(0, 5);
+    }
+    if (body.jam_tutup !== undefined && /^\d{2}:\d{2}/.test(String(body.jam_tutup))) {
+      tenant.jam_tutup = String(body.jam_tutup).slice(0, 5);
+    }
+    if (body.auto_schedule !== undefined) {
+      tenant.auto_schedule = Boolean(body.auto_schedule);
     }
     if (body.status_buka !== undefined) tenant.status_buka = Boolean(body.status_buka);
     saveDb(db);
     return sendJson(req, res, 200, {
       success: true,
       message: "Informasi tenant berhasil diperbarui.",
-      data: tenant,
+      data: enrichTenant(tenant),
     });
+  }
+
+  if (pathname === "/vendor/promos" && method === "GET") {
+    const user = requireAuth(req, res);
+    if (!user || !requireRole(req, res, user, "Vendor", "Administrator")) return;
+    const isAdmin = String(user.peran).toLowerCase() === "administrator";
+    const tenant = isAdmin ? null : ensureTenantForVendor(user);
+    const list = (db.promos || []).filter((p) =>
+      isAdmin ? true : Number(p.id_tenant) === Number(tenant.id_tenant)
+    );
+    return sendJson(req, res, 200, { success: true, data: list });
+  }
+
+  if (pathname === "/vendor/promos" && method === "POST") {
+    const user = requireAuth(req, res);
+    if (!user || !requireRole(req, res, user, "Vendor", "Administrator")) return;
+    const tenant = ensureTenantForVendor(user);
+    const body = await parseBody(req);
+    const kodePromo = String(body.kode_promo || body.code || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24);
+    const judul = String(body.judul || body.title || "").trim().slice(0, 100);
+    const tipe = body.tipe === "percentage" ? "percentage" : "fixed";
+    const diskon = Math.max(1, Number(body.diskon || body.discount || 0));
+    const minimalBelanja = Math.max(0, Number(body.minimal_belanja || body.minSpend || 0));
+
+    if (!kodePromo || !judul || diskon <= 0) {
+      return sendJson(req, res, 422, {
+        success: false,
+        message: "Kode promo, judul, dan nominal diskon wajib diisi.",
+      });
+    }
+    if (
+      SERVER_PROMOS[kodePromo] ||
+      (db.promos || []).some((p) => String(p.kode_promo).toUpperCase() === kodePromo)
+    ) {
+      return sendJson(req, res, 422, {
+        success: false,
+        message: `Kode promo '${kodePromo}' sudah digunakan.`,
+      });
+    }
+    if (tipe === "percentage" && diskon > 90) {
+      return sendJson(req, res, 422, {
+        success: false,
+        message: "Diskon persentase maksimal 90%.",
+      });
+    }
+
+    const nextPromoId = Math.max(0, ...(db.promos || []).map((p) => Number(p.id_promo) || 0)) + 1;
+    const newPromo = {
+      id_promo: nextPromoId,
+      id_tenant: tenant.id_tenant,
+      kode_promo: kodePromo,
+      judul,
+      tipe,
+      diskon,
+      minimal_belanja: minimalBelanja,
+      aktif: body.aktif !== undefined ? Boolean(body.aktif) : true,
+    };
+    db.promos.unshift(newPromo);
+    saveDb(db);
+    return sendJson(req, res, 201, {
+      success: true,
+      message: "Promo khusus tenant berhasil dibuat.",
+      data: newPromo,
+    });
+  }
+
+  const vendorPromoMatch = pathname.match(/^\/vendor\/promos\/(\d+)$/);
+  if (vendorPromoMatch && (method === "PATCH" || method === "PUT")) {
+    const user = requireAuth(req, res);
+    if (!user || !requireRole(req, res, user, "Vendor", "Administrator")) return;
+    const promoId = Number(vendorPromoMatch[1]);
+    const promo = (db.promos || []).find((p) => Number(p.id_promo) === promoId);
+    if (!promo) {
+      return sendJson(req, res, 404, { success: false, message: "Promo tidak ditemukan." });
+    }
+    const vendorTenant = db.tenants.find((t) => t.id_user === user.id_user);
+    const isAdmin = String(user.peran).toLowerCase() === "administrator";
+    if (!isAdmin && (!vendorTenant || Number(promo.id_tenant) !== Number(vendorTenant.id_tenant))) {
+      return sendJson(req, res, 403, { success: false, message: "Akses ditolak." });
+    }
+    const body = await parseBody(req);
+    if (body.aktif !== undefined) promo.aktif = Boolean(body.aktif);
+    if (body.judul !== undefined) promo.judul = String(body.judul).trim().slice(0, 100);
+    if (body.minimal_belanja !== undefined) promo.minimal_belanja = Math.max(0, Number(body.minimal_belanja));
+    saveDb(db);
+    return sendJson(req, res, 200, { success: true, data: promo });
+  }
+
+  if (vendorPromoMatch && method === "DELETE") {
+    const user = requireAuth(req, res);
+    if (!user || !requireRole(req, res, user, "Vendor", "Administrator")) return;
+    const promoId = Number(vendorPromoMatch[1]);
+    const promo = (db.promos || []).find((p) => Number(p.id_promo) === promoId);
+    if (!promo) {
+      return sendJson(req, res, 404, { success: false, message: "Promo tidak ditemukan." });
+    }
+    const vendorTenant = db.tenants.find((t) => t.id_user === user.id_user);
+    const isAdmin = String(user.peran).toLowerCase() === "administrator";
+    if (!isAdmin && (!vendorTenant || Number(promo.id_tenant) !== Number(vendorTenant.id_tenant))) {
+      return sendJson(req, res, 403, { success: false, message: "Akses ditolak." });
+    }
+    db.promos = db.promos.filter((p) => Number(p.id_promo) !== promoId);
+    saveDb(db);
+    return sendJson(req, res, 200, { success: true, message: "Promo berhasil dihapus." });
   }
 
   if (pathname === "/vendor/menus" && method === "GET") {
@@ -1876,8 +2264,6 @@ const server = http.createServer(async (req, res) => {
       harga,
       estimasi_menit: estimasiMenit,
       status_tersedia: body.status_tersedia !== undefined ? Boolean(body.status_tersedia) : true,
-      rating: "5.0",
-      reviews: 1,
       sold_today: 0,
     };
 
