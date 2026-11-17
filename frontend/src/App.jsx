@@ -394,6 +394,52 @@ function toggleAppTheme(event) {
   const lightSurface = hasHeader ? "#FFFFFF" : "#FAF6F2";
   const prevBg = prevTheme === "dark" ? "#171211" : lightSurface;
   const nextBg = nextTheme === "dark" ? "#171211" : lightSurface;
+  const WAVE_DURATION = 420;
+  const spanRadius = Math.max(1, endRadius - startRadius);
+
+  // 1. Pure read pass: measure each visible element's distance from the button center (x, y)
+  const rootEl = document.getElementById("root");
+  const savedTransitions = [];
+  if (rootEl) {
+    const allNodes = rootEl.querySelectorAll("*");
+    const measured = [];
+    for (let i = 0; i < allNodes.length; i += 1) {
+      const el = allNodes[i];
+      if (!el || !el.style || typeof el.getBoundingClientRect !== "function") continue;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 && r.height <= 0) continue;
+      const dxNear = Math.max(0, r.left - x, x - r.right);
+      const dyNear = Math.max(0, r.top - y, y - r.bottom);
+      const distNear = Math.hypot(dxNear, dyNear);
+      const dxFar = Math.max(Math.abs(x - r.left), Math.abs(x - r.right));
+      const dyFar = Math.max(Math.abs(y - r.top), Math.abs(y - r.bottom));
+      const distFar = Math.hypot(dxFar, dyFar);
+      const rawEnter = WAVE_DURATION * (Math.max(0, distNear - startRadius) / spanRadius);
+      const rawExit = WAVE_DURATION * (Math.max(0, distFar - startRadius) / spanRadius);
+      const delayMs = Math.min(WAVE_DURATION - 45, Math.max(0, Math.round(rawEnter)));
+      const maxDur = Math.max(40, WAVE_DURATION - delayMs);
+      const durMs = Math.min(maxDur, Math.min(130, Math.max(45, Math.round((rawExit - rawEnter) * 0.55))));
+      measured.push([el, delayMs, durMs]);
+    }
+    // 2. Write pass: register distance-synced transition BEFORE flipping data-theme so elements wait for the circle wave
+    for (let i = 0; i < measured.length; i += 1) {
+      const [el, delayMs, durMs] = measured[i];
+      savedTransitions.push([el, el.style.transition]);
+      const spec = `${durMs}ms linear ${delayMs}ms`;
+      el.style.transition = [
+        `background-color ${spec}`,
+        `color ${spec}`,
+        `border-color ${spec}`,
+        `box-shadow ${spec}`,
+        `fill ${spec}`,
+        `stroke ${spec}`,
+        `--bg-hero-fade-start ${spec}`,
+        `--bg-hero-fade-mid ${spec}`,
+        `--bg-hero-fade-end ${spec}`,
+      ].join(", ");
+    }
+    void rootEl.offsetHeight;
+  }
 
   const host = document.createElement("div");
   host.setAttribute("data-theme-wave-host", "true");
@@ -433,9 +479,14 @@ function toggleAppTheme(event) {
   let expandAnim = null;
 
   themeAnimatingUntil =
-    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 420;
+    (typeof performance !== "undefined" ? performance.now() : Date.now()) + WAVE_DURATION + 40;
 
   const cleanup = () => {
+    for (let i = 0; i < savedTransitions.length; i += 1) {
+      const [el, prev] = savedTransitions[i];
+      el.style.transition = prev;
+    }
+    savedTransitions.length = 0;
     if (host.parentNode) host.parentNode.removeChild(host);
     if (cancelActiveThemeWave === abortCurrent) {
       cancelActiveThemeWave = null;
@@ -462,7 +513,7 @@ function toggleAppTheme(event) {
       { transform: `translateZ(0) scale(${endScale})` },
     ],
     {
-      duration: 380,
+      duration: WAVE_DURATION,
       easing: "linear",
       fill: "forwards",
     }
