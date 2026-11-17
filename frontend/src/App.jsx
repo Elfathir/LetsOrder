@@ -324,7 +324,7 @@ async function waitForThemeTransitionIdle() {
   if (!isThemeAnimating()) return;
   await new Promise((resolve) => {
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const waitMs = Math.min(960, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
+    const waitMs = Math.min(800, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 24));
     setTimeout(resolve, waitMs);
   });
 }
@@ -358,9 +358,10 @@ function toggleAppTheme(event) {
   const rawY = rect ? rect.top + rect.height / 2 : vh / 2;
   const x = Math.round(rawX);
   const y = Math.round(rawY);
+  const startRadius = Math.max(14, rect && rect.width > 0 ? Math.round(rect.width / 2) : 18);
   const cornerDist = Math.hypot(Math.max(x, vw - x), Math.max(y, vh - y));
-  // Overshoot 12% beyond farthest corner so ease-out completes cleanly off-screen
-  const endRadius = Math.ceil(cornerDist * 1.12);
+  // Overshoot 18% beyond farthest corner so ease-out passes 100% viewport cleanly without stalling at the corner
+  const endRadius = Math.ceil(cornerDist * 1.18);
 
   const prefersReduced =
     typeof window !== "undefined" &&
@@ -382,7 +383,7 @@ function toggleAppTheme(event) {
   }
 
   themeAnimatingUntil =
-    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 880;
+    (typeof performance !== "undefined" ? performance.now() : Date.now()) + 720;
 
   let transition;
   try {
@@ -406,13 +407,13 @@ function toggleAppTheme(event) {
       document.documentElement.animate(
         {
           clipPath: [
-            `circle(0px at ${x}px ${y}px)`,
+            `circle(${startRadius}px at ${x}px ${y}px)`,
             `circle(${endRadius}px at ${x}px ${y}px)`,
           ],
         },
         {
-          duration: 780,
-          easing: "cubic-bezier(0.25, 0.85, 0.35, 1)",
+          duration: 650,
+          easing: "cubic-bezier(0.25, 0.68, 0.38, 1)",
           fill: "forwards",
           pseudoElement: "::view-transition-new(root)",
         }
