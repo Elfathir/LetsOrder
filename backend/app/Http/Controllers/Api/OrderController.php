@@ -50,7 +50,7 @@ class OrderController extends Controller
 
     public function ordersDataForUser($user, bool $asVendor = false, bool $compact = false, ?string $statusFilter = null)
     {
-        $hasReviews = Schema::hasTable('reviews');
+        $hasReviews = true;
         $relations = [
             'payments',
             'statusHistories',
@@ -60,9 +60,7 @@ class OrderController extends Controller
         }
         if ($compact) {
             $tenantCols = ['id_tenant', 'id_user', 'nama_tenant', 'deskripsi', 'status_buka'];
-            if (Schema::hasColumn('tenants', 'jam_buka')) {
-                array_push($tenantCols, 'jam_buka', 'jam_tutup', 'auto_schedule');
-            }
+            array_push($tenantCols, 'jam_buka', 'jam_tutup', 'auto_schedule');
             $relations['tenant'] = fn ($q) => $q->select($tenantCols)->selectRaw(MediaController::previewSql('logo', 'logo', false));
             $relations['orderDetails'] = fn ($q) => $q->with([
                 'menu' => fn ($mq) => $mq->select(['id_menu', 'id_tenant', 'id_kategori', 'nama_menu', 'harga', 'estimasi_menit', 'status_tersedia'])
@@ -98,7 +96,7 @@ class OrderController extends Controller
 
         // Batch-load OrderMessage counts & latest chat instead of 2 queries per order
         $chatStatsByOrder = [];
-        if ($orderRows->isNotEmpty() && Schema::hasTable('order_messages')) {
+        if ($orderRows->isNotEmpty()) {
             $orderIds = $orderRows->pluck('id_pesanan')->all();
             $counts = OrderMessage::whereIn('id_pesanan', $orderIds)
                 ->selectRaw('id_pesanan, COUNT(*) as cnt, MAX(id_pesan) as max_id')
