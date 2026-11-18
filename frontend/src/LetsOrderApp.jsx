@@ -10840,7 +10840,7 @@ export default function App() {
           }}
           className="animate-fade"
         >
-          <div style={{ position: "absolute", top: 16, right: 20, zIndex: 10, display: "flex", alignItems: "center", gap: 8 }}>
+          <div className="auth-header-controls">
             <button
               type="button"
               className="header-lang-btn"
@@ -10929,12 +10929,8 @@ export default function App() {
 
           <div
             style={{
-              width: "100%",
-              maxWidth: 436,
-              maxHeight: "calc(100vh - 170px)",
               backgroundColor: "var(--bg-card)",
               borderRadius: "var(--radius-xl)",
-              padding: "24px 28px 20px",
               boxShadow: "0 16px 44px rgba(82, 42, 40, 0.1), 0 2px 8px rgba(82, 42, 40, 0.04)",
               border: "1px solid var(--border-light)",
               position: "relative",
@@ -10942,7 +10938,7 @@ export default function App() {
               flexDirection: "column",
               overflow: "hidden",
             }}
-            className="animate-modal-zoom"
+            className="auth-card animate-modal-zoom"
           >
             {currentUser && (
               <button
@@ -11695,6 +11691,33 @@ export default function App() {
           handleCompleteTenantOnboarding={handleCompleteTenantOnboarding}
           readAndCompressImageFile={readAndCompressImageFile}
           currentUser={currentUser}
+          onBackToRegister={() => {
+            try {
+              if (currentUser?.id_user) {
+                localStorage.removeItem(`letsorder_tenant_onboarding_${currentUser.id_user}`);
+              }
+            } catch {
+              // Ignore storage errors
+            }
+            clearStoredSession();
+            setCurrentUser(null);
+            setMyTenantInfo(null);
+            setTenantOnboardingStep(0);
+            setOnboardingError("");
+            setLoginRoleTab("Vendor");
+            setAuthMode("register");
+            setAuthError("");
+            setAuthSuccess("");
+            setAuthForm({
+              username: currentUser?.username || "",
+              nama: onboardingForm.nama_tenant || currentUser?.nama_tenant || "",
+              password: "",
+              email: onboardingForm.email || currentUser?.email || "",
+              nama_tenant: onboardingForm.nama_tenant || currentUser?.nama_tenant || "",
+              new_password: "",
+            });
+            setIsAuthOpen(true);
+          }}
         />
       )}
 
