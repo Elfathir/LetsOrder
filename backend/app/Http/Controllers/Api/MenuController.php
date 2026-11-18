@@ -7,7 +7,6 @@ use App\Models\Menu;
 use App\Models\Tenant;
 use App\Support\ImageValidator;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Schema;
 
 class MenuController extends Controller
 {
@@ -66,10 +65,16 @@ class MenuController extends Controller
             return Menu::with(['tenant', 'category']);
         }
 
-        $tenantCols = ['id_tenant', 'id_user', 'nama_tenant', 'deskripsi', 'status_buka'];
-        if (Schema::hasColumn('tenants', 'jam_buka')) {
-            array_push($tenantCols, 'jam_buka', 'jam_tutup', 'auto_schedule');
-        }
+        $tenantCols = [
+            'id_tenant',
+            'id_user',
+            'nama_tenant',
+            'deskripsi',
+            'status_buka',
+            'jam_buka',
+            'jam_tutup',
+            'auto_schedule',
+        ];
 
         return Menu::select([
             'id_menu',
@@ -245,7 +250,7 @@ class MenuController extends Controller
     private function attachReviewStats($menus, bool $compactMedia = false)
     {
         $statsByMenu = [];
-        if (Schema::hasTable('reviews') && $menus->isNotEmpty()) {
+        if ($menus->isNotEmpty()) {
             $rows = \App\Models\Review::whereIn('id_menu', $menus->pluck('id_menu'))
                 ->selectRaw('id_menu, COUNT(*) as cnt, AVG(rating) as avg_rating')
                 ->groupBy('id_menu')
