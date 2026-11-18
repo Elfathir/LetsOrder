@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import {
   Store,
   Upload,
@@ -9,25 +10,45 @@ import {
 const FLOATING_PLATES = [
   {
     src: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=640&q=80",
-    size: "clamp(130px, 21vw, 270px)",
-    style: { top: "-52px", left: "-64px", animationDelay: "0s" },
+    className: "onboarding-plate onboarding-plate-1 animate-float-slow",
+    delay: "0s",
   },
   {
     src: "https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=640&q=80",
-    size: "clamp(140px, 22vw, 290px)",
-    style: { bottom: "-68px", left: "-58px", animationDelay: "1.4s" },
+    className: "onboarding-plate onboarding-plate-2 animate-float-slow",
+    delay: "1.4s",
   },
   {
     src: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=640&q=80",
-    size: "clamp(120px, 18vw, 235px)",
-    style: { top: "24%", right: "-72px", animationDelay: "0.8s" },
+    className: "onboarding-plate onboarding-plate-3 animate-float-slow",
+    delay: "0.8s",
   },
   {
     src: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=640&q=80",
-    size: "clamp(135px, 20vw, 260px)",
-    style: { bottom: "-62px", right: "-60px", animationDelay: "2.1s" },
+    className: "onboarding-plate onboarding-plate-4 animate-float-slow",
+    delay: "2.1s",
   },
 ];
+
+const fieldInputStyle = {
+  width: "100%",
+  minHeight: 44,
+  padding: "10px 14px",
+  borderRadius: 12,
+  border: "1px solid var(--border-input)",
+  backgroundColor: "var(--bg-card)",
+  fontSize: 14.5,
+  color: "var(--maroon)",
+  outline: "none",
+};
+
+const fieldLabelStyle = {
+  display: "block",
+  fontSize: 12.5,
+  fontWeight: 800,
+  color: "var(--maroon)",
+  marginBottom: 5,
+};
 
 export default function TenantOnboardingWizard({
   lang,
@@ -46,9 +67,26 @@ export default function TenantOnboardingWizard({
   readAndCompressImageFile,
   currentUser,
 }) {
+  const rootRef = useRef(null);
+  const [renderedStep, setRenderedStep] = useState(tenantOnboardingStep);
+  const [isFading, setIsFading] = useState(false);
+
+  useEffect(() => {
+    if (tenantOnboardingStep === renderedStep) return;
+    setIsFading(true);
+    const timer = setTimeout(() => {
+      setRenderedStep(tenantOnboardingStep);
+      if (rootRef.current) rootRef.current.scrollTop = 0;
+      setIsFading(false);
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [tenantOnboardingStep, renderedStep]);
+
   return (
     <div
+      ref={rootRef}
       data-testid="tenant-onboarding-wizard"
+      className="onboarding-wizard-root"
       style={{
         position: "fixed",
         inset: 0,
@@ -61,19 +99,7 @@ export default function TenantOnboardingWizard({
       }}
     >
       {/* Top Bar: Language Switcher & Dark Mode Toggle */}
-      <div
-        style={{
-          position: "relative",
-          zIndex: 10,
-          flexShrink: 0,
-          width: "100%",
-          display: "flex",
-          justifyContent: "flex-end",
-          alignItems: "center",
-          gap: 8,
-          padding: "16px 24px 0",
-        }}
-      >
+      <div className="onboarding-header-bar">
         <button
           type="button"
           className="header-lang-btn btn-interactive"
@@ -131,41 +157,19 @@ export default function TenantOnboardingWizard({
             key={idx}
             src={plate.src}
             alt=""
-            className="animate-float-slow"
-            style={{
-              position: "absolute",
-              width: plate.size,
-              height: plate.size,
-              borderRadius: "50%",
-              objectFit: "cover",
-              display: "block",
-              boxShadow: "0 20px 48px rgba(82, 42, 40, 0.2)",
-              opacity: 0.94,
-              ...plate.style,
-            }}
+            className={plate.className}
+            style={{ animationDelay: plate.delay }}
           />
         ))}
       </div>
 
       {/* Centered Open Full-Page Content (No Pop-Up Box) */}
-      <div
-        style={{
-          position: "relative",
-          zIndex: 2,
-          flex: "1 0 auto",
-          width: "100%",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "20px 20px 44px",
-        }}
-      >
+      <div className="onboarding-body-wrap">
         <div
           style={{
             width: "100%",
-            maxWidth: tenantOnboardingStep === 1 ? 480 : 600,
-            transition: "max-width 0.45s cubic-bezier(0.22, 1, 0.36, 1)",
+            maxWidth: renderedStep === 1 ? 460 : 520,
+            transition: "max-width 0.35s ease",
           }}
         >
           {/* Step Progress Bar directly on page */}
@@ -219,28 +223,19 @@ export default function TenantOnboardingWizard({
                   height: "100%",
                   borderRadius: 999,
                   background: "linear-gradient(90deg, var(--orange) 0%, #E07A2E 100%)",
-                  transition: "width 0.48s cubic-bezier(0.22, 1, 0.36, 1)",
+                  transition: "width 0.42s cubic-bezier(0.22, 1, 0.36, 1)",
                 }}
               />
             </div>
           </div>
 
-          {/* Horizontal Sliding Steps Viewport */}
-          <div style={{ overflow: "hidden", width: "100%" }}>
-            <div
-              style={{
-                display: "flex",
-                width: "200%",
-                transform: tenantOnboardingStep === 1 ? "translateX(0%)" : "translateX(-50%)",
-                transition: "transform 0.52s cubic-bezier(0.22, 1, 0.36, 1)",
-                alignItems: "flex-start",
-              }}
-            >
-              {/* STEP 1: Profile Photo Setup */}
+          {/* Smooth Dissolve / Fade Stage (No Horizontal Sliding) */}
+          <div className={`onboarding-step-stage${isFading ? " is-fading" : ""}`}>
+            {renderedStep === 1 ? (
               <div
                 style={{
-                  width: "50%",
-                  padding: "6px 6px 12px",
+                  width: "100%",
+                  padding: "4px 2px 12px",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
@@ -249,7 +244,7 @@ export default function TenantOnboardingWizard({
               >
                 <h1
                   style={{
-                    fontSize: 28,
+                    fontSize: "clamp(23px, 5vw, 28px)",
                     fontWeight: 900,
                     color: "var(--maroon)",
                     marginBottom: 8,
@@ -264,7 +259,7 @@ export default function TenantOnboardingWizard({
                     color: "var(--text-muted)",
                     maxWidth: 400,
                     lineHeight: 1.55,
-                    marginBottom: 28,
+                    marginBottom: 26,
                   }}
                 >
                   {lang === "EN"
@@ -276,8 +271,8 @@ export default function TenantOnboardingWizard({
                 <div style={{ position: "relative", marginBottom: 22 }}>
                   <div
                     style={{
-                      width: 156,
-                      height: 156,
+                      width: 152,
+                      height: 152,
                       borderRadius: "50%",
                       backgroundColor: "var(--bg-cream)",
                       border: onboardingForm.logo
@@ -348,12 +343,12 @@ export default function TenantOnboardingWizard({
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 8,
-                    padding: "11px 24px",
+                    padding: "12px 24px",
                     borderRadius: "var(--radius-pill)",
                     border: "1.5px solid var(--orange)",
                     backgroundColor: onboardingForm.logo ? "var(--bg-card)" : "var(--orange-soft)",
                     color: "var(--maroon)",
-                    fontSize: 13.5,
+                    fontSize: 14,
                     fontWeight: 800,
                     cursor: "pointer",
                     boxShadow: "var(--shadow-sm)",
@@ -400,7 +395,7 @@ export default function TenantOnboardingWizard({
                     : "Format: .JPEG, .PNG · Gunakan logo atau foto hidangan andalan Anda"}
                 </div>
 
-                {onboardingError && tenantOnboardingStep === 1 && (
+                {onboardingError && (
                   <div
                     role="alert"
                     style={{
@@ -418,7 +413,7 @@ export default function TenantOnboardingWizard({
                   </div>
                 )}
 
-                {/* Next Button appears once photo is uploaded */}
+                {/* Next Button fades in smoothly once photo is uploaded */}
                 <div
                   style={{
                     width: "100%",
@@ -454,6 +449,7 @@ export default function TenantOnboardingWizard({
                     className="btn-interactive btn-lift"
                     style={{
                       width: "100%",
+                      minHeight: 46,
                       padding: "13px 22px",
                       borderRadius: "var(--radius-pill)",
                       border: "none",
@@ -474,19 +470,13 @@ export default function TenantOnboardingWizard({
                   </button>
                 </div>
               </div>
-
-              {/* STEP 2: Complete Store Details */}
-              <div
-                style={{
-                  width: "50%",
-                  padding: "4px 6px 12px",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
+            ) : (
+              <div style={{ width: "100%", padding: "2px 2px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
                   <div
                     style={{
-                      width: 58,
-                      height: 58,
+                      width: 56,
+                      height: 56,
                       borderRadius: "50%",
                       overflow: "hidden",
                       border: "2.5px solid var(--orange)",
@@ -508,10 +498,17 @@ export default function TenantOnboardingWizard({
                     )}
                   </div>
                   <div>
-                    <h1 style={{ fontSize: 23, fontWeight: 900, color: "var(--maroon)", marginBottom: 2 }}>
+                    <h1
+                      style={{
+                        fontSize: "clamp(20px, 4.5vw, 24px)",
+                        fontWeight: 900,
+                        color: "var(--maroon)",
+                        marginBottom: 2,
+                      }}
+                    >
                       {lang === "EN" ? "Complete your store details" : "Lengkapi profil toko kantin"}
                     </h1>
-                    <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                    <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.45 }}>
                       {lang === "EN"
                         ? "All fields marked with * are required before opening your store."
                         : "Semua kolom bertanda * wajib diisi sebelum membuka toko Anda."}
@@ -519,7 +516,7 @@ export default function TenantOnboardingWizard({
                   </div>
                 </div>
 
-                {onboardingError && tenantOnboardingStep === 2 && (
+                {onboardingError && (
                   <div
                     role="alert"
                     style={{
@@ -538,155 +535,80 @@ export default function TenantOnboardingWizard({
 
                 <form
                   onSubmit={handleCompleteTenantOnboarding}
-                  style={{ display: "flex", flexDirection: "column", gap: 13 }}
+                  style={{ display: "flex", flexDirection: "column", gap: 14 }}
                 >
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
-                    <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: "var(--maroon)",
-                          marginBottom: 4,
-                        }}
-                      >
-                        {lang === "EN" ? "Canteen / Tenant Name *" : "Nama Kantin / Tenant *"}
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={onboardingForm.nama_tenant}
-                        onChange={(e) =>
-                          setOnboardingForm((p) => ({ ...p, nama_tenant: e.target.value }))
-                        }
-                        placeholder={lang === "EN" ? "e.g. Bu Sari Canteen" : "Contoh: Kantin Bu Sari"}
-                        style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          borderRadius: 10,
-                          border: "1px solid var(--border-input)",
-                          backgroundColor: "var(--bg-card)",
-                          fontSize: 13.5,
-                          color: "var(--maroon)",
-                        }}
-                      />
-                    </div>
-
-                    <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: "var(--maroon)",
-                          marginBottom: 4,
-                        }}
-                      >
-                        {lang === "EN" ? "Phone / WhatsApp *" : "Nomor Telepon / WhatsApp *"}
-                      </label>
-                      <input
-                        type="tel"
-                        required
-                        value={onboardingForm.no_telp}
-                        onChange={(e) =>
-                          setOnboardingForm((p) => ({ ...p, no_telp: e.target.value }))
-                        }
-                        placeholder="081234567890"
-                        style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          borderRadius: 10,
-                          border: "1px solid var(--border-input)",
-                          backgroundColor: "var(--bg-card)",
-                          fontSize: 13.5,
-                          color: "var(--maroon)",
-                        }}
-                      />
-                    </div>
+                  <div>
+                    <label style={fieldLabelStyle}>
+                      {lang === "EN" ? "Canteen / Tenant Name *" : "Nama Kantin / Tenant *"}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={onboardingForm.nama_tenant}
+                      onChange={(e) =>
+                        setOnboardingForm((p) => ({ ...p, nama_tenant: e.target.value }))
+                      }
+                      placeholder={lang === "EN" ? "e.g. Bu Sari Canteen" : "Contoh: Kantin Bu Sari"}
+                      style={fieldInputStyle}
+                    />
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
-                    <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: "var(--maroon)",
-                          marginBottom: 4,
-                        }}
-                      >
-                        {lang === "EN" ? "Email Address *" : "Alamat Email *"}
-                      </label>
-                      <input
-                        type="email"
-                        required
-                        value={onboardingForm.email}
-                        onChange={(e) =>
-                          setOnboardingForm((p) => ({ ...p, email: e.target.value }))
-                        }
-                        placeholder="tenant@upnvj.ac.id"
-                        style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          borderRadius: 10,
-                          border: "1px solid var(--border-input)",
-                          backgroundColor: "var(--bg-card)",
-                          fontSize: 13.5,
-                          color: "var(--maroon)",
-                        }}
-                      />
-                    </div>
-
-                    <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: "var(--maroon)",
-                          marginBottom: 4,
-                        }}
-                      >
-                        {lang === "EN" ? "Booth / Location *" : "Lokasi / Stand *"}
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={onboardingForm.booth}
-                        onChange={(e) =>
-                          setOnboardingForm((p) => ({ ...p, booth: e.target.value }))
-                        }
-                        placeholder={
-                          lang === "EN"
-                            ? "e.g. Booth #3 · Building A"
-                            : "Contoh: Stand #3 · Kantin Gedung A"
-                        }
-                        style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          borderRadius: 10,
-                          border: "1px solid var(--border-input)",
-                          backgroundColor: "var(--bg-card)",
-                          fontSize: 13.5,
-                          color: "var(--maroon)",
-                        }}
-                      />
-                    </div>
+                  <div>
+                    <label style={fieldLabelStyle}>
+                      {lang === "EN" ? "Phone / WhatsApp *" : "Nomor Telepon / WhatsApp *"}
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      value={onboardingForm.no_telp}
+                      onChange={(e) =>
+                        setOnboardingForm((p) => ({ ...p, no_telp: e.target.value }))
+                      }
+                      placeholder="081234567890"
+                      style={fieldInputStyle}
+                    />
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
+                  <div>
+                    <label style={fieldLabelStyle}>
+                      {lang === "EN" ? "Email Address *" : "Alamat Email *"}
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={onboardingForm.email}
+                      onChange={(e) =>
+                        setOnboardingForm((p) => ({ ...p, email: e.target.value }))
+                      }
+                      placeholder="tenant@upnvj.ac.id"
+                      style={fieldInputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={fieldLabelStyle}>
+                      {lang === "EN" ? "Booth / Location *" : "Lokasi / Stand *"}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={onboardingForm.booth}
+                      onChange={(e) =>
+                        setOnboardingForm((p) => ({ ...p, booth: e.target.value }))
+                      }
+                      placeholder={
+                        lang === "EN"
+                          ? "e.g. Booth #3 · Building A"
+                          : "Contoh: Stand #3 · Kantin Gedung A"
+                      }
+                      style={fieldInputStyle}
+                    />
+                  </div>
+
+                  {/* Opening & Closing hours side-by-side */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: "var(--maroon)",
-                          marginBottom: 4,
-                        }}
-                      >
+                      <label style={fieldLabelStyle}>
                         {lang === "EN" ? "Opening Time *" : "Jam Buka *"}
                       </label>
                       <input
@@ -696,28 +618,12 @@ export default function TenantOnboardingWizard({
                         onChange={(e) =>
                           setOnboardingForm((p) => ({ ...p, jam_buka: e.target.value }))
                         }
-                        style={{
-                          width: "100%",
-                          padding: "9px 10px",
-                          borderRadius: 10,
-                          border: "1px solid var(--border-input)",
-                          backgroundColor: "var(--bg-card)",
-                          fontSize: 13,
-                          color: "var(--maroon)",
-                        }}
+                        style={fieldInputStyle}
                       />
                     </div>
 
                     <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: "var(--maroon)",
-                          marginBottom: 4,
-                        }}
-                      >
+                      <label style={fieldLabelStyle}>
                         {lang === "EN" ? "Closing Time *" : "Jam Tutup *"}
                       </label>
                       <input
@@ -727,88 +633,13 @@ export default function TenantOnboardingWizard({
                         onChange={(e) =>
                           setOnboardingForm((p) => ({ ...p, jam_tutup: e.target.value }))
                         }
-                        style={{
-                          width: "100%",
-                          padding: "9px 10px",
-                          borderRadius: 10,
-                          border: "1px solid var(--border-input)",
-                          backgroundColor: "var(--bg-card)",
-                          fontSize: 13,
-                          color: "var(--maroon)",
-                        }}
+                        style={fieldInputStyle}
                       />
-                    </div>
-
-                    <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: "var(--maroon)",
-                          marginBottom: 4,
-                        }}
-                      >
-                        {lang === "EN" ? "Initial Status *" : "Status Awal *"}
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setOnboardingForm((p) => ({ ...p, status_buka: !p.status_buka }))
-                        }
-                        style={{
-                          width: "100%",
-                          padding: "9px 10px",
-                          borderRadius: 10,
-                          border: onboardingForm.status_buka
-                            ? "1.5px solid var(--alert-success-border)"
-                            : "1.5px solid var(--border-input)",
-                          backgroundColor: onboardingForm.status_buka
-                            ? "var(--alert-success-bg)"
-                            : "var(--bg-card)",
-                          color: onboardingForm.status_buka
-                            ? "var(--alert-success-text)"
-                            : "var(--maroon)",
-                          fontSize: 12.5,
-                          fontWeight: 800,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 6,
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: "50%",
-                            backgroundColor: onboardingForm.status_buka ? "#239B56" : "#C84336",
-                          }}
-                        />
-                        <span>
-                          {onboardingForm.status_buka
-                            ? lang === "EN"
-                              ? "Open"
-                              : "Buka"
-                            : lang === "EN"
-                              ? "Closed"
-                              : "Tutup"}
-                        </span>
-                      </button>
                     </div>
                   </div>
 
                   <div>
-                    <label
-                      style={{
-                        display: "block",
-                        fontSize: 12,
-                        fontWeight: 800,
-                        color: "var(--maroon)",
-                        marginBottom: 4,
-                      }}
-                    >
+                    <label style={fieldLabelStyle}>
                       {lang === "EN" ? "Store Description *" : "Deskripsi Kantin *"}
                     </label>
                     <textarea
@@ -824,33 +655,21 @@ export default function TenantOnboardingWizard({
                           : "Ceritakan menu andalan, spesialisasi masakan, atau layanan kantin Anda..."
                       }
                       style={{
-                        width: "100%",
-                        padding: "10px 12px",
-                        borderRadius: 10,
-                        border: "1px solid var(--border-input)",
-                        backgroundColor: "var(--bg-card)",
-                        fontSize: 13.5,
-                        color: "var(--maroon)",
+                        ...fieldInputStyle,
+                        minHeight: 88,
                         resize: "vertical",
                       }}
                     />
                   </div>
 
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      marginTop: 6,
-                    }}
-                  >
+                  <div className="onboarding-actions">
                     <button
                       type="button"
                       onClick={() => setTenantOnboardingStep(1)}
                       className="btn-interactive"
                       style={{
-                        padding: "12px 18px",
+                        minHeight: 46,
+                        padding: "12px 20px",
                         borderRadius: "var(--radius-pill)",
                         border: "1px solid var(--border-input)",
                         backgroundColor: "var(--bg-card)",
@@ -870,6 +689,7 @@ export default function TenantOnboardingWizard({
                       className="btn-interactive btn-lift"
                       style={{
                         flex: 1,
+                        minHeight: 46,
                         padding: "13px 22px",
                         borderRadius: "var(--radius-pill)",
                         border: "none",
@@ -903,7 +723,7 @@ export default function TenantOnboardingWizard({
                   </div>
                 </form>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
