@@ -22,18 +22,25 @@ class SyncController extends Controller
         $queryStats = [
             'count' => 0,
             'total_ms' => 0,
-            'slowest_ms' => 0,
-            'slowest_sql' => null,
+            'slowest_queries' => [],
         ];
         
         DB::listen(function ($query) use (&$queryStats) {
             $queryStats['count']++;
             $queryStats['total_ms'] += $query->time;
-        
-            if ($query->time > $queryStats['slowest_ms']) {
-                $queryStats['slowest_ms'] = $query->time;
-                $queryStats['slowest_sql'] = $query->sql;
-            }
+            $queryStats['slowest_queries'][] = [
+                'ms' => round($query->time, 2),
+                'sql' => $query->sql,
+            ];
+            usort(
+                $queryStats['slowest_queries'],
+                fn ($a, $b) => $b['ms'] <=> $a['ms']
+            );
+            $queryStats['slowest_queries'] = array_slice(
+                $queryStats['slowest_queries'],
+                0,
+                5
+            );
         });
         
         $bearer = $request->bearerToken();
@@ -194,8 +201,7 @@ class SyncController extends Controller
         Log::info('SYNC database queries', [
             'count' => $queryStats['count'],
             'total_ms' => round($queryStats['total_ms'], 2),
-            'slowest_ms' => round($queryStats['slowest_ms'], 2),
-            'slowest_sql' => $queryStats['slowest_sql'],
+            'slowest_queries' => $queryStats['slowest_queries'],
         ]);
         
         return response()->json([
