@@ -68,7 +68,16 @@ class SyncController extends Controller
 
             if ($isVendor) {
                 $vendorTenant = $tenantCtrl->vendorTenantData((int) $user->id_user, $compact);
-                $vendorMenus = $menuCtrl->vendorMenusData(new Request(), $user, $compact);
+
+                $vendorMenus = $vendorTenant
+                    ? $menuCtrl->vendorMenusData(
+                        new Request(),
+                        $user,
+                        $compact,
+                        (int) $vendorTenant['id_tenant']
+                    )
+                    : collect();
+
                 if (Schema::hasTable('promos') && $vendorTenant) {
                     $vendorPromos = Promo::where('id_tenant', $vendorTenant['id_tenant'])
                         ->orderByDesc('id_promo')
