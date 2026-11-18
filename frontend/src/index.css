@@ -1019,8 +1019,22 @@ html[data-theme="dark"] .floating-cart-btn {
   }
 }
 
-.onboarding-wizard-root {
-  animation: onboardingFadeIn 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+.onboarding-wizard-root .onboarding-body-wrap {
+  animation: onboardingFadeIn 0.34s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade,
+  .animate-slide-up,
+  .animate-slide-left,
+  .animate-modal-zoom,
+  .badge-pop,
+  .onboarding-wizard-root .onboarding-body-wrap,
+  .onboarding-next-reveal {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
 
 .onboarding-step-stage {

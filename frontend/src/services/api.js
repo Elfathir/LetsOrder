@@ -103,6 +103,11 @@ function buildQuery(params = {}) {
 export const api = {
   checkHealth: () => request("/health"),
 
+  checkAvailability: (data) =>
+    request("/auth/check-availability", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   register: (data) =>
     request("/auth/register", {
       method: "POST",

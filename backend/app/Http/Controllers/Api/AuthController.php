@@ -17,6 +17,36 @@ use Illuminate\Validation\ValidationException;
 class AuthController extends Controller
 {
     /**
+     * Cek ketersediaan username dan email tanpa menulis ke database.
+     */
+    public function checkAvailability(Request $request)
+    {
+        $validated = $request->validate([
+            'username' => 'required|string|max:50',
+            'email' => 'required|email|max:100',
+        ]);
+
+        $username = strtolower(trim($validated['username']));
+        $email = strtolower(trim($validated['email']));
+
+        $exists = User::whereRaw('LOWER(username) = ?', [$username])
+            ->orWhereRaw('LOWER(email) = ?', [$email])
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Username atau email sudah terdaftar. Silakan gunakan yang lain atau login.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'available' => true,
+        ]);
+    }
+
+    /**
      * Registrasi Customer.
      */
     public function register(Request $request)

@@ -327,9 +327,21 @@ function purgeDummySeedRecords(parsed) {
 
 function saveDb(db) {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+  const content = JSON.stringify(db, null, 2);
   const tmpPath = `${DB_PATH}.tmp`;
-  fs.writeFileSync(tmpPath, JSON.stringify(db, null, 2));
-  fs.renameSync(tmpPath, DB_PATH);
+  try {
+    fs.writeFileSync(tmpPath, content);
+    fs.renameSync(tmpPath, DB_PATH);
+  } catch (err) {
+    if (err?.code === "EPERM" || err?.code === "EBUSY") {
+      fs.writeFileSync(DB_PATH, content);
+      try {
+        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+      } catch {}
+    } else {
+      throw err;
+    }
+  }
 }
 
 function loadDb() {
@@ -881,6 +893,38 @@ async function handleApiRequest(req, res) {
         token_type: "Bearer",
         user: userPayload,
       },
+    });
+  }
+
+  if (pathname === "/auth/check-availability" && method === "POST") {
+    if (!checkRateLimit(req, res, "auth_check", 30, 60_000)) return;
+    const body = await parseBody(req);
+    if (body.__tooLarge) {
+      return sendJson(req, res, 413, { success: false, message: "Ukuran payload melebihi batas." });
+    }
+    const username = String(body.username || "").trim();
+    const email = String(body.email || "").trim().toLowerCase();
+    if (!username || !isValidEmail(email)) {
+      return sendJson(req, res, 422, {
+        success: false,
+        message: "Username dan format email valid wajib diisi.",
+      });
+    }
+    if (
+      db.users.some(
+        (u) =>
+          u.username.toLowerCase() === username.toLowerCase() ||
+          u.email.toLowerCase() === email
+      )
+    ) {
+      return sendJson(req, res, 422, {
+        success: false,
+        message: "Username atau email sudah terdaftar. Silakan gunakan yang lain atau login.",
+      });
+    }
+    return sendJson(req, res, 200, {
+      success: true,
+      available: true,
     });
   }
 

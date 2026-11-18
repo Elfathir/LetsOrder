@@ -54,6 +54,7 @@ import {
   clearStoredSession,
 } from "./services/api";
 import TenantOnboardingWizard from "./components/TenantOnboardingWizard.jsx";
+import { applyDocumentTheme } from "./utils/theme.js";
 
 const HERO_SLIDES_BY_LANG = {
   EN: [
@@ -295,23 +296,6 @@ function readStoredTheme() {
   } catch {
     return "light";
   }
-}
-
-export function applyDocumentTheme(nextTheme) {
-  const resolved = nextTheme === "dark" ? "dark" : "light";
-  if (typeof document !== "undefined") {
-    if (document.documentElement.getAttribute("data-theme") !== resolved) {
-      document.documentElement.setAttribute("data-theme", resolved);
-    }
-    const meta = document.querySelector?.('meta[name="theme-color"]');
-    if (meta) {
-      const nextColor = resolved === "dark" ? "#171211" : "#FFFFFF";
-      if (meta.getAttribute("content") !== nextColor) {
-        meta.setAttribute("content", nextColor);
-      }
-    }
-  }
-  return resolved;
 }
 
 let currentThemeState = readStoredTheme();
@@ -1964,19 +1948,40 @@ export default function App() {
         } else {
           setNavTab("home");
         }
-      } else {
-        const regRes = await api.register({
-          username: authForm.username,
-          nama: authForm.nama || authForm.username,
-          email: authForm.email,
-          password: authForm.password,
-          peran: loginRoleTab,
-          nama_tenant: authForm.nama_tenant || authForm.username,
+      } else if (loginRoleTab === "Vendor") {
+        const cleanUsername = String(authForm.username || "").trim();
+        const cleanTenantName = String(
+          authForm.nama_tenant || authForm.nama || cleanUsername
+        ).trim();
+        const cleanEmail = String(authForm.email || "").trim().toLowerCase();
+        const rawPassword = String(authForm.password || "");
+
+        if (!cleanUsername || !cleanTenantName || !cleanEmail || rawPassword.length < 6) {
+          throw new Error(
+            lang === "EN"
+              ? "Please complete username, tenant name, valid email, and password (min. 6 chars)."
+              : "Lengkapi username, nama tenant, email valid, dan kata sandi (min. 6 karakter)."
+          );
+        }
+
+        try {
+          await api.checkAvailability({
+            username: cleanUsername,
+            email: cleanEmail,
+          });
+        } catch (availErr) {
+          if (availErr?.status === 422 || availErr?.status === 409) {
+            throw availErr;
+          }
+        }
+
+        setPendingVendorSignup({
+          username: cleanUsername,
+          nama: cleanTenantName,
+          nama_tenant: cleanTenantName,
+          email: cleanEmail,
+          password: rawPassword,
         });
-        const initialTenantName = (authForm.nama_tenant || authForm.username || "").trim();
-        const initialEmail = (authForm.email || "").trim();
-        const savedUsername = authForm.username;
-        const savedPassword = authForm.password;
         setAuthForm({
           username: "",
           nama: "",
@@ -1985,50 +1990,42 @@ export default function App() {
           nama_tenant: "",
           new_password: "",
         });
-
-        if (loginRoleTab === "Vendor") {
-          let token = regRes?.token || regRes?.data?.token;
-          let user = regRes?.user || regRes?.data?.user || regRes?.data;
-          if (!token || !user?.id_user) {
-            const loginRes = await api.login({
-              login: savedUsername,
-              password: savedPassword,
-            });
-            token = loginRes?.token || loginRes?.data?.token;
-            user = loginRes?.user || loginRes?.data?.user;
-          }
-          if (user) {
-            setStoredSession(token || "session", user);
-            setCurrentUser(user);
-            setIsAuthOpen(false);
-            setOnboardingError("");
-            setOnboardingForm({
-              logo: "",
-              nama_tenant: initialTenantName || user.nama_tenant || user.nama || user.username || "",
-              email: initialEmail || user.email || "",
-              no_telp: user.no_telp || "",
-              booth: "",
-              deskripsi: "",
-              jam_buka: "07:00",
-              jam_tutup: "21:00",
-              status_buka: true,
-              auto_schedule: true,
-            });
-            try {
-              if (user.id_user) {
-                localStorage.setItem(`letsorder_tenant_onboarding_${user.id_user}`, "1");
-              }
-            } catch {
-              // Ignore storage errors
-            }
-            setTenantOnboardingStep(1);
-          }
-        } else {
-          setAuthMode("login");
-          setAuthSuccess(
-            "Pendaftaran berhasil! Silakan login menggunakan username dan password Anda."
-          );
-        }
+        setIsAuthOpen(false);
+        setOnboardingError("");
+        setOnboardingForm({
+          logo: "",
+          nama_tenant: cleanTenantName,
+          email: cleanEmail,
+          no_telp: "",
+          booth: "",
+          deskripsi: "",
+          jam_buka: "07:00",
+          jam_tutup: "21:00",
+          status_buka: true,
+          auto_schedule: true,
+        });
+        setTenantOnboardingStep(1);
+      } else {
+        await api.register({
+          username: authForm.username,
+          nama: authForm.nama || authForm.username,
+          email: authForm.email,
+          password: authForm.password,
+          peran: loginRoleTab,
+          nama_tenant: authForm.nama_tenant || authForm.username,
+        });
+        setAuthForm({
+          username: "",
+          nama: "",
+          password: "",
+          email: "",
+          nama_tenant: "",
+          new_password: "",
+        });
+        setAuthMode("login");
+        setAuthSuccess(
+          "Pendaftaran berhasil! Silakan login menggunakan username dan password Anda."
+        );
       }
     } catch (err) {
       setAuthError(err.message || "Gagal memproses autentikasi.");
@@ -2856,6 +2853,7 @@ export default function App() {
     [tenantsList]
   );
 
+  const [pendingVendorSignup, setPendingVendorSignup] = useState(null);
   const [tenantOnboardingStep, setTenantOnboardingStep] = useState(0);
   const [onboardingError, setOnboardingError] = useState("");
   const [onboardingSaving, setOnboardingSaving] = useState(false);
@@ -2874,7 +2872,9 @@ export default function App() {
 
   useEffect(() => {
     if (!currentUser?.id_user) {
-      setTenantOnboardingStep(0);
+      if (!pendingVendorSignup) {
+        setTenantOnboardingStep(0);
+      }
       return;
     }
     if (currentUser?.peran === "Vendor") {
@@ -2895,7 +2895,7 @@ export default function App() {
     } else {
       setTenantOnboardingStep(0);
     }
-  }, [currentUser]);
+  }, [currentUser, pendingVendorSignup]);
 
   const isOnboardingStep2Valid = useMemo(() => {
     const cleanPhone = String(onboardingForm.no_telp || "").replace(/\D/g, "");
@@ -2924,8 +2924,41 @@ export default function App() {
       const cleanBooth = onboardingForm.booth.trim();
       const cleanDesc = onboardingForm.deskripsi.trim();
 
+      let activeUser = currentUser;
+      let activeToken = localStorage.getItem("letsorder_auth_token") || "";
+
+      if (pendingVendorSignup && !activeUser?.id_user) {
+        const regRes = await api.register({
+          username: pendingVendorSignup.username,
+          nama: cleanName || pendingVendorSignup.nama,
+          email: cleanEmail || pendingVendorSignup.email,
+          password: pendingVendorSignup.password,
+          peran: "Vendor",
+          nama_tenant: cleanName || pendingVendorSignup.nama_tenant,
+        });
+        activeToken = regRes?.token || regRes?.data?.token || "";
+        activeUser = regRes?.user || regRes?.data?.user || regRes?.data || null;
+        if (!activeToken || !activeUser?.id_user) {
+          const loginRes = await api.login({
+            login: pendingVendorSignup.username,
+            password: pendingVendorSignup.password,
+          });
+          activeToken = loginRes?.token || loginRes?.data?.token || "";
+          activeUser = loginRes?.user || loginRes?.data?.user || activeUser;
+        }
+        if (!activeToken || !activeUser) {
+          throw new Error(
+            lang === "EN"
+              ? "Failed to create tenant account. Please try again."
+              : "Gagal membuat akun tenant. Silakan coba lagi."
+          );
+        }
+        setStoredSession(activeToken, activeUser);
+        setPendingVendorSignup(null);
+      }
+
       const profileRes = await api.updateProfile({
-        nama: currentUser?.nama || cleanName,
+        nama: activeUser?.nama || cleanName,
         email: cleanEmail,
         no_telp: cleanPhone,
         nama_tenant: cleanName,
@@ -2950,30 +2983,30 @@ export default function App() {
       }
 
       const updatedUser = {
-        ...(currentUser || {}),
+        ...(activeUser || {}),
         ...(profileRes?.user || {}),
         nama_tenant: cleanName,
         email: cleanEmail,
         no_telp: cleanPhone,
         avatar: onboardingForm.logo,
       };
+      setStoredSession(activeToken || localStorage.getItem("letsorder_auth_token") || "session", updatedUser);
       setCurrentUser(updatedUser);
-      setStoredSession(localStorage.getItem("letsorder_auth_token") || "session", updatedUser);
 
       try {
-        if (currentUser?.id_user) {
-          localStorage.removeItem(`letsorder_tenant_onboarding_${currentUser.id_user}`);
+        if (updatedUser?.id_user) {
+          localStorage.removeItem(`letsorder_tenant_onboarding_${updatedUser.id_user}`);
         }
       } catch {
         // Ignore storage errors
       }
 
       setTenantOnboardingStep(0);
-      setVendorTab("dashboard");
+      setTenantNavTab("dashboard");
       notify(
         lang === "EN"
           ? "Your tenant store is now live! Welcome to your Dashboard."
-          : "Toko tenant Anda berhasil diluncurkan! Selamat datang di Dashboard.",
+          : "Toko tenant Anda berhasil diluncurkan! Selamat datang di Dasbor.",
         "success"
       );
       await syncFromApi();
@@ -10824,7 +10857,7 @@ export default function App() {
         </>
       )}
 
-      {(!currentUser || isAuthOpen) && (
+      {(!currentUser || isAuthOpen) && tenantOnboardingStep === 0 && (
         <div
           style={{
             position: "fixed",
@@ -10836,9 +10869,9 @@ export default function App() {
             alignItems: "center",
             justifyContent: "center",
             padding: "16px 20px",
-            overflow: "hidden",
+            overflowY: "auto",
+            overflowX: "hidden",
           }}
-          className="animate-fade"
         >
           <div className="auth-header-controls">
             <button
@@ -11674,7 +11707,7 @@ export default function App() {
         </div>
       )}
 
-      {tenantOnboardingStep > 0 && portalMode === "tenant" && (
+      {tenantOnboardingStep > 0 && (pendingVendorSignup || portalMode === "tenant") && (
         <TenantOnboardingWizard
           lang={lang}
           t={t}
@@ -11699,9 +11732,26 @@ export default function App() {
             } catch {
               // Ignore storage errors
             }
-            clearStoredSession();
-            setCurrentUser(null);
-            setMyTenantInfo(null);
+            const restoredUsername =
+              pendingVendorSignup?.username || currentUser?.username || "";
+            const restoredTenantName =
+              onboardingForm.nama_tenant ||
+              pendingVendorSignup?.nama_tenant ||
+              currentUser?.nama_tenant ||
+              "";
+            const restoredEmail =
+              onboardingForm.email ||
+              pendingVendorSignup?.email ||
+              currentUser?.email ||
+              "";
+            const restoredPassword = pendingVendorSignup?.password || "";
+
+            if (currentUser) {
+              clearStoredSession();
+              setCurrentUser(null);
+              setMyTenantInfo(null);
+            }
+            setPendingVendorSignup(null);
             setTenantOnboardingStep(0);
             setOnboardingError("");
             setLoginRoleTab("Vendor");
@@ -11709,11 +11759,11 @@ export default function App() {
             setAuthError("");
             setAuthSuccess("");
             setAuthForm({
-              username: currentUser?.username || "",
-              nama: onboardingForm.nama_tenant || currentUser?.nama_tenant || "",
-              password: "",
-              email: onboardingForm.email || currentUser?.email || "",
-              nama_tenant: onboardingForm.nama_tenant || currentUser?.nama_tenant || "",
+              username: restoredUsername,
+              nama: restoredTenantName,
+              password: restoredPassword,
+              email: restoredEmail,
+              nama_tenant: restoredTenantName,
               new_password: "",
             });
             setIsAuthOpen(true);
