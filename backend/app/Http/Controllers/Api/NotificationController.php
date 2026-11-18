@@ -15,7 +15,14 @@ class NotificationController extends Controller
     {
         $user = $request->user();
 
-        $query = Notification::with('order.tenant')
+        $query = Notification::query()
+            ->select([
+                'id_notifikasi',
+                'id_user',
+                'id_pesanan',
+                'pesan',
+                'status_baca',
+            ])
             ->where('id_user', $user->id_user);
 
         if ($request->has('status_baca') && $request->query('status_baca') !== '') {
