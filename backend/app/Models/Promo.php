@@ -27,6 +27,7 @@ class Promo extends Model
         'tipe',
         'diskon',
         'minimal_belanja',
+        'batas_per_user',
         'aktif',
     ];
 
@@ -35,6 +36,7 @@ class Promo extends Model
         return [
             'diskon' => 'integer',
             'minimal_belanja' => 'integer',
+            'batas_per_user' => 'integer',
             'aktif' => 'boolean',
         ];
     }

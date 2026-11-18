@@ -147,6 +147,7 @@ class OrderController extends Controller
 
         $promoCode = strtoupper(trim((string) ($validated['promo_code'] ?? '')));
         $appliedDiscount = 0;
+        PromoController::ensureSchema();
         if ($promoCode !== '' && Schema::hasTable('promos')) {
             $customPromo = Promo::where('kode_promo', $promoCode)
                 ->where('aktif', true)
@@ -154,12 +155,24 @@ class OrderController extends Controller
                     $q->whereNull('id_tenant')->orWhere('id_tenant', $idTenant);
                 })
                 ->first();
-            if ($customPromo && $totalHarga >= (int) $customPromo->minimal_belanja) {
-                if ($customPromo->tipe === 'percentage') {
-                    $pct = $customPromo->diskon > 1 ? min(100, $customPromo->diskon) / 100 : $customPromo->diskon;
-                    $appliedDiscount = (int) round($totalHarga * $pct);
-                } else {
-                    $appliedDiscount = (int) $customPromo->diskon;
+            if ($customPromo) {
+                $limitPerUser = (int) ($customPromo->batas_per_user ?? 1);
+                if ($limitPerUser > 0) {
+                    $usedCount = PromoController::countUserPromoUsage((int) $user->id_user, $promoCode);
+                    if ($usedCount >= $limitPerUser) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Voucher '{$promoCode}' sudah mencapai batas pemakaian ({$limitPerUser}x) untuk akun Anda.",
+                        ], 422);
+                    }
+                }
+                if ($totalHarga >= (int) $customPromo->minimal_belanja) {
+                    if ($customPromo->tipe === 'percentage') {
+                        $pct = $customPromo->diskon > 1 ? min(100, $customPromo->diskon) / 100 : $customPromo->diskon;
+                        $appliedDiscount = (int) round($totalHarga * $pct);
+                    } else {
+                        $appliedDiscount = (int) $customPromo->diskon;
+                    }
                 }
             }
         }
@@ -188,18 +201,21 @@ class OrderController extends Controller
 
         $waktuPesan = now();
 
+        $appliedPromoCode = $appliedDiscount > 0 ? $promoCode : null;
+
         $order = DB::transaction(function () use (
             $user,
             $tenant,
             $cart,
             $cartItems,
             $totalHarga,
+            $appliedPromoCode,
             $orderNote,
             $waktuPesan
         ) {
             $nomorAntrean = $this->generateQueueNumber($tenant->id_tenant);
 
-            $newOrder = Order::create([
+            $orderCreateData = [
                 'id_user' => $user->id_user,
                 'id_tenant' => $tenant->id_tenant,
                 'nomor_antrean' => $nomorAntrean,
@@ -207,7 +223,12 @@ class OrderController extends Controller
                 'total_harga' => $totalHarga,
                 'catatan' => $orderNote,
                 'waktu_pesan' => $waktuPesan,
-            ]);
+            ];
+            if (Schema::hasColumn('orders', 'promo_code')) {
+                $orderCreateData['promo_code'] = $appliedPromoCode;
+            }
+
+            $newOrder = Order::create($orderCreateData);
 
             foreach ($cartItems as $item) {
                 $subtotal = (int) $item->menu->harga * (int) $item->jumlah;
@@ -759,6 +780,7 @@ class OrderController extends Controller
             'chat_count' => $chatCount,
             'last_chat' => $lastChat,
             'total_harga' => (int) $order->total_harga,
+            'promo_code' => $order->promo_code ?? null,
             'catatan' => $order->catatan,
             'waktu_pesan' => $order->waktu_pesan?->format('Y-m-d H:i:s'),
             'user' => $order->relationLoaded('user') ? $order->user : null,

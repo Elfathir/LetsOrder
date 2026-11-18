@@ -1545,13 +1545,42 @@ async function handleApiRequest(req, res) {
 
   if (pathname === "/promos" && method === "GET") {
     const idTenantParam = urlObj.searchParams.get("id_tenant");
-    const list = (db.promos || []).filter((p) => {
-      if (!p.aktif) return false;
-      if (idTenantParam) {
-        return !p.id_tenant || Number(p.id_tenant) === Number(idTenantParam);
-      }
-      return true;
-    });
+    const authUser = getAuthUser(req);
+    const list = (db.promos || [])
+      .filter((p) => {
+        if (!p.aktif) return false;
+        if (idTenantParam && p.id_tenant && Number(p.id_tenant) !== Number(idTenantParam)) {
+          return false;
+        }
+        const limit = Number(p.batas_per_user ?? 1);
+        if (authUser && limit > 0) {
+          const used = (db.orders || []).filter(
+            (o) =>
+              Number(o.id_user) === Number(authUser.id_user) &&
+              String(o.promo_code || "").toUpperCase() === String(p.kode_promo || "").toUpperCase() &&
+              o.status_pesanan !== "Dibatalkan"
+          ).length;
+          if (used >= limit) return false;
+        }
+        return true;
+      })
+      .map((p) => {
+        const limit = Number(p.batas_per_user ?? 1);
+        const used = authUser
+          ? (db.orders || []).filter(
+              (o) =>
+                Number(o.id_user) === Number(authUser.id_user) &&
+                String(o.promo_code || "").toUpperCase() === String(p.kode_promo || "").toUpperCase() &&
+                o.status_pesanan !== "Dibatalkan"
+            ).length
+          : 0;
+        return {
+          ...p,
+          batas_per_user: limit,
+          used_by_user: used,
+          sisa_klaim: limit > 0 ? Math.max(0, limit - used) : null,
+        };
+      });
     return sendJson(req, res, 200, {
       success: true,
       data: list,
@@ -2042,6 +2071,32 @@ async function handleApiRequest(req, res) {
     }
 
     const subtotal = details.reduce((s, d) => s + d.subtotal, 0);
+    const reqPromoCode = String(body.promo_code || "").trim().toUpperCase();
+    if (reqPromoCode) {
+      const matchedCustomPromo = (db.promos || []).find(
+        (p) =>
+          String(p.kode_promo || "").trim().toUpperCase() === reqPromoCode &&
+          Boolean(p.aktif) &&
+          (!p.id_tenant || Number(p.id_tenant) === Number(targetTenantId))
+      );
+      if (matchedCustomPromo) {
+        const limitPerUser = Number(matchedCustomPromo.batas_per_user ?? 1);
+        if (limitPerUser > 0) {
+          const usedCount = (db.orders || []).filter(
+            (o) =>
+              Number(o.id_user) === Number(user.id_user) &&
+              String(o.promo_code || "").toUpperCase() === reqPromoCode &&
+              o.status_pesanan !== "Dibatalkan"
+          ).length;
+          if (usedCount >= limitPerUser) {
+            return sendJson(req, res, 422, {
+              success: false,
+              message: `Voucher '${reqPromoCode}' sudah mencapai batas pemakaian (${limitPerUser}x) untuk akun Anda.`,
+            });
+          }
+        }
+      }
+    }
     const promoDiscount = calculateServerPromoDiscount(body.promo_code, subtotal, targetTenantId);
     const totalHarga = Math.max(0, subtotal - promoDiscount);
 
@@ -2577,6 +2632,10 @@ async function handleApiRequest(req, res) {
     const tipe = body.tipe === "percentage" ? "percentage" : "fixed";
     const diskon = Math.max(1, Number(body.diskon || body.discount || 0));
     const minimalBelanja = Math.max(0, Number(body.minimal_belanja || body.minSpend || 0));
+    const batasPerUser =
+      body.batas_per_user !== undefined && body.batas_per_user !== ""
+        ? Math.max(0, Math.min(1000, Math.floor(Number(body.batas_per_user))))
+        : 1;
 
     if (!kodePromo || !judul || diskon <= 0) {
       return sendJson(req, res, 422, {
@@ -2609,6 +2668,7 @@ async function handleApiRequest(req, res) {
       tipe,
       diskon,
       minimal_belanja: minimalBelanja,
+      batas_per_user: batasPerUser,
       aktif: body.aktif !== undefined ? Boolean(body.aktif) : true,
     };
     db.promos.unshift(newPromo);
@@ -2638,6 +2698,9 @@ async function handleApiRequest(req, res) {
     if (body.aktif !== undefined) promo.aktif = Boolean(body.aktif);
     if (body.judul !== undefined) promo.judul = String(body.judul).trim().slice(0, 100);
     if (body.minimal_belanja !== undefined) promo.minimal_belanja = Math.max(0, Number(body.minimal_belanja));
+    if (body.batas_per_user !== undefined) {
+      promo.batas_per_user = Math.max(0, Math.min(1000, Math.floor(Number(body.batas_per_user))));
+    }
     saveDb(db);
     return sendJson(req, res, 200, { success: true, data: promo });
   }

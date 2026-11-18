@@ -930,6 +930,7 @@ export default function App() {
     tipe: "fixed",
     diskon: "",
     minimal_belanja: "0",
+    batas_per_user: "1",
   });
   const [promoFormError, setPromoFormError] = useState("");
   const [tenantMenus, setTenantMenus] = useState([]);
@@ -1083,6 +1084,14 @@ export default function App() {
   });
   const chatListRef = useRef(null);
   const chatFileInputRef = useRef(null);
+  const floatingCartBtnRef = useRef(null);
+  const [flyingParticles, setFlyingParticles] = useState([]);
+  const [cartBumpActive, setCartBumpActive] = useState(false);
+  const cartBumpTimerRef = useRef(null);
+  const knownLastChatIdMapRef = useRef({});
+  const hasSeededChatMapRef = useRef(false);
+  const [incomingChatAlert, setIncomingChatAlert] = useState(null);
+  const incomingChatTimerRef = useRef(null);
   const [profileForm, setProfileForm] = useState({
     nama: "",
     username: "",
@@ -1808,6 +1817,48 @@ export default function App() {
             };
           });
         setIncomingOrders(activeQueue);
+
+        if (currentUser?.id_user && Array.isArray(ordersRes.data)) {
+          const prevMap = knownLastChatIdMapRef.current;
+          let newestIncoming = null;
+          for (const rawOrd of ordersRes.data) {
+            const oid = Number(rawOrd.id_pesanan || 0);
+            const lastMsgId = Number(rawOrd.last_chat?.id_pesan || 0);
+            if (!oid || !lastMsgId) continue;
+            const prevMsgId = Number(prevMap[oid] || 0);
+            if (
+              hasSeededChatMapRef.current &&
+              lastMsgId > prevMsgId &&
+              Number(rawOrd.last_chat?.id_pengirim) !== Number(currentUser.id_user)
+            ) {
+              newestIncoming = {
+                order: {
+                  ...rawOrd,
+                  id_pesanan: oid,
+                  is_paid: true,
+                },
+                senderName: rawOrd.last_chat?.nama_pengirim || (isVendor ? "Pembeli" : "Tenant"),
+                queueCode: rawOrd.nomor_antrean || `#${oid}`,
+                preview:
+                  rawOrd.last_chat?.teks ||
+                  (rawOrd.last_chat?.has_image
+                    ? lang === "EN"
+                      ? "[Sent a photo]"
+                      : "[Mengirim gambar]"
+                    : ""),
+              };
+            }
+            prevMap[oid] = Math.max(prevMsgId, lastMsgId);
+          }
+          hasSeededChatMapRef.current = true;
+          if (newestIncoming && Number(chatOrder?.id_pesanan) !== Number(newestIncoming.order.id_pesanan)) {
+            setIncomingChatAlert(newestIncoming);
+            if (incomingChatTimerRef.current) clearTimeout(incomingChatTimerRef.current);
+            incomingChatTimerRef.current = setTimeout(() => {
+              setIncomingChatAlert(null);
+            }, 7000);
+          }
+        }
       }
     } catch {
       // Keep current state when offline
@@ -2117,33 +2168,68 @@ export default function App() {
 
   const availablePromos = useMemo(() => {
     const normalizedCustom = (publicPromos || [])
-      .filter((p) => Boolean(p.aktif) && (!p.id_tenant || !cartTenantId || Number(p.id_tenant) === Number(cartTenantId)))
+      .filter((p) => {
+        if (!p.aktif) return false;
+        if (p.id_tenant && cartTenantId && Number(p.id_tenant) !== Number(cartTenantId)) {
+          return false;
+        }
+        const code = String(p.kode_promo || "").trim().toUpperCase();
+        const limit = Number(p.batas_per_user ?? 1);
+        if (limit > 0) {
+          const localUses = (ordersHistory || []).filter(
+            (o) =>
+              String(o.promo_code || "").trim().toUpperCase() === code &&
+              o.status_pesanan !== "Dibatalkan" &&
+              o.status !== "Cancelled"
+          ).length;
+          const usedCount = Math.max(Number(p.used_by_user || 0), localUses);
+          if (usedCount >= limit) return false;
+        }
+        return true;
+      })
       .map((p) => {
         const minSpend = Number(p.minimal_belanja || 0);
         const disc = Number(p.diskon || 0);
         const isPct = p.tipe === "percentage";
         const discText = isPct ? `${disc}%` : formatRupiah(disc);
+        const code = String(p.kode_promo || "").toUpperCase();
+        const limit = Number(p.batas_per_user ?? 1);
+        const localUses = (ordersHistory || []).filter(
+          (o) =>
+            String(o.promo_code || "").trim().toUpperCase() === code &&
+            o.status_pesanan !== "Dibatalkan" &&
+            o.status !== "Cancelled"
+        ).length;
+        const usedCount = Math.max(Number(p.used_by_user || 0), localUses);
+        const remaining = limit > 0 ? Math.max(0, limit - usedCount) : null;
         return {
           id_promo: p.id_promo,
           id_tenant: p.id_tenant,
-          code: String(p.kode_promo || "").toUpperCase(),
+          code,
           title: p.judul || `Diskon ${discText}`,
-          subtitle: `${String(p.kode_promo || "").toUpperCase()} · ${minSpend > 0 ? `Min. ${formatRupiah(minSpend)}` : "Tanpa min. belanja"
-            }`,
+          subtitle: `${code} · ${
+            minSpend > 0 ? `Min. ${formatRupiah(minSpend)}` : "Tanpa min. belanja"
+          }${remaining !== null ? ` · Sisa ${remaining}x/akun` : ""}`,
           discount: isPct ? (disc > 1 ? disc / 100 : disc) : disc,
           minSpend,
+          batas_per_user: limit,
+          sisa_klaim: remaining,
           type: isPct ? "percentage" : "fixed",
           isTenantPromo: Boolean(p.id_tenant),
         };
       });
     return [...normalizedCustom, ...PROMOS];
-  }, [publicPromos, cartTenantId]);
+  }, [publicPromos, cartTenantId, ordersHistory]);
 
   useEffect(() => {
     if (selectedPromo?.id_tenant && cartTenantId && Number(selectedPromo.id_tenant) !== Number(cartTenantId)) {
       setSelectedPromo(null);
+      return;
     }
-  }, [selectedPromo, cartTenantId]);
+    if (selectedPromo?.code && !availablePromos.some((p) => p.code === selectedPromo.code)) {
+      setSelectedPromo(null);
+    }
+  }, [selectedPromo, cartTenantId, availablePromos]);
 
   const promoDiscount = useMemo(() => {
     if (!selectedPromo || subtotal < Number(selectedPromo.minSpend || 0)) return 0;
@@ -2178,7 +2264,58 @@ export default function App() {
     []
   );
 
-  const handleAddToCart = async (item, qty = 1) => {
+  const triggerFlyToCartAnimation = useCallback((item, sourceEvent = null) => {
+    if (typeof window === "undefined") return;
+    const vw = window.innerWidth || 390;
+    const vh = window.innerHeight || 844;
+    let startX = Math.round(vw * 0.5);
+    let startY = Math.round(vh * 0.55);
+
+    const srcEl =
+      sourceEvent?.currentTarget ||
+      sourceEvent?.target ||
+      (typeof document !== "undefined"
+        ? document.querySelector(".food-detail-sheet button.btn-lift")
+        : null);
+    if (srcEl && typeof srcEl.getBoundingClientRect === "function") {
+      const rect = srcEl.getBoundingClientRect();
+      if (rect && (rect.width > 0 || rect.height > 0)) {
+        startX = Math.round(rect.left + rect.width / 2);
+        startY = Math.round(rect.top + rect.height / 2);
+      }
+    }
+
+    let endX = vw <= 768 ? vw - 56 : vw - 76;
+    let endY = vw <= 768 ? vh - 96 : vh - 48;
+    const cartEl = floatingCartBtnRef.current;
+    if (cartEl && typeof cartEl.getBoundingClientRect === "function") {
+      const cRect = cartEl.getBoundingClientRect();
+      if (cRect && (cRect.width > 0 || cRect.height > 0)) {
+        endX = Math.round(cRect.left + cRect.width / 2);
+        endY = Math.round(cRect.top + cRect.height / 2);
+      }
+    }
+
+    const pid = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    setFlyingParticles((prev) => [
+      ...prev,
+      { id: pid, startX, startY, endX, endY, img: item?.gambar || "" },
+    ]);
+
+    setTimeout(() => {
+      setCartBumpActive(true);
+      if (cartBumpTimerRef.current) clearTimeout(cartBumpTimerRef.current);
+      cartBumpTimerRef.current = setTimeout(() => {
+        setCartBumpActive(false);
+      }, 540);
+    }, 440);
+
+    setTimeout(() => {
+      setFlyingParticles((prev) => prev.filter((p) => p.id !== pid));
+    }, 640);
+  }, []);
+
+  const handleAddToCart = async (item, qty = 1, sourceEvent = null) => {
     if (!currentUser) {
       setIsAuthOpen(true);
       notify(
@@ -2234,6 +2371,7 @@ export default function App() {
         });
       }
       setCheckoutError("");
+      triggerFlyToCartAnimation(item, sourceEvent);
       notify(
         lang === "EN"
           ? `Added ${item.nama_menu} to cart`
@@ -2692,10 +2830,11 @@ export default function App() {
         tipe: promoForm.tipe,
         diskon: Number(String(promoForm.diskon || "0").replace(/\D/g, "")),
         minimal_belanja: Number(String(promoForm.minimal_belanja || "0").replace(/\D/g, "")),
+        batas_per_user: Math.max(1, Number(String(promoForm.batas_per_user || "1").replace(/\D/g, "")) || 1),
         aktif: true,
       });
       setIsPromoModalOpen(false);
-      setPromoForm({ kode_promo: "", judul: "", tipe: "fixed", diskon: "", minimal_belanja: "0" });
+      setPromoForm({ kode_promo: "", judul: "", tipe: "fixed", diskon: "", minimal_belanja: "0", batas_per_user: "1" });
       notify(
         lang === "EN" ? "Tenant promo created!" : "Promo khusus tenant berhasil dibuat!",
         "success"
@@ -3294,46 +3433,79 @@ export default function App() {
                       </div>
 
                       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                        <button
-                          onClick={() => {
-                            const next = !isStoreOpen;
-                            setIsStoreOpen(next);
-                            api.updateVendorTenant({ status_buka: next }).then(() => syncFromApi()).catch(() => { });
-                          }}
-                          className="btn-interactive"
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 8,
-                            padding: "9px 18px",
-                            borderRadius: "var(--radius-pill)",
-                            border: "1px solid var(--border-light)",
-                            backgroundColor: "var(--bg-card)",
-                            boxShadow: "var(--shadow-sm)",
-                            cursor: "pointer",
-                            fontSize: 13,
-                          }}
-                        >
-                          <span
-                            style={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: "50%",
-                              backgroundColor: isTenantOpenAt(myTenantInfo || { status_buka: isStoreOpen }, liveClock)
-                                ? "var(--orange)"
-                                : "#9CA3AF",
-                            }}
-                          />
-                          <span style={{ fontWeight: 800, color: "var(--maroon)" }}>
-                            {isTenantOpenAt(myTenantInfo || { status_buka: isStoreOpen }, liveClock)
-                              ? t.storeOpen
-                              : t.storeClosed}
-                          </span>
-                          <span className="tabular" style={{ color: "var(--text-muted)", fontWeight: 600 }}>
-                            · <LiveClockText /> · {lang === "EN" ? "Until" : "s/d"}{" "}
-                            {myTenantInfo?.jam_tutup || "21:00"}
-                          </span>
-                        </button>
+                        {(() => {
+                          const storeEffectiveOpen = isTenantOpenAt(myTenantInfo || { status_buka: isStoreOpen }, liveClock);
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = !isStoreOpen;
+                                setIsStoreOpen(next);
+                                api.updateVendorTenant({ status_buka: next }).then(() => syncFromApi()).catch(() => { });
+                              }}
+                              className="btn-interactive btn-lift"
+                              title={
+                                storeEffectiveOpen
+                                  ? lang === "EN"
+                                    ? "Click to close store"
+                                    : "Klik untuk menutup kantin"
+                                  : lang === "EN"
+                                    ? "Click to open store"
+                                    : "Klik untuk membuka kantin"
+                              }
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 10,
+                                padding: "8px 16px 8px 10px",
+                                borderRadius: "var(--radius-pill)",
+                                border: storeEffectiveOpen ? "2px solid #22C55E" : "2px solid #F87171",
+                                background: storeEffectiveOpen
+                                  ? "linear-gradient(135deg, #16A34A 0%, #15803D 100%)"
+                                  : "linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)",
+                                color: "#FFFFFF",
+                                boxShadow: storeEffectiveOpen
+                                  ? "0 6px 18px rgba(22, 163, 74, 0.34)"
+                                  : "0 6px 18px rgba(220, 38, 38, 0.3)",
+                                cursor: "pointer",
+                                fontSize: 13,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: 36,
+                                  height: 20,
+                                  borderRadius: 999,
+                                  backgroundColor: "rgba(255, 255, 255, 0.28)",
+                                  padding: 2,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  transition: "background-color 0.2s ease",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    width: 16,
+                                    height: 16,
+                                    borderRadius: "50%",
+                                    backgroundColor: "#FFFFFF",
+                                    boxShadow: "0 1px 4px rgba(0, 0, 0, 0.25)",
+                                    transform: storeEffectiveOpen ? "translateX(16px)" : "translateX(0px)",
+                                    transition: "transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
+                                  }}
+                                />
+                              </span>
+                              <span style={{ fontWeight: 900, color: "#FFFFFF", letterSpacing: "0.01em" }}>
+                                {storeEffectiveOpen ? t.storeOpen : t.storeClosed}
+                              </span>
+                              <span className="tabular" style={{ color: "rgba(255, 255, 255, 0.9)", fontWeight: 700, fontSize: 12 }}>
+                                · <LiveClockText /> · {lang === "EN" ? "Until" : "s/d"}{" "}
+                                {myTenantInfo?.jam_tutup || "21:00"}
+                              </span>
+                            </button>
+                          );
+                        })()}
 
                         <div
                           style={{
@@ -3697,6 +3869,39 @@ export default function App() {
                                   <div>
                                     <div
                                       style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 5,
+                                        marginBottom: 4,
+                                        fontSize: 10.5,
+                                        fontWeight: 800,
+                                        letterSpacing: "0.06em",
+                                        textTransform: "uppercase",
+                                        color: isReady ? "#15803D" : isPrep ? "#D97706" : "var(--text-muted)",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          width: 6,
+                                          height: 6,
+                                          borderRadius: "50%",
+                                          backgroundColor: isReady ? "#16A34A" : isPrep ? "#F59E0B" : "#9CA3AF",
+                                        }}
+                                      />
+                                      <span>
+                                        {lang === "EN"
+                                          ? `Status: ${ord.status}`
+                                          : `Status: ${
+                                              isReady
+                                                ? "Siap Diambil"
+                                                : isPrep
+                                                  ? "Sedang Diproses"
+                                                  : "Menunggu Pembayaran"
+                                            }`}
+                                      </span>
+                                    </div>
+                                    <div
+                                      style={{
                                         fontSize: 15,
                                         fontWeight: 800,
                                         color: "var(--maroon)",
@@ -3719,34 +3924,7 @@ export default function App() {
                                   </div>
                                 </div>
 
-                                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                  <span
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: 6,
-                                      padding: "5px 12px",
-                                      borderRadius: "var(--radius-pill)",
-                                      backgroundColor: isReady
-                                        ? "var(--orange)"
-                                        : "var(--bg-cream)",
-                                      color: isReady ? "var(--on-orange-text)" : "var(--maroon)",
-                                      fontSize: 12,
-                                      fontWeight: 700,
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        width: 6,
-                                        height: 6,
-                                        borderRadius: "50%",
-                                        backgroundColor: isReady
-                                          ? "var(--on-orange-text)"
-                                          : "var(--orange)",
-                                      }}
-                                    />
-                                    <span>{ord.status}</span>
-                                  </span>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                                   {isAwaiting && (
                                     <button
                                       onClick={() => {
@@ -3790,16 +3968,17 @@ export default function App() {
                                   {isReady && (
                                     <button
                                       onClick={() => handleVendorAdvanceOrder(ord.id, "Selesai")}
-                                      className="btn-interactive"
+                                      className="btn-interactive btn-lift"
                                       style={{
-                                        padding: "8px 16px",
+                                        padding: "8px 18px",
                                         borderRadius: "var(--radius-pill)",
-                                        border: "1px solid var(--border-input)",
-                                        backgroundColor: "var(--bg-card)",
-                                        color: "var(--maroon)",
+                                        border: "none",
+                                        backgroundColor: "#16A34A",
+                                        color: "#FFFFFF",
                                         fontSize: 12,
-                                        fontWeight: 700,
+                                        fontWeight: 800,
                                         cursor: "pointer",
+                                        boxShadow: "0 4px 12px rgba(22, 163, 74, 0.28)",
                                       }}
                                     >
                                       {lang === "EN" ? "Complete pickup" : "Selesaikan"}
@@ -4123,6 +4302,15 @@ export default function App() {
                                       {Number(vp.minimal_belanja) > 0
                                         ? ` · Min. ${formatRupiah(vp.minimal_belanja)}`
                                         : ""}
+                                      {` · ${
+                                        Number(vp.batas_per_user ?? 1) > 0
+                                          ? lang === "EN"
+                                            ? `Max ${vp.batas_per_user ?? 1}x/account`
+                                            : `Maks. ${vp.batas_per_user ?? 1}x/akun`
+                                          : lang === "EN"
+                                            ? "Unlimited"
+                                            : "Tanpa batas"
+                                      }`}
                                     </div>
                                   </div>
                                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -4818,6 +5006,39 @@ export default function App() {
                                   {ord.code}
                                 </div>
                                 <div>
+                                  <div
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 5,
+                                      marginBottom: 4,
+                                      fontSize: 10.5,
+                                      fontWeight: 800,
+                                      letterSpacing: "0.06em",
+                                      textTransform: "uppercase",
+                                      color: isReady ? "#15803D" : isPrep ? "#D97706" : "var(--text-muted)",
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        width: 6,
+                                        height: 6,
+                                        borderRadius: "50%",
+                                        backgroundColor: isReady ? "#16A34A" : isPrep ? "#F59E0B" : "#9CA3AF",
+                                      }}
+                                    />
+                                    <span>
+                                      {lang === "EN"
+                                        ? `Status: ${ord.status}`
+                                        : `Status: ${
+                                            isReady
+                                              ? "Siap Diambil"
+                                              : isPrep
+                                                ? "Sedang Diproses"
+                                                : "Menunggu Pembayaran"
+                                          }`}
+                                    </span>
+                                  </div>
                                   <div style={{ fontSize: 15, fontWeight: 800, color: "var(--maroon)", marginBottom: 2 }}>
                                     {ord.items_breakdown || ord.item_name}
                                   </div>
@@ -4833,23 +5054,7 @@ export default function App() {
                                 </div>
                               </div>
 
-                              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                <span
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 6,
-                                    padding: "5px 12px",
-                                    borderRadius: "var(--radius-pill)",
-                                    backgroundColor: isReady ? "var(--orange)" : "var(--bg-cream)",
-                                    color: isReady ? "var(--on-orange-text)" : "var(--maroon)",
-                                    fontSize: 12,
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  {ord.status}
-                                </span>
-
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                                 {isAwaiting && (
                                   <button
                                     onClick={() => handleVendorAdvanceOrder(ord.id, "Sedang Diproses", true)}
@@ -4891,16 +5096,17 @@ export default function App() {
                                 {isReady && (
                                   <button
                                     onClick={() => handleVendorAdvanceOrder(ord.id, "Selesai")}
-                                    className="btn-interactive"
+                                    className="btn-interactive btn-lift"
                                     style={{
-                                      padding: "8px 16px",
+                                      padding: "8px 18px",
                                       borderRadius: "var(--radius-pill)",
-                                      border: "1px solid var(--border-input)",
-                                      backgroundColor: "var(--bg-card)",
-                                      color: "var(--maroon)",
+                                      border: "none",
+                                      backgroundColor: "#16A34A",
+                                      color: "#FFFFFF",
                                       fontSize: 12,
-                                      fontWeight: 700,
+                                      fontWeight: 800,
                                       cursor: "pointer",
+                                      boxShadow: "0 4px 12px rgba(22, 163, 74, 0.28)",
                                     }}
                                   >
                                     {lang === "EN" ? "Complete pickup" : "Selesaikan"}
@@ -6814,7 +7020,19 @@ export default function App() {
                               <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
                                 {t.pickPromo}
                               </p>
-                              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
+                              <div
+                                className="voucher-scroll-list"
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 10,
+                                  marginBottom: 24,
+                                  maxHeight: 220,
+                                  overflowY: "auto",
+                                  paddingRight: 4,
+                                  overscrollBehavior: "contain",
+                                }}
+                              >
                                 <div
                                   onClick={() => setSelectedPromo(null)}
                                   style={{
@@ -10049,8 +10267,8 @@ export default function App() {
                       </div>
 
                       <button
-                        onClick={async () => {
-                          const ok = await handleAddToCart(activeMenuDetail, detailQuantity);
+                        onClick={async (e) => {
+                          const ok = await handleAddToCart(activeMenuDetail, detailQuantity, e);
                           if (ok) closeFoodDetail();
                         }}
                         className="btn-interactive btn-lift"
@@ -11337,18 +11555,40 @@ export default function App() {
                   />
                 </div>
               </div>
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
-                  {lang === "EN" ? "Minimum Spend (Rp)" : "Minimal Belanja (Rp)"}
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={promoForm.minimal_belanja}
-                  onChange={(e) => setPromoForm((p) => ({ ...p, minimal_belanja: e.target.value }))}
-                  placeholder="0"
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
-                />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                    {lang === "EN" ? "Minimum Spend (Rp)" : "Minimal Belanja (Rp)"}
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={promoForm.minimal_belanja}
+                    onChange={(e) => setPromoForm((p) => ({ ...p, minimal_belanja: e.target.value }))}
+                    placeholder="0"
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                    {lang === "EN" ? "Max Vouchers / Account" : "Jatah Voucher / Akun"}
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    required
+                    value={promoForm.batas_per_user}
+                    onChange={(e) => setPromoForm((p) => ({ ...p, batas_per_user: e.target.value }))}
+                    placeholder="1"
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                  />
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4, marginTop: -4 }}>
+                {lang === "EN"
+                  ? "Once a customer uses this voucher up to the per-account limit, it automatically disappears from their voucher list."
+                  : "Jika pembeli sudah memakai voucher sesuai batas per akun (misal 1x), voucher otomatis hilang dari akun pembeli tersebut."}
               </div>
               <button
                 type="submit"
@@ -11967,6 +12207,196 @@ export default function App() {
               objectFit: "contain",
             }}
           />
+        </div>
+      )}
+
+      {flyingParticles.map((pt) => (
+        <div
+          key={pt.id}
+          className="fly-cart-particle"
+          style={{
+            "--start-x": `${pt.startX}px`,
+            "--start-y": `${pt.startY}px`,
+            "--end-x": `${pt.endX}px`,
+            "--end-y": `${pt.endY}px`,
+          }}
+        >
+          <ShoppingBag size={17} strokeWidth={2.5} />
+        </div>
+      ))}
+
+      {currentUser &&
+        portalMode === "customer" &&
+        navTab !== "orders" &&
+        (totalCartCount > 0 || flyingParticles.length > 0 || cartBumpActive) && (
+          <button
+            ref={floatingCartBtnRef}
+            type="button"
+            data-testid="floating-cart-btn"
+            onClick={() => {
+              setNavTab("orders");
+              setActiveTenantView(null);
+              closeFoodDetail();
+              if (typeof window !== "undefined" && window.scrollTo) {
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }
+            }}
+            className={`floating-cart-btn${cartBumpActive ? " cart-bump-anim" : ""}`}
+            aria-label={lang === "EN" ? "View cart and checkout" : "Lihat keranjang dan pesanan"}
+          >
+            <div
+              style={{
+                position: "relative",
+                width: 34,
+                height: 34,
+                borderRadius: "50%",
+                backgroundColor: "var(--orange)",
+                color: "#FFFFFF",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <ShoppingBag size={18} strokeWidth={2.5} />
+              {totalCartCount > 0 && (
+                <span
+                  key={totalCartCount}
+                  className="badge-pop"
+                  style={{
+                    position: "absolute",
+                    top: -5,
+                    right: -6,
+                    minWidth: 19,
+                    height: 19,
+                    padding: "0 5px",
+                    borderRadius: 999,
+                    backgroundColor: "#C84336",
+                    color: "#FFFFFF",
+                    fontSize: 10.5,
+                    fontWeight: 900,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "2px solid #FFFFFF",
+                  }}
+                >
+                  {totalCartCount}
+                </span>
+              )}
+            </div>
+            <div style={{ textAlign: "left", lineHeight: 1.2 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, opacity: 0.85 }}>
+                {lang === "EN" ? `${totalCartCount} in cart` : `${totalCartCount} di keranjang`}
+              </div>
+              <div className="tabular" style={{ fontSize: 13.5, fontWeight: 900 }}>
+                {formatRupiah(subtotal)}
+              </div>
+            </div>
+            <ArrowRight size={15} style={{ marginLeft: 2, opacity: 0.9 }} />
+          </button>
+        )}
+
+      {incomingChatAlert && (
+        <div
+          role="alert"
+          data-testid="incoming-chat-banner"
+          style={{
+            position: "fixed",
+            top: 86,
+            right: 20,
+            zIndex: 2450,
+            width: "min(360px, calc(100vw - 32px))",
+            backgroundColor: "var(--bg-card)",
+            borderRadius: "var(--radius-lg)",
+            border: "1.5px solid var(--orange)",
+            boxShadow: "0 14px 34px rgba(82, 42, 40, 0.22)",
+            padding: "14px 16px",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 12,
+          }}
+        >
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 12,
+              backgroundColor: "var(--orange-soft)",
+              color: "var(--orange-dark)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <MessageCircle size={19} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: "var(--orange-dark)", marginBottom: 2 }}>
+              {lang === "EN"
+                ? `New Order Chat · ${incomingChatAlert.queueCode}`
+                : `Pesan Chat Baru · ${incomingChatAlert.queueCode}`}
+            </div>
+            <div
+              style={{
+                fontSize: 13.5,
+                fontWeight: 800,
+                color: "var(--maroon)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {incomingChatAlert.senderName}
+            </div>
+            <div
+              style={{
+                fontSize: 12.5,
+                color: "var(--text-muted)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                marginBottom: 8,
+              }}
+            >
+              {incomingChatAlert.preview}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const targetOrd = incomingChatAlert.order;
+                setIncomingChatAlert(null);
+                handleOpenOrderChat(targetOrd);
+              }}
+              className="btn-interactive"
+              style={{
+                padding: "5px 12px",
+                borderRadius: "var(--radius-pill)",
+                border: "none",
+                backgroundColor: "var(--orange)",
+                color: "#FFFFFF",
+                fontSize: 11.5,
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              {lang === "EN" ? "Reply Now" : "Balas Chat"}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIncomingChatAlert(null)}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              padding: 2,
+            }}
+          >
+            <X size={15} />
+          </button>
         </div>
       )}
 

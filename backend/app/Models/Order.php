@@ -27,6 +27,7 @@ class Order extends Model
         'nomor_antrean',
         'status_pesanan',
         'total_harga',
+        'promo_code',
         'catatan',
         'waktu_pesan',
     ];
