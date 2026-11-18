@@ -1573,20 +1573,24 @@ export default function App() {
       lastSyncSigRef.current = syncSig;
 
       if (tenantsRes?.data) {
-        setTenantsList(
-          tenantsRes.data.map((t) => ({
-            ...t,
-            tagline: t.deskripsi || t.tagline || "",
-            gambar: t.gambar || t.logo || t.user?.avatar || "",
-            jam_buka: t.jam_buka || "07:00",
-            jam_tutup: t.jam_tutup || "21:00",
-            auto_schedule: Boolean(t.auto_schedule),
-            status_buka_efektif:
-              t.status_buka_efektif !== undefined
-                ? Boolean(t.status_buka_efektif)
-                : isTenantOpenAt(t),
-          }))
-        );
+        const mappedTenants = tenantsRes.data.map((t) => ({
+          ...t,
+          tagline: t.deskripsi || t.tagline || "",
+          gambar: t.gambar || t.logo || t.user?.avatar || "",
+          jam_buka: t.jam_buka || "07:00",
+          jam_tutup: t.jam_tutup || "21:00",
+          auto_schedule: Boolean(t.auto_schedule),
+          status_buka_efektif:
+            t.status_buka_efektif !== undefined
+              ? Boolean(t.status_buka_efektif)
+              : isTenantOpenAt(t),
+        }));
+        setTenantsList(mappedTenants);
+        setActiveTenantView((prev) => {
+          if (!prev?.id_tenant) return prev;
+          const fresh = mappedTenants.find((t) => Number(t.id_tenant) === Number(prev.id_tenant));
+          return fresh ? { ...prev, ...fresh } : prev;
+        });
       }
       if (Array.isArray(promosRes?.data)) {
         setPublicPromos(promosRes.data);
@@ -2315,6 +2319,28 @@ export default function App() {
     }, 640);
   }, []);
 
+  const getItemTenantObj = useCallback(
+    (item) => {
+      if (!item) return null;
+      const itemTenantId = Number(item.id_tenant || item.tenant?.id_tenant || 0);
+      return (
+        tenantsList.find((t) => Number(t.id_tenant) === itemTenantId) ||
+        item.tenant ||
+        null
+      );
+    },
+    [tenantsList]
+  );
+
+  const isItemTenantOpen = useCallback(
+    (item) => {
+      const tObj = getItemTenantObj(item);
+      if (!tObj) return true;
+      return isTenantOpenAt(tObj, liveClock);
+    },
+    [getItemTenantObj, liveClock]
+  );
+
   const handleAddToCart = async (item, qty = 1, sourceEvent = null) => {
     if (!currentUser) {
       setIsAuthOpen(true);
@@ -2322,6 +2348,17 @@ export default function App() {
         lang === "EN"
           ? "Please sign in first to add items to your cart."
           : "Silakan login terlebih dahulu untuk memesan.",
+        "error"
+      );
+      return false;
+    }
+
+    if (!isItemTenantOpen(item)) {
+      const tObj = getItemTenantObj(item);
+      notify(
+        lang === "EN"
+          ? `Tenant '${item.tenant_name}' is currently closed (Opens at ${tObj?.jam_buka || "07:00"}).`
+          : `Tenant '${item.tenant_name}' sedang tutup (Buka pukul ${tObj?.jam_buka || "07:00"}).`,
         "error"
       );
       return false;
@@ -5782,14 +5819,17 @@ export default function App() {
                           gap: 22,
                         }}
                       >
-                        {filteredMenus.map((item) => (
+                        {filteredMenus.map((item) => {
+                          const itemTenantObj = getItemTenantObj(item);
+                          const itemTenantOpen = isItemTenantOpen(item);
+                          return (
                           <div
                             key={item.id_menu}
                             className="card-hover img-zoom-parent"
                             style={{
                               borderRadius: "var(--radius-lg)",
                               backgroundColor: "var(--bg-card)",
-                              border: "1px solid var(--border-light)",
+                              border: itemTenantOpen ? "1px solid var(--border-light)" : "1px solid #FCA5A5",
                               overflow: "hidden",
                               boxShadow: "var(--shadow-sm)",
                               display: "flex",
@@ -5810,8 +5850,37 @@ export default function App() {
                                 src={item.gambar}
                                 alt={item.nama_menu}
                                 className="img-zoom-child"
+                                style={{
+                                  filter: itemTenantOpen ? "none" : "grayscale(0.28) brightness(0.9)",
+                                }}
                                 iconSize={36}
                               />
+                              {!itemTenantOpen && (
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    bottom: 10,
+                                    left: 10,
+                                    padding: "4px 10px",
+                                    borderRadius: "var(--radius-pill)",
+                                    backgroundColor: "rgba(220, 38, 38, 0.94)",
+                                    color: "#FFFFFF",
+                                    fontSize: 11,
+                                    fontWeight: 800,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 5,
+                                    boxShadow: "0 2px 8px rgba(220, 38, 38, 0.35)",
+                                  }}
+                                >
+                                  <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: "#FFFFFF" }} />
+                                  <span>
+                                    {lang === "EN"
+                                      ? `Tenant Closed · Opens ${itemTenantObj?.jam_buka || "07:00"}`
+                                      : `Tenant Tutup · Buka ${itemTenantObj?.jam_buka || "07:00"}`}
+                                  </span>
+                                </div>
+                              )}
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -5921,6 +5990,20 @@ export default function App() {
                                     <Store size={12} color="var(--orange-dark)" />
                                     <span>{item.tenant_name}</span>
                                   </button>
+                                  {!itemTenantOpen && (
+                                    <span
+                                      style={{
+                                        padding: "1px 6px",
+                                        borderRadius: 999,
+                                        backgroundColor: "#FEE2E2",
+                                        color: "#B91C1C",
+                                        fontSize: 10.5,
+                                        fontWeight: 800,
+                                      }}
+                                    >
+                                      {lang === "EN" ? "Closed" : "Tutup"}
+                                    </span>
+                                  )}
                                   <span>·</span>
                                   <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
                                     <Clock size={12} />
@@ -5955,13 +6038,13 @@ export default function App() {
                                     height: 36,
                                     borderRadius: "50%",
                                     border: "none",
-                                    backgroundColor: "var(--orange)",
+                                    backgroundColor: itemTenantOpen ? "var(--orange)" : "#9CA3AF",
                                     color: "#FFFFFF",
                                     display: "flex",
                                     alignItems: "center",
                                     justifyContent: "center",
                                     cursor: "pointer",
-                                    boxShadow: "0 3px 8px rgba(248, 163, 75, 0.4)",
+                                    boxShadow: itemTenantOpen ? "0 3px 8px rgba(248, 163, 75, 0.4)" : "none",
                                   }}
                                   title={lang === "EN" ? "View menu & add" : "Lihat menu & pesan"}
                                 >
@@ -5970,7 +6053,8 @@ export default function App() {
                               </div>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       {filteredMenus.length === 0 && (
                         <div
@@ -6068,7 +6152,9 @@ export default function App() {
                       </div>
                     </div>
                     <div className="grid-4-cols">
-                      {filteredTenants.map((tenant) => (
+                      {filteredTenants.map((tenant) => {
+                        const tenantOpen = isTenantOpenAt(tenant, liveClock);
+                        return (
                         <div
                           key={tenant.id_tenant}
                           onClick={() => setActiveTenantView(tenant)}
@@ -6076,7 +6162,7 @@ export default function App() {
                           style={{
                             borderRadius: "var(--radius-lg)",
                             backgroundColor: "var(--bg-card)",
-                            border: "1px solid var(--border-light)",
+                            border: tenantOpen ? "1px solid var(--border-light)" : "1.5px solid #FCA5A5",
                             boxShadow: "var(--shadow-sm)",
                             overflow: "hidden",
                             cursor: "pointer",
@@ -6099,9 +6185,42 @@ export default function App() {
                               src={tenant.gambar || tenant.logo}
                               alt={tenant.nama_tenant}
                               className="img-zoom-child"
+                              style={{
+                                filter: tenantOpen ? "none" : "grayscale(0.32) brightness(0.86)",
+                              }}
                               fallbackType="store"
                               iconSize={42}
                             />
+                            {!tenantOpen && (
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  inset: 0,
+                                  backgroundColor: "rgba(25, 14, 13, 0.32)",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  pointerEvents: "none",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    padding: "6px 14px",
+                                    borderRadius: "var(--radius-pill)",
+                                    backgroundColor: "rgba(220, 38, 38, 0.94)",
+                                    color: "#FFFFFF",
+                                    fontSize: 11.5,
+                                    fontWeight: 900,
+                                    letterSpacing: "0.06em",
+                                    textTransform: "uppercase",
+                                    boxShadow: "0 4px 14px rgba(0, 0, 0, 0.28)",
+                                    border: "1.5px solid rgba(255, 255, 255, 0.6)",
+                                  }}
+                                >
+                                  {lang === "EN" ? "Currently Closed" : "Sedang Tutup"}
+                                </span>
+                              </div>
+                            )}
                             <div
                               style={{
                                 position: "absolute",
@@ -6109,16 +6228,16 @@ export default function App() {
                                 left: 10,
                                 padding: "4px 10px",
                                 borderRadius: "var(--radius-pill)",
-                                backgroundColor: isTenantOpenAt(tenant, liveClock)
+                                backgroundColor: tenantOpen
                                   ? "var(--bg-overlay-glass)"
-                                  : "rgba(55,65,81,0.88)",
-                                color: isTenantOpenAt(tenant, liveClock) ? "var(--maroon)" : "#FFFFFF",
+                                  : "#DC2626",
+                                color: tenantOpen ? "var(--maroon)" : "#FFFFFF",
                                 fontSize: 11,
-                                fontWeight: 700,
+                                fontWeight: 800,
                                 display: "inline-flex",
                                 alignItems: "center",
                                 gap: 5,
-                                boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+                                boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
                               }}
                             >
                               <span
@@ -6126,11 +6245,11 @@ export default function App() {
                                   width: 6,
                                   height: 6,
                                   borderRadius: "50%",
-                                  backgroundColor: isTenantOpenAt(tenant, liveClock) ? "#16A34A" : "#D1D5DB",
+                                  backgroundColor: tenantOpen ? "#16A34A" : "#FFFFFF",
                                 }}
                               />
                               <span>
-                                {isTenantOpenAt(tenant, liveClock)
+                                {tenantOpen
                                   ? `${lang === "EN" ? "Open until" : "Buka s/d"} ${tenant.jam_tutup || "21:00"}`
                                   : `${lang === "EN" ? "Closed · Opens" : "Tutup · Buka"} ${tenant.jam_buka || "07:00"}`}
                               </span>
@@ -6152,19 +6271,36 @@ export default function App() {
                                 gap: 10,
                               }}
                             >
-                              <span
-                                style={{
-                                  fontSize: 16,
-                                  fontWeight: 800,
-                                  color: "var(--maroon)",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                   minWidth: 0,
-                                }}
-                              >
-                                {tenant.nama_tenant}
-                              </span>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                                <span
+                                  style={{
+                                    fontSize: 16,
+                                    fontWeight: 800,
+                                    color: "var(--maroon)",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                    minWidth: 0,
+                                  }}
+                                >
+                                  {tenant.nama_tenant}
+                                </span>
+                                {!tenantOpen && (
+                                  <span
+                                    style={{
+                                      padding: "2px 7px",
+                                      borderRadius: 999,
+                                      backgroundColor: "#FEE2E2",
+                                      color: "#B91C1C",
+                                      fontSize: 10.5,
+                                      fontWeight: 800,
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {lang === "EN" ? "Closed" : "Tutup"}
+                                  </span>
+                                )}
+                              </div>
                               <span
                                 style={{
                                   display: "inline-flex",
@@ -6195,7 +6331,8 @@ export default function App() {
                             )}
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     {filteredTenants.length === 0 && (
                       <div
@@ -6326,12 +6463,15 @@ export default function App() {
                                 borderRadius: "var(--radius-pill)",
                                 backgroundColor: isTenantOpenAt(activeTenantView, liveClock)
                                   ? "rgba(22, 163, 74, 0.12)"
-                                  : "var(--status-cancelled-bg)",
+                                  : "#FEE2E2",
+                                border: isTenantOpenAt(activeTenantView, liveClock)
+                                  ? "none"
+                                  : "1px solid #FCA5A5",
                                 color: isTenantOpenAt(activeTenantView, liveClock)
                                   ? "#15803D"
-                                  : "var(--text-muted)",
+                                  : "#B91C1C",
                                 fontSize: 11.5,
-                                fontWeight: 700,
+                                fontWeight: 800,
                               }}
                             >
                               <span
@@ -6339,7 +6479,7 @@ export default function App() {
                                   width: 6,
                                   height: 6,
                                   borderRadius: "50%",
-                                  backgroundColor: isTenantOpenAt(activeTenantView, liveClock) ? "#16A34A" : "#9CA3AF",
+                                  backgroundColor: isTenantOpenAt(activeTenantView, liveClock) ? "#16A34A" : "#DC2626",
                                 }}
                               />
                               <span>
@@ -6422,14 +6562,61 @@ export default function App() {
                         </button>
                       </div>
                     </div>
+                    {!isTenantOpenAt(activeTenantView, liveClock) && (
+                      <div
+                        role="status"
+                        style={{
+                          marginBottom: 20,
+                          padding: "14px 18px",
+                          borderRadius: "var(--radius-lg)",
+                          backgroundColor: "#FEF2F2",
+                          border: "1.5px solid #FCA5A5",
+                          color: "#991B1B",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 10,
+                            backgroundColor: "#FEE2E2",
+                            color: "#DC2626",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Clock size={18} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: "#991B1B" }}>
+                            {lang === "EN"
+                              ? `${activeTenantView.nama_tenant} is Currently Closed`
+                              : `Tenant ${activeTenantView.nama_tenant} Sedang Tutup`}
+                          </div>
+                          <div style={{ fontSize: 12.5, color: "#B91C1C" }}>
+                            {lang === "EN"
+                              ? `Operating hours: ${activeTenantView.jam_buka || "07:00"} – ${activeTenantView.jam_tutup || "21:00"}. You can browse the menu, and place orders once the store reopens.`
+                              : `Jam operasional: ${activeTenantView.jam_buka || "07:00"} – ${activeTenantView.jam_tutup || "21:00"}. Anda tetap dapat melihat menu, namun pemesanan baru dapat dilakukan saat tenant kembali buka.`}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                      {tenantMenuItems.map((item) => (
+                      {tenantMenuItems.map((item) => {
+                        const activeTenantOpen = isTenantOpenAt(activeTenantView, liveClock);
+                        return (
                         <div
                           key={item.id_menu}
                           className="card-hover img-zoom-parent"
                           style={{
                             backgroundColor: "var(--bg-surface-muted)",
                             borderRadius: "var(--radius-xl)",
+                            border: activeTenantOpen ? "none" : "1px solid #FCA5A5",
                             padding: "18px 24px",
                             display: "flex",
                             alignItems: "center",
@@ -6453,6 +6640,9 @@ export default function App() {
                                 src={item.gambar}
                                 alt={item.nama_menu}
                                 className="img-zoom-child"
+                                style={{
+                                  filter: activeTenantOpen ? "none" : "grayscale(0.28) brightness(0.9)",
+                                }}
                                 iconSize={36}
                               />
                               <button
@@ -6526,9 +6716,24 @@ export default function App() {
                                   fontSize: 14,
                                   color: "var(--text-muted)",
                                   marginBottom: 10,
+                                  flexWrap: "wrap",
                                 }}
                               >
                                 <span>{item.tenant_name}</span>
+                                {!activeTenantOpen && (
+                                  <span
+                                    style={{
+                                      padding: "1px 7px",
+                                      borderRadius: 999,
+                                      backgroundColor: "#FEE2E2",
+                                      color: "#B91C1C",
+                                      fontSize: 11,
+                                      fontWeight: 800,
+                                    }}
+                                  >
+                                    {lang === "EN" ? "Closed" : "Tutup"}
+                                  </span>
+                                )}
                                 <span>·</span>
                                 <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                   <Clock size={14} />
@@ -6556,20 +6761,21 @@ export default function App() {
                               height: 48,
                               borderRadius: "50%",
                               border: "none",
-                              backgroundColor: "var(--orange)",
+                              backgroundColor: activeTenantOpen ? "var(--orange)" : "#9CA3AF",
                               color: "#FFFFFF",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
                               cursor: "pointer",
-                              boxShadow: "0 4px 12px rgba(248, 163, 75, 0.4)",
+                              boxShadow: activeTenantOpen ? "0 4px 12px rgba(248, 163, 75, 0.4)" : "none",
                             }}
                             title={lang === "EN" ? "View menu & add" : "Lihat menu & pesan"}
                           >
                             <Plus size={22} strokeWidth={2.8} />
                           </button>
                         </div>
-                      ))}
+                        );
+                      })}
                       {tenantMenuItems.length === 0 && (
                         <div
                           style={{
@@ -10151,14 +10357,27 @@ export default function App() {
                           <Clock size={14} />
                           Ready in {activeMenuDetail.estimasi_menit} min
                         </span>
-                        {activeMenuDetail.tenant?.jam_tutup && (
-                          <>
-                            <span>·</span>
-                            <span>
-                              {lang === "EN" ? "Open until" : "Buka s/d"}{" "}
-                              {activeMenuDetail.tenant.jam_tutup}
-                            </span>
-                          </>
+                        <span>·</span>
+                        {isItemTenantOpen(activeMenuDetail) ? (
+                          <span>
+                            {lang === "EN" ? "Open until" : "Buka s/d"}{" "}
+                            {getItemTenantObj(activeMenuDetail)?.jam_tutup || "21:00"}
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              padding: "2px 8px",
+                              borderRadius: 999,
+                              backgroundColor: "#FEE2E2",
+                              color: "#B91C1C",
+                              fontSize: 11.5,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {lang === "EN"
+                              ? `Closed · Opens ${getItemTenantObj(activeMenuDetail)?.jam_buka || "07:00"}`
+                              : `Tutup · Buka ${getItemTenantObj(activeMenuDetail)?.jam_buka || "07:00"}`}
+                          </span>
                         )}
                       </div>
 
@@ -10266,6 +10485,26 @@ export default function App() {
                         </div>
                       </div>
 
+                      {!isItemTenantOpen(activeMenuDetail) && (
+                        <div
+                          style={{
+                            marginBottom: 12,
+                            padding: "10px 14px",
+                            borderRadius: 12,
+                            backgroundColor: "#FEF2F2",
+                            border: "1px solid #FCA5A5",
+                            color: "#B91C1C",
+                            fontSize: 12.5,
+                            fontWeight: 700,
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {lang === "EN"
+                            ? `This tenant (${activeMenuDetail.tenant_name}) is currently closed. Opens at ${getItemTenantObj(activeMenuDetail)?.jam_buka || "07:00"}.`
+                            : `Tenant ${activeMenuDetail.tenant_name} sedang tutup. Buka kembali pukul ${getItemTenantObj(activeMenuDetail)?.jam_buka || "07:00"}.`}
+                        </div>
+                      )}
+
                       <button
                         onClick={async (e) => {
                           const ok = await handleAddToCart(activeMenuDetail, detailQuantity, e);
@@ -10277,22 +10516,25 @@ export default function App() {
                           padding: "14px",
                           borderRadius: "var(--radius-pill)",
                           border: "none",
-                          backgroundColor: "var(--orange)",
+                          backgroundColor: isItemTenantOpen(activeMenuDetail) ? "var(--orange)" : "#9CA3AF",
                           color: "#FFFFFF",
                           fontSize: 15,
                           fontWeight: 800,
-                          cursor: "pointer",
+                          cursor: isItemTenantOpen(activeMenuDetail) ? "pointer" : "not-allowed",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           gap: 10,
-                          boxShadow: "0 4px 14px rgba(248, 163, 75, 0.4)",
+                          boxShadow: isItemTenantOpen(activeMenuDetail) ? "0 4px 14px rgba(248, 163, 75, 0.4)" : "none",
                         }}
                       >
                         <ShoppingBag size={18} />
                         <span>
-                          {lang === "EN" ? "Add to cart" : "Tambah ke keranjang"} ·{" "}
-                          {formatRupiah(activeMenuDetail.harga * detailQuantity)}
+                          {isItemTenantOpen(activeMenuDetail)
+                            ? `${lang === "EN" ? "Add to cart" : "Tambah ke keranjang"} · ${formatRupiah(activeMenuDetail.harga * detailQuantity)}`
+                            : lang === "EN"
+                              ? `Tenant Closed · Opens ${getItemTenantObj(activeMenuDetail)?.jam_buka || "07:00"}`
+                              : `Tenant Sedang Tutup · Buka ${getItemTenantObj(activeMenuDetail)?.jam_buka || "07:00"}`}
                         </span>
                       </button>
                     </div>
