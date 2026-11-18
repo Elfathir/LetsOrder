@@ -353,10 +353,16 @@ export default function TenantOnboardingWizard({
                   />
                 </label>
 
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
                   {lang === "EN"
                     ? "Format: .JPEG, .PNG · Use your stall logo or signature dish photo"
                     : "Format: .JPEG, .PNG · Gunakan logo atau foto hidangan andalan Anda"}
+                </div>
+
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 14, opacity: 0.85 }}>
+                  {lang === "EN"
+                    ? "(Optional — you can add or change your photo later in store settings)"
+                    : "(Opsional — foto profil dapat ditambahkan atau diubah nanti di pengaturan kantin)"}
                 </div>
 
                 {onboardingError && (
@@ -388,7 +394,7 @@ export default function TenantOnboardingWizard({
                     alignItems: "stretch",
                   }}
                 >
-                  {Boolean(onboardingForm.logo) && (
+                  {Boolean(onboardingForm.logo) ? (
                     <div className="onboarding-next-reveal">
                       <button
                         type="button"
@@ -429,6 +435,47 @@ export default function TenantOnboardingWizard({
                         <ChevronRight size={18} />
                       </button>
                     </div>
+                  ) : (
+                    <button
+                      type="button"
+                      data-testid="onboarding-skip-btn"
+                      onClick={() => {
+                        setOnboardingError("");
+                        setTenantOnboardingStep(2);
+                        try {
+                          if (currentUser?.id_user) {
+                            localStorage.setItem(
+                              `letsorder_tenant_onboarding_${currentUser.id_user}`,
+                              "2"
+                            );
+                          }
+                        } catch {
+                          // Ignore storage errors
+                        }
+                      }}
+                      className="btn-interactive btn-lift onboarding-btn"
+                      style={{
+                        width: "100%",
+                        padding: "13px 22px",
+                        borderRadius: "var(--radius-pill)",
+                        border: "1.5px solid var(--orange)",
+                        backgroundColor: "var(--orange-soft)",
+                        color: "var(--orange-dark)",
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        boxShadow: "var(--shadow-sm)",
+                      }}
+                    >
+                      <span>
+                        {lang === "EN"
+                          ? "Skip & Continue Later →"
+                          : "Lewati & Lanjut Nanti →"}
+                      </span>
+                    </button>
                   )}
 
                   {onBackToRegister && (
