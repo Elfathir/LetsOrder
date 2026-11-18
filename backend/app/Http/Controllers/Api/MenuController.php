@@ -125,13 +125,17 @@ class MenuController extends Controller
         ], 200);
     }
 
-    public function vendorMenusData(Request $request, $user, bool $compact = false)
+    public function vendorMenusData(Request $request, $user, bool $compact = false, ?int $tenantId = null)
     {
-        $tenantIds = Tenant::where('id_user', $user->id_user)->pluck('id_tenant');
-
-        $query = $this->buildMenuQuery($compact)
-            ->whereIn('id_tenant', $tenantIds);
-
+        $query = $this->buildMenuQuery($compact);
+    
+        if ($tenantId !== null) {
+            $query->where('id_tenant', $tenantId);
+        } else {
+            $tenantIds = Tenant::where('id_user', $user->id_user)->pluck('id_tenant');
+            $query->whereIn('id_tenant', $tenantIds);
+        }
+    
         if ($request->filled('id_kategori')) {
             $query->where('id_kategori', (int) $request->query('id_kategori'));
         }
