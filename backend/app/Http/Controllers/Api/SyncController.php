@@ -8,6 +8,7 @@ use App\Models\Promo;
 use App\Models\Review;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -15,6 +16,8 @@ class SyncController extends Controller
 {
     public function index(Request $request)
     {
+        $syncStartedAt = microtime(true);
+        $syncLastMark = $syncStartedAt;
         $bearer = $request->bearerToken();
         $user = $bearer ? Auth::guard('sanctum')->user() : null;
 
@@ -56,6 +59,7 @@ class SyncController extends Controller
         $vendorPromos = null;
         $vendorReviews = null;
 
+        $syncLastMark = microtime(true);
         if ($includeCatalog) {
             $tenants = $tenantCtrl->indexData(new Request(), $compact);
             $menus = $menuCtrl->indexData(new Request(['include_unavailable' => 'true']), $compact);
@@ -116,6 +120,13 @@ class SyncController extends Controller
             $vendorTenant = $tenantCtrl->vendorTenantData((int) $user->id_user, $compact);
         }
 
+        Log::info('SYNC timing catalog', [
+            'ms' => round((microtime(true) - $syncLastMark) * 1000, 2),
+            'catalog' => $includeCatalog,
+        ]);
+        
+        $syncLastMark = microtime(true);
+        
         $orders = null;
         $vendorOrders = null;
         $cart = null;
@@ -136,6 +147,12 @@ class SyncController extends Controller
                 ->get();
         }
 
+        Log::info('SYNC timing user_data', [
+            'ms' => round((microtime(true) - $syncLastMark) * 1000, 2),
+        ]);
+
+        $syncLastMark = microtime(true);
+
         $userPayload = null;
         if ($user) {
             $userPayload = $user->toArray();
@@ -151,7 +168,11 @@ class SyncController extends Controller
                 $userPayload['tenant'] = $vendorTenant;
             }
         }
-
+        
+        Log::info('SYNC timing total', [
+            'ms' => round((microtime(true) - $syncStartedAt) * 1000, 2),
+        ]);
+        
         return response()->json([
             'success' => true,
             'data' => [
