@@ -11682,7 +11682,7 @@ export default function App() {
         <TenantOnboardingWizard
           lang={lang}
           t={t}
-          handleToggleLang={handleToggleLang}
+          handleToggleLang={() => changeLanguage(lang === "ID" ? "EN" : "ID")}
           ThemeToggleButton={ThemeToggleButton}
           tenantOnboardingStep={tenantOnboardingStep}
           setTenantOnboardingStep={setTenantOnboardingStep}
