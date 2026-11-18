@@ -3473,74 +3473,90 @@ export default function App() {
                         {(() => {
                           const storeEffectiveOpen = isTenantOpenAt(myTenantInfo || { status_buka: isStoreOpen }, liveClock);
                           return (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const next = !isStoreOpen;
-                                setIsStoreOpen(next);
-                                api.updateVendorTenant({ status_buka: next }).then(() => syncFromApi()).catch(() => { });
-                              }}
-                              className="btn-interactive btn-lift"
-                              title={
-                                storeEffectiveOpen
-                                  ? lang === "EN"
-                                    ? "Click to close store"
-                                    : "Klik untuk menutup kantin"
-                                  : lang === "EN"
-                                    ? "Click to open store"
-                                    : "Klik untuk membuka kantin"
-                              }
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 10,
-                                padding: "8px 16px 8px 10px",
-                                borderRadius: "var(--radius-pill)",
-                                border: storeEffectiveOpen ? "2px solid #22C55E" : "2px solid #F87171",
-                                background: storeEffectiveOpen
-                                  ? "linear-gradient(135deg, #16A34A 0%, #15803D 100%)"
-                                  : "linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)",
-                                color: "#FFFFFF",
-                                boxShadow: storeEffectiveOpen
-                                  ? "0 6px 18px rgba(22, 163, 74, 0.34)"
-                                  : "0 6px 18px rgba(220, 38, 38, 0.3)",
-                                cursor: "pointer",
-                                fontSize: 13,
-                              }}
-                            >
-                              <span
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = !isStoreOpen;
+                                  setIsStoreOpen(next);
+                                  api.updateVendorTenant({ status_buka: next }).then(() => syncFromApi()).catch(() => { });
+                                }}
+                                className="btn-interactive"
+                                title={
+                                  storeEffectiveOpen
+                                    ? lang === "EN"
+                                      ? "Click to close store"
+                                      : "Klik untuk menutup kantin"
+                                    : lang === "EN"
+                                      ? "Click to open store"
+                                      : "Klik untuk membuka kantin"
+                                }
                                 style={{
-                                  width: 36,
-                                  height: 20,
-                                  borderRadius: 999,
-                                  backgroundColor: "rgba(255, 255, 255, 0.28)",
-                                  padding: 2,
                                   display: "inline-flex",
                                   alignItems: "center",
-                                  transition: "background-color 0.2s ease",
-                                  flexShrink: 0,
+                                  gap: 9,
+                                  padding: "7px 15px 7px 9px",
+                                  borderRadius: "var(--radius-pill)",
+                                  border: storeEffectiveOpen ? "1.5px solid var(--maroon)" : "1.5px solid var(--border-input)",
+                                  backgroundColor: storeEffectiveOpen ? "var(--bg-cream)" : "var(--bg-card)",
+                                  color: "var(--maroon)",
+                                  boxShadow: "var(--shadow-sm)",
+                                  cursor: "pointer",
+                                  fontSize: 13,
                                 }}
                               >
                                 <span
                                   style={{
-                                    width: 16,
-                                    height: 16,
-                                    borderRadius: "50%",
-                                    backgroundColor: "#FFFFFF",
-                                    boxShadow: "0 1px 4px rgba(0, 0, 0, 0.25)",
-                                    transform: storeEffectiveOpen ? "translateX(16px)" : "translateX(0px)",
-                                    transition: "transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
+                                    width: 34,
+                                    height: 19,
+                                    borderRadius: 999,
+                                    backgroundColor: storeEffectiveOpen ? "var(--orange)" : "var(--dot-inactive)",
+                                    padding: 2,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    transition: "background-color 0.2s ease",
+                                    flexShrink: 0,
                                   }}
-                                />
-                              </span>
-                              <span style={{ fontWeight: 900, color: "#FFFFFF", letterSpacing: "0.01em" }}>
-                                {storeEffectiveOpen ? t.storeOpen : t.storeClosed}
-                              </span>
-                              <span className="tabular" style={{ color: "rgba(255, 255, 255, 0.9)", fontWeight: 700, fontSize: 12 }}>
-                                · <LiveClockText /> · {lang === "EN" ? "Until" : "s/d"}{" "}
-                                {myTenantInfo?.jam_tutup || "21:00"}
-                              </span>
-                            </button>
+                                >
+                                  <span
+                                    style={{
+                                      width: 15,
+                                      height: 15,
+                                      borderRadius: "50%",
+                                      backgroundColor: "#FFFFFF",
+                                      boxShadow: "0 1px 3px rgba(0, 0, 0, 0.2)",
+                                      transform: storeEffectiveOpen ? "translateX(15px)" : "translateX(0px)",
+                                      transition: "transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
+                                    }}
+                                  />
+                                </span>
+                                <span style={{ fontWeight: 800, color: "var(--maroon)" }}>
+                                  {storeEffectiveOpen ? t.storeOpen : t.storeClosed}
+                                </span>
+                              </button>
+
+                              <div
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  padding: "9px 14px",
+                                  borderRadius: "var(--radius-pill)",
+                                  border: "1px solid var(--border-light)",
+                                  backgroundColor: "var(--bg-subtle)",
+                                  color: "var(--text-muted)",
+                                  fontSize: 12.5,
+                                  fontWeight: 700,
+                                  boxShadow: "var(--shadow-sm)",
+                                }}
+                              >
+                                <Clock size={13} color="var(--text-muted)" />
+                                <span className="tabular">
+                                  <LiveClockText /> · {lang === "EN" ? "Until" : "s/d"}{" "}
+                                  {myTenantInfo?.jam_tutup || "21:00"}
+                                </span>
+                              </div>
+                            </>
                           );
                         })()}
 
