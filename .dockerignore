@@ -1,0 +1,22 @@
+# Exclude local artifacts, docs, build caches, and dependencies from deploy context
+.git
+.github
+assets
+docs
+frontend/node_modules
+frontend/dist
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/.phpunit.cache
+backend/.phpunit.result.cache
+backend/vendor
+backend/node_modules
+backend/storage/logs/*.log
+backend/storage/framework/cache/data/*
+backend/storage/framework/sessions/*
+backend/storage/framework/testing/*
+backend/storage/framework/views/*
+backend/storage/app/db.json.tmp
+*.log
+*.tmp

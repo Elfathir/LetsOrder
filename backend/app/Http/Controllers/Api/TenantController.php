@@ -34,13 +34,32 @@ class TenantController extends Controller
 
         $includeUnconfigured = $request->boolean('include_unconfigured', false);
 
-        $tenants = $query
+        $tenantCollection = $query
             ->with(['user:id_user,avatar', 'menus' => fn ($q) => $q->select('id_menu', 'id_tenant', 'gambar')])
             ->orderByDesc('status_buka')
             ->orderBy('id_tenant', 'asc')
             ->get()
             ->filter(fn (Tenant $t) => $includeUnconfigured || self::isTenantConfigured($t))
-            ->map(fn (Tenant $t) => $this->formatTenant($t))
+            ->values();
+
+        // Pre-aggregate review stats in a single query instead of querying per tenant
+        $reviewStatsByTenant = [];
+        if ($tenantCollection->isNotEmpty() && Schema::hasTable('reviews')) {
+            $tenantIds = $tenantCollection->pluck('id_tenant')->all();
+            $rows = \App\Models\Review::whereIn('id_tenant', $tenantIds)
+                ->selectRaw('id_tenant, COUNT(*) as cnt, AVG(rating) as avg_rating')
+                ->groupBy('id_tenant')
+                ->get();
+            foreach ($rows as $row) {
+                $reviewStatsByTenant[(int) $row->id_tenant] = [
+                    'cnt' => (int) $row->cnt,
+                    'avg' => (float) $row->avg_rating,
+                ];
+            }
+        }
+
+        $tenants = $tenantCollection
+            ->map(fn (Tenant $t) => $this->formatTenant($t, $reviewStatsByTenant))
             ->values();
 
         return response()->json([
@@ -242,7 +261,7 @@ class TenantController extends Controller
         return $hasCustomDesc || $hasLogo || $hasMenus;
     }
 
-    private function formatTenant(Tenant $tenant): array
+    private function formatTenant(Tenant $tenant, ?array $reviewStatsByTenant = null): array
     {
         $defaultDescriptions = ['', 'tenant kantin kampus upnvj', 'tenant kantin kampus', 'campus canteen tenant'];
         $rawDesc = trim((string) ($tenant->deskripsi ?? ''));
@@ -257,7 +276,13 @@ class TenantController extends Controller
 
         $reviewsCount = 0;
         $avgRating = null;
-        if (Schema::hasTable('reviews')) {
+        if ($reviewStatsByTenant !== null) {
+            $stat = $reviewStatsByTenant[(int) $tenant->id_tenant] ?? null;
+            if ($stat && $stat['cnt'] > 0) {
+                $reviewsCount = (int) $stat['cnt'];
+                $avgRating = number_format((float) $stat['avg'], 1, '.', '');
+            }
+        } elseif (Schema::hasTable('reviews')) {
             $stats = \App\Models\Review::where('id_tenant', $tenant->id_tenant)
                 ->selectRaw('COUNT(*) as cnt, AVG(rating) as avg_rating')
                 ->first();

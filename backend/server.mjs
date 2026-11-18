@@ -2,6 +2,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -325,9 +326,13 @@ function purgeDummySeedRecords(parsed) {
   return changed;
 }
 
-function saveDb(db) {
+let dbRevision = 0;
+let pendingSaveTimer = null;
+let asyncWriteRunning = false;
+let asyncWriteQueuedDb = null;
+
+function writeDbContentSync(content) {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  const content = JSON.stringify(db, null, 2);
   const tmpPath = `${DB_PATH}.tmp`;
   try {
     fs.writeFileSync(tmpPath, content);
@@ -342,6 +347,71 @@ function saveDb(db) {
       throw err;
     }
   }
+}
+
+function saveDb(targetDb) {
+  dbRevision += 1;
+  if (pendingSaveTimer) {
+    clearTimeout(pendingSaveTimer);
+    pendingSaveTimer = null;
+  }
+  asyncWriteQueuedDb = null;
+  writeDbContentSync(JSON.stringify(targetDb));
+}
+
+async function flushScheduledSave() {
+  if (asyncWriteRunning) return;
+  asyncWriteRunning = true;
+  try {
+    while (asyncWriteQueuedDb) {
+      const target = asyncWriteQueuedDb;
+      asyncWriteQueuedDb = null;
+      const snapRev = dbRevision;
+      const content = JSON.stringify(target);
+      const tmpPath = `${DB_PATH}.async.tmp`;
+      await fs.promises.mkdir(path.dirname(DB_PATH), { recursive: true });
+      if (dbRevision !== snapRev) continue;
+      await fs.promises.writeFile(tmpPath, content);
+      if (dbRevision !== snapRev) {
+        try {
+          await fs.promises.unlink(tmpPath);
+        } catch {}
+        continue;
+      }
+      try {
+        await fs.promises.rename(tmpPath, DB_PATH);
+      } catch (err) {
+        if (err?.code === "EPERM" || err?.code === "EBUSY") {
+          if (dbRevision === snapRev) {
+            await fs.promises.writeFile(DB_PATH, content);
+          }
+          try {
+            await fs.promises.unlink(tmpPath);
+          } catch {}
+        } else {
+          throw err;
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[saveDb async error]", err?.message || err);
+  } finally {
+    asyncWriteRunning = false;
+    if (asyncWriteQueuedDb) {
+      void flushScheduledSave();
+    }
+  }
+}
+
+function scheduleSaveDb(targetDb, delayMs = 250) {
+  dbRevision += 1;
+  asyncWriteQueuedDb = targetDb;
+  if (pendingSaveTimer) return;
+  pendingSaveTimer = setTimeout(() => {
+    pendingSaveTimer = null;
+    void flushScheduledSave();
+  }, delayMs);
+  pendingSaveTimer.unref?.();
 }
 
 function loadDb() {
@@ -429,7 +499,78 @@ function isTenantOpenNow(tenant) {
   return hhmm >= openStr || hhmm < closeStr;
 }
 
-function isTenantConfigured(tenant) {
+function createEnrichContext() {
+  const userById = new Map();
+  for (const u of db.users || []) userById.set(Number(u.id_user), u);
+
+  const tenantById = new Map();
+  for (const t of db.tenants || []) tenantById.set(Number(t.id_tenant), t);
+
+  const categoryById = new Map();
+  for (const c of db.categories || []) categoryById.set(Number(c.id_kategori), c);
+
+  const menuById = new Map();
+  const menusByTenant = new Map();
+  for (const m of db.menus || []) {
+    menuById.set(Number(m.id_menu), m);
+    const tid = Number(m.id_tenant);
+    let arr = menusByTenant.get(tid);
+    if (!arr) {
+      arr = [];
+      menusByTenant.set(tid, arr);
+    }
+    arr.push(m);
+  }
+
+  const reviewsByTenant = new Map();
+  const reviewsByMenu = new Map();
+  const reviewsByOrder = new Map();
+  for (const r of db.reviews || []) {
+    const tid = Number(r.id_tenant);
+    if (!reviewsByTenant.has(tid)) reviewsByTenant.set(tid, []);
+    reviewsByTenant.get(tid).push(r);
+
+    const mid = Number(r.id_menu);
+    if (!reviewsByMenu.has(mid)) reviewsByMenu.set(mid, []);
+    reviewsByMenu.get(mid).push(r);
+
+    const oid = Number(r.id_pesanan);
+    if (!reviewsByOrder.has(oid)) reviewsByOrder.set(oid, []);
+    reviewsByOrder.get(oid).push(r);
+  }
+
+  const latestPaymentByOrder = new Map();
+  for (const p of db.payments || []) {
+    const oid = Number(p.id_pesanan);
+    const prev = latestPaymentByOrder.get(oid);
+    if (!prev || Number(p.id_pembayaran) > Number(prev.id_pembayaran)) {
+      latestPaymentByOrder.set(oid, p);
+    }
+  }
+
+  const messagesByOrder = new Map();
+  for (const m of db.messages || []) {
+    const oid = Number(m.id_pesanan);
+    if (!messagesByOrder.has(oid)) messagesByOrder.set(oid, []);
+    messagesByOrder.get(oid).push(m);
+  }
+
+  return {
+    userById,
+    tenantById,
+    categoryById,
+    menuById,
+    menusByTenant,
+    reviewsByTenant,
+    reviewsByMenu,
+    reviewsByOrder,
+    latestPaymentByOrder,
+    messagesByOrder,
+    enrichedTenants: new Map(),
+  };
+}
+
+function isTenantConfigured(tenant, ctx = null) {
   if (!tenant) return false;
   const defaultDescs = ["", "tenant kantin kampus upnvj", "tenant kantin kampus", "campus canteen tenant"];
   const rawDesc = String(tenant.deskripsi || "").trim().toLowerCase();
@@ -438,19 +579,28 @@ function isTenantConfigured(tenant) {
     (tenant.logo && tenant.logo !== "tenant/default.png") ||
       (tenant.gambar && tenant.gambar !== "tenant/default.png")
   );
-  const hasMenus = (db.menus || []).some((m) => Number(m.id_tenant) === Number(tenant.id_tenant));
+  const tid = Number(tenant.id_tenant);
+  const hasMenus = ctx
+    ? (ctx.menusByTenant.get(tid)?.length || 0) > 0
+    : (db.menus || []).some((m) => Number(m.id_tenant) === tid);
   return hasCustomDesc || hasLogo || hasMenus;
 }
 
-function enrichTenant(tenant) {
+function enrichTenant(tenant, ctx = null) {
   if (!tenant) return null;
+  const tid = Number(tenant.id_tenant);
+  if (ctx?.enrichedTenants.has(tid)) {
+    return ctx.enrichedTenants.get(tid);
+  }
   const defaultDescs = ["", "tenant kantin kampus upnvj", "tenant kantin kampus", "campus canteen tenant"];
   const rawDesc = String(tenant.deskripsi || "").trim();
   const cleanDesc = defaultDescs.includes(rawDesc.toLowerCase()) ? "" : rawDesc;
-  const owner = db.users.find((u) => u.id_user === tenant.id_user) || null;
-  const tenantReviews = (db.reviews || []).filter(
-    (r) => Number(r.id_tenant) === Number(tenant.id_tenant)
-  );
+  const owner = ctx
+    ? ctx.userById.get(Number(tenant.id_user)) || null
+    : db.users.find((u) => u.id_user === tenant.id_user) || null;
+  const tenantReviews = ctx
+    ? ctx.reviewsByTenant.get(tid) || []
+    : (db.reviews || []).filter((r) => Number(r.id_tenant) === tid);
   const avgRating =
     tenantReviews.length > 0
       ? (
@@ -458,15 +608,17 @@ function enrichTenant(tenant) {
           tenantReviews.length
         ).toFixed(1)
       : "0.0";
-  const tenantMenus = db.menus.filter((m) => Number(m.id_tenant) === Number(tenant.id_tenant));
+  const tenantMenus = ctx
+    ? ctx.menusByTenant.get(tid) || []
+    : db.menus.filter((m) => Number(m.id_tenant) === tid);
   const menuImgFallback = tenantMenus.find((m) => m.gambar)?.gambar || "";
   const effectiveImage = tenant.gambar || tenant.logo || owner?.avatar || menuImgFallback || "";
-  return {
+  const enriched = {
     ...tenant,
     deskripsi: cleanDesc,
     logo: tenant.logo || effectiveImage,
     gambar: effectiveImage,
-    is_configured: isTenantConfigured(tenant),
+    is_configured: isTenantConfigured(tenant, ctx),
     jam_buka: tenant.jam_buka || "07:00",
     jam_tutup: tenant.jam_tutup || "21:00",
     auto_schedule: Boolean(tenant.auto_schedule),
@@ -474,6 +626,10 @@ function enrichTenant(tenant) {
     rating: tenantReviews.length > 0 ? avgRating : null,
     reviews_count: tenantReviews.length,
   };
+  if (ctx) {
+    ctx.enrichedTenants.set(tid, enriched);
+  }
+  return enriched;
 }
 
 function pushNotification(idUser, idPesanan, pesan) {
@@ -489,13 +645,17 @@ function pushNotification(idUser, idPesanan, pesan) {
   });
 }
 
-function enrichMenu(menu) {
-  const rawTenant = db.tenants.find((t) => t.id_tenant === menu.id_tenant) || null;
-  const tenant = rawTenant ? enrichTenant(rawTenant) : null;
-  const category = db.categories.find((c) => c.id_kategori === menu.id_kategori) || null;
-  const menuReviews = (db.reviews || []).filter(
-    (r) => Number(r.id_menu) === Number(menu.id_menu)
-  );
+function enrichMenu(menu, ctx = null) {
+  const rawTenant = ctx
+    ? ctx.tenantById.get(Number(menu.id_tenant)) || null
+    : db.tenants.find((t) => t.id_tenant === menu.id_tenant) || null;
+  const tenant = rawTenant ? enrichTenant(rawTenant, ctx) : null;
+  const category = ctx
+    ? ctx.categoryById.get(Number(menu.id_kategori)) || null
+    : db.categories.find((c) => c.id_kategori === menu.id_kategori) || null;
+  const menuReviews = ctx
+    ? ctx.reviewsByMenu.get(Number(menu.id_menu)) || []
+    : (db.reviews || []).filter((r) => Number(r.id_menu) === Number(menu.id_menu));
   const avgRating =
     menuReviews.length > 0
       ? (
@@ -532,23 +692,33 @@ function isOrderPaid(order, payment = null) {
   );
 }
 
-function enrichOrder(order) {
-  const rawTenant = db.tenants.find((t) => t.id_tenant === order.id_tenant) || null;
-  const tenant = rawTenant ? enrichTenant(rawTenant) : null;
-  const user = db.users.find((u) => u.id_user === order.id_user) || null;
-  const payment =
-    db.payments
-      .filter((p) => p.id_pesanan === order.id_pesanan)
-      .sort((a, b) => b.id_pembayaran - a.id_pembayaran)[0] || null;
-  const orderReviews = (db.reviews || []).filter(
-    (r) => Number(r.id_pesanan) === Number(order.id_pesanan)
-  );
-  const orderMessages = (db.messages || [])
-    .filter((m) => Number(m.id_pesanan) === Number(order.id_pesanan))
-    .sort((a, b) => Number(a.id_pesan) - Number(b.id_pesan));
+function enrichOrder(order, ctx = null) {
+  const oid = Number(order.id_pesanan);
+  const rawTenant = ctx
+    ? ctx.tenantById.get(Number(order.id_tenant)) || null
+    : db.tenants.find((t) => t.id_tenant === order.id_tenant) || null;
+  const tenant = rawTenant ? enrichTenant(rawTenant, ctx) : null;
+  const user = ctx
+    ? ctx.userById.get(Number(order.id_user)) || null
+    : db.users.find((u) => u.id_user === order.id_user) || null;
+  const payment = ctx
+    ? ctx.latestPaymentByOrder.get(oid) || null
+    : db.payments
+        .filter((p) => p.id_pesanan === order.id_pesanan)
+        .sort((a, b) => b.id_pembayaran - a.id_pembayaran)[0] || null;
+  const orderReviews = ctx
+    ? ctx.reviewsByOrder.get(oid) || []
+    : (db.reviews || []).filter((r) => Number(r.id_pesanan) === oid);
+  const orderMessages = (
+    ctx
+      ? [...(ctx.messagesByOrder.get(oid) || [])]
+      : (db.messages || []).filter((m) => Number(m.id_pesanan) === oid)
+  ).sort((a, b) => Number(a.id_pesan) - Number(b.id_pesan));
   const lastChat = orderMessages[orderMessages.length - 1] || null;
   const details = (order.details || []).map((d) => {
-    const m = db.menus.find((x) => x.id_menu === d.id_menu);
+    const m = ctx
+      ? ctx.menuById.get(Number(d.id_menu))
+      : db.menus.find((x) => x.id_menu === d.id_menu);
     return {
       ...d,
       gambar: m?.gambar || d.gambar || "",
@@ -602,7 +772,7 @@ function getCorsHeaders(req) {
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-    Vary: "Origin",
+    Vary: "Origin, Accept-Encoding",
   };
   if (req.headers?.authorization) {
     headers["Cache-Control"] = "no-store, private";
@@ -613,9 +783,31 @@ function getCorsHeaders(req) {
   return headers;
 }
 
-function sendJson(req, res, status, payload) {
-  res.writeHead(status, getCorsHeaders(req));
-  res.end(JSON.stringify(payload));
+function sendJson(req, res, status, payload, extraHeaders = {}) {
+  const headers = { ...getCorsHeaders(req), ...extraHeaders };
+  const jsonStr = JSON.stringify(payload);
+  const acceptEncoding = String(req.headers["accept-encoding"] || "");
+  if (jsonStr.length >= 1024 && /\bgzip\b/i.test(acceptEncoding)) {
+    const rawBuf = Buffer.from(jsonStr, "utf8");
+    zlib.gzip(rawBuf, (err, compressed) => {
+      if (res.writableEnded) return;
+      if (err) {
+        headers["Content-Length"] = String(rawBuf.length);
+        res.writeHead(status, headers);
+        res.end(rawBuf);
+        return;
+      }
+      headers["Content-Encoding"] = "gzip";
+      headers["Content-Length"] = String(compressed.length);
+      res.writeHead(status, headers);
+      res.end(compressed);
+    });
+    return;
+  }
+  const rawBuf = Buffer.from(jsonStr, "utf8");
+  headers["Content-Length"] = String(rawBuf.length);
+  res.writeHead(status, headers);
+  res.end(rawBuf);
 }
 
 function parseBody(req) {
@@ -1569,21 +1761,28 @@ async function handleApiRequest(req, res) {
   // ---- Public Catalog Routes ----
 
   if (pathname === "/categories" && method === "GET") {
-    return sendJson(req, res, 200, {
-      success: true,
-      message: "Daftar kategori berhasil diambil.",
-      data: db.categories,
-    });
+    return sendJson(
+      req,
+      res,
+      200,
+      {
+        success: true,
+        message: "Daftar kategori berhasil diambil.",
+        data: db.categories,
+      },
+      { "Cache-Control": "public, max-age=300" }
+    );
   }
 
   if (pathname === "/tenants" && method === "GET") {
     const includeUnconfigured = urlObj.searchParams.get("include_unconfigured") === "true";
+    const ctx = createEnrichContext();
     return sendJson(req, res, 200, {
       success: true,
       message: "Daftar tenant berhasil diambil.",
       data: db.tenants
-        .filter((t) => includeUnconfigured || isTenantConfigured(t))
-        .map(enrichTenant),
+        .filter((t) => includeUnconfigured || isTenantConfigured(t, ctx))
+        .map((t) => enrichTenant(t, ctx)),
     });
   }
 
@@ -1664,9 +1863,10 @@ async function handleApiRequest(req, res) {
   if (tenantMenusMatch && method === "GET") {
     const idTenant = Number(tenantMenusMatch[1]);
     const includeUnavailable = urlObj.searchParams.get("include_unavailable") === "true";
+    const ctx = createEnrichContext();
     const menus = db.menus
       .filter((m) => m.id_tenant === idTenant && (includeUnavailable || Boolean(m.status_tersedia)))
-      .map(enrichMenu);
+      .map((m) => enrichMenu(m, ctx));
     return sendJson(req, res, 200, {
       success: true,
       message: "Daftar menu tenant berhasil diambil.",
@@ -1676,9 +1876,10 @@ async function handleApiRequest(req, res) {
 
   if (pathname === "/menus" && method === "GET") {
     const includeUnavailable = urlObj.searchParams.get("include_unavailable") === "true";
+    const ctx = createEnrichContext();
     const list = db.menus
       .filter((m) => (includeUnavailable ? true : Boolean(m.status_tersedia)))
-      .map(enrichMenu);
+      .map((m) => enrichMenu(m, ctx));
     return sendJson(req, res, 200, {
       success: true,
       message: "Daftar menu berhasil diambil.",
@@ -1824,10 +2025,11 @@ async function handleApiRequest(req, res) {
     const user = requireAuth(req, res);
     if (!user || !requireRole(req, res, user, "Customer", "Administrator")) return;
     const isAdmin = String(user.peran).toLowerCase() === "administrator";
+    const ctx = createEnrichContext();
     const list = db.orders
       .filter((o) => (isAdmin ? true : o.id_user === user.id_user))
       .sort((a, b) => b.id_pesanan - a.id_pesanan)
-      .map(enrichOrder);
+      .map((o) => enrichOrder(o, ctx));
     return sendJson(req, res, 200, {
       success: true,
       message: "Daftar pesanan berhasil diambil.",
@@ -2040,10 +2242,11 @@ async function handleApiRequest(req, res) {
         data: [],
       });
     }
+    const ctx = createEnrichContext();
     const list = db.orders
       .filter((o) => (isAdmin ? true : o.id_tenant === tenant.id_tenant))
       .sort((a, b) => b.id_pesanan - a.id_pesanan)
-      .map(enrichOrder);
+      .map((o) => enrichOrder(o, ctx));
     return sendJson(req, res, 200, {
       success: true,
       message: "Daftar pesanan tenant berhasil diambil.",
@@ -2609,8 +2812,9 @@ async function handleApiRequest(req, res) {
   if (pathname === "/vendor/tenant" && method === "GET") {
     const user = requireAuth(req, res);
     if (!user || !requireRole(req, res, user, "Vendor", "Administrator")) return;
+    const hadTenant = db.tenants.some((t) => t.id_user === user.id_user);
     const tenant = ensureTenantForVendor(user);
-    saveDb(db);
+    if (!hadTenant && tenant) saveDb(db);
     return sendJson(req, res, 200, {
       success: true,
       message: "Informasi tenant berhasil diambil.",
@@ -2771,11 +2975,13 @@ async function handleApiRequest(req, res) {
     const user = requireAuth(req, res);
     if (!user || !requireRole(req, res, user, "Vendor", "Administrator")) return;
     const isAdmin = String(user.peran).toLowerCase() === "administrator";
+    const hadTenant = !isAdmin && db.tenants.some((t) => t.id_user === user.id_user);
     const tenant = isAdmin ? null : ensureTenantForVendor(user);
-    if (tenant) saveDb(db);
+    if (!hadTenant && tenant) saveDb(db);
+    const ctx = createEnrichContext();
     const menus = db.menus
       .filter((m) => (isAdmin ? true : m.id_tenant === tenant.id_tenant))
-      .map(enrichMenu);
+      .map((m) => enrichMenu(m, ctx));
     return sendJson(req, res, 200, {
       success: true,
       message: "Daftar menu tenant berhasil diambil.",
@@ -2976,6 +3182,25 @@ async function handleApiRequest(req, res) {
 }
 
 const PORT = Number(process.env.PORT || 8000);
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`LetsOrder API server running at http://127.0.0.1:${PORT}/api`);
+const HOST = process.env.HOST || (process.env.PORT ? "0.0.0.0" : "127.0.0.1");
+
+function flushDbOnShutdown() {
+  if (pendingSaveTimer || asyncWriteQueuedDb) {
+    try {
+      saveDb(db);
+    } catch {}
+  }
+}
+
+process.once("SIGINT", () => {
+  flushDbOnShutdown();
+  process.exit(0);
+});
+process.once("SIGTERM", () => {
+  flushDbOnShutdown();
+  process.exit(0);
+});
+
+server.listen(PORT, HOST, () => {
+  console.log(`LetsOrder API server running at http://${HOST}:${PORT}/api`);
 });

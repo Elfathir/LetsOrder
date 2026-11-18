@@ -1468,9 +1468,32 @@ export default function App() {
       : currentUser?.nama || currentUser?.username || "Pengguna";
   const displayInitials = getInitials(displayName);
   const lastSyncSigRef = useRef("");
+  const syncInFlightPromiseRef = useRef(null);
+  const syncQueuedPromiseRef = useRef(null);
+  const syncFromApiRef = useRef(null);
 
-  const syncFromApi = useCallback(async () => {
-    try {
+  const syncFromApi = useCallback((opts = {}) => {
+    const isBackground = Boolean(opts?.background);
+    if (isBackground && typeof document !== "undefined" && document.hidden) {
+      return Promise.resolve();
+    }
+    if (syncInFlightPromiseRef.current) {
+      if (isBackground) {
+        return syncInFlightPromiseRef.current;
+      }
+      if (!syncQueuedPromiseRef.current) {
+        syncQueuedPromiseRef.current = syncInFlightPromiseRef.current
+          .catch(() => {})
+          .then(() => {
+            syncQueuedPromiseRef.current = null;
+            return syncFromApiRef.current?.();
+          });
+      }
+      return syncQueuedPromiseRef.current;
+    }
+
+    const runPromise = (async () => {
+      try {
       if (currentUser) {
         const tokenAtStart = getStoredToken() || "";
         try {
@@ -1851,10 +1874,18 @@ export default function App() {
           }
         }
       }
-    } catch {
-      // Keep current state when offline
-    }
+      } catch {
+        // Keep current state when offline
+      } finally {
+        syncInFlightPromiseRef.current = null;
+      }
+    })();
+
+    syncInFlightPromiseRef.current = runPromise;
+    return runPromise;
   }, [currentUser, activeOrderId]);
+
+  syncFromApiRef.current = syncFromApi;
 
   useEffect(() => {
     syncFromApi();
@@ -1864,10 +1895,23 @@ export default function App() {
     if (!currentUser) return;
     const pollId = setInterval(() => {
       if (!isThemeAnimating()) {
-        syncFromApi();
+        syncFromApi({ background: true });
       }
-    }, 6000);
-    return () => clearInterval(pollId);
+    }, 12000);
+    const onVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden && !isThemeAnimating()) {
+        syncFromApi({ background: true });
+      }
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    }
+    return () => {
+      clearInterval(pollId);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
+    };
   }, [currentUser, syncFromApi]);
 
   useEffect(() => {
@@ -2629,6 +2673,33 @@ export default function App() {
       setActiveOrder(orderSummaryObj);
       setActiveOrderId(oid);
       setActiveQueueCode(orderSummaryObj.nomor_antrean);
+      setOrdersHistory((prev) => {
+        const nextStatus = awaitingTenantConfirm ? "Awaiting payment" : "Preparing";
+        const nextRaw = orderSummaryObj.status_pesanan;
+        let found = false;
+        const updated = prev.map((o) => {
+          if (Number(o.id_pesanan) !== Number(oid)) return o;
+          found = true;
+          return {
+            ...o,
+            status: nextStatus,
+            status_pesanan: nextRaw,
+            raw_status: nextRaw,
+            is_paid: !awaitingTenantConfirm,
+          };
+        });
+        if (found) return updated;
+        return [
+          {
+            ...orderSummaryObj,
+            status: nextStatus,
+            raw_status: nextRaw,
+            is_paid: !awaitingTenantConfirm,
+            total: orderSummaryObj.total_harga,
+          },
+          ...prev,
+        ];
+      });
       setCartItems([]);
       setPrepTimerSeconds(525);
       setCheckoutStep(3);

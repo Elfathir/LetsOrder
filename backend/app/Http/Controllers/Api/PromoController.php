@@ -51,7 +51,6 @@ class PromoController extends Controller
             return response()->json(['success' => true, 'data' => []], 200);
         }
 
-        self::ensureSchema();
         $user = $request->user('sanctum') ?? $request->user();
 
         $query = Promo::where('aktif', true);
@@ -62,26 +61,40 @@ class PromoController extends Controller
             });
         }
 
-        $promos = $query->orderByDesc('id_promo')
-            ->get()
-            ->filter(function (Promo $p) use ($user) {
-                $limit = (int) ($p->batas_per_user ?? 1);
-                if (!$user || $limit <= 0) {
-                    return true;
+        $promoRows = $query->orderByDesc('id_promo')->get();
+
+        // Precompute promo usage counts per code in a single aggregate query
+        $usageByCode = [];
+        if ($user && $promoRows->isNotEmpty() && Schema::hasTable('orders') && Schema::hasColumn('orders', 'promo_code')) {
+            $usageRows = Order::where('id_user', $user->id_user)
+                ->whereNotNull('promo_code')
+                ->where('status_pesanan', '!=', 'Dibatalkan')
+                ->selectRaw('promo_code, COUNT(*) as cnt')
+                ->groupBy('promo_code')
+                ->get();
+            foreach ($usageRows as $row) {
+                $k = strtoupper(trim((string) $row->promo_code));
+                if ($k !== '') {
+                    $usageByCode[$k] = ($usageByCode[$k] ?? 0) + (int) $row->cnt;
                 }
-                $used = self::countUserPromoUsage((int) $user->id_user, (string) $p->kode_promo);
-                return $used < $limit;
-            })
-            ->map(function (Promo $p) use ($user) {
+            }
+        }
+
+        $promos = $promoRows
+            ->reduce(function (array $carry, Promo $p) use ($user, $usageByCode) {
                 $limit = (int) ($p->batas_per_user ?? 1);
-                $used = $user ? self::countUserPromoUsage((int) $user->id_user, (string) $p->kode_promo) : 0;
+                $codeKey = strtoupper(trim((string) $p->kode_promo));
+                $used = $user ? (int) ($usageByCode[$codeKey] ?? 0) : 0;
+                if ($user && $limit > 0 && $used >= $limit) {
+                    return $carry;
+                }
                 $arr = $p->toArray();
                 $arr['batas_per_user'] = $limit;
                 $arr['used_by_user'] = $used;
                 $arr['sisa_klaim'] = $limit > 0 ? max(0, $limit - $used) : null;
-                return $arr;
-            })
-            ->values();
+                $carry[] = $arr;
+                return $carry;
+            }, []);
 
         return response()->json([
             'success' => true,
