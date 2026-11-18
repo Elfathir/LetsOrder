@@ -1468,9 +1468,21 @@ export default function App() {
       : currentUser?.nama || currentUser?.username || "Pengguna";
   const displayInitials = getInitials(displayName);
   const lastSyncSigRef = useRef("");
+  const syncEpochRef = useRef(0);
   const syncInFlightPromiseRef = useRef(null);
   const syncQueuedPromiseRef = useRef(null);
   const syncFromApiRef = useRef(null);
+  const bgSyncTickRef = useRef(0);
+  const lastCatalogCacheRef = useRef({
+    userId: 0,
+    tenantsRes: null,
+    menusRes: null,
+    vendorTenantRes: null,
+    vendorMenusRes: null,
+    promosRes: null,
+    vendorPromosRes: null,
+    vendorRevRes: null,
+  });
 
   const syncFromApi = useCallback((opts = {}) => {
     const isBackground = Boolean(opts?.background);
@@ -1492,10 +1504,58 @@ export default function App() {
       return syncQueuedPromiseRef.current;
     }
 
+    const runWithConcurrency = async (tasks, limit = 2) => {
+      const results = new Array(tasks.length);
+      let nextIdx = 0;
+      const workers = Math.min(Math.max(1, limit), tasks.length);
+      await Promise.all(
+        Array.from({ length: workers }, async () => {
+          while (nextIdx < tasks.length) {
+            const idx = nextIdx++;
+            results[idx] = await tasks[idx]();
+          }
+        })
+      );
+      return results;
+    };
+
     const runPromise = (async () => {
       try {
-      if (currentUser) {
-        const tokenAtStart = getStoredToken() || "";
+      const epochAtStart = syncEpochRef.current;
+      const syncUserId = currentUser?.id_user || 0;
+      if (lastCatalogCacheRef.current.userId !== syncUserId) {
+        lastCatalogCacheRef.current = {
+          userId: syncUserId,
+          tenantsRes: null,
+          menusRes: null,
+          vendorTenantRes: null,
+          vendorMenusRes: null,
+          promosRes: null,
+          vendorPromosRes: null,
+          vendorRevRes: null,
+        };
+        bgSyncTickRef.current = 0;
+      }
+      const catalogCache = lastCatalogCacheRef.current;
+      const fetchCatalog =
+        !isBackground ||
+        !catalogCache.tenantsRes ||
+        bgSyncTickRef.current % 3 === 0;
+      if (isBackground) {
+        bgSyncTickRef.current += 1;
+      }
+
+      const tokenAtStart = getStoredToken() || "";
+      let unauthorizedDetected = false;
+      const safeApiCall = (fn) => () =>
+        fn().catch((err) => {
+          if (err?.status === 401) {
+            unauthorizedDetected = true;
+          }
+          return null;
+        });
+
+      if (currentUser && (!isBackground || fetchCatalog)) {
         try {
           const meRes = await api.me();
           if ((getStoredToken() || "") !== tokenAtStart) {
@@ -1536,19 +1596,54 @@ export default function App() {
         notifRes,
         promosRes,
         vendorPromosRes,
-      ] = await Promise.all([
-        api.getTenants().catch(() => null),
-        api.getMenus({ include_unavailable: true }).catch(() => null),
-        isVendor ? api.getVendorTenant().catch(() => null) : Promise.resolve(null),
-        isVendor ? api.getVendorMenus().catch(() => null) : Promise.resolve(null),
-        isVendor
-          ? api.getVendorOrders().catch(() => null)
-          : api.getOrders().catch(() => null),
-        !isVendor && currentUser ? api.getCart().catch(() => null) : Promise.resolve(null),
-        currentUser ? api.getNotifications().catch(() => null) : Promise.resolve(null),
-        api.getPromos().catch(() => null),
-        isVendor ? api.getVendorPromos().catch(() => null) : Promise.resolve(null),
-      ]);
+      ] = await runWithConcurrency(
+        [
+          fetchCatalog
+            ? safeApiCall(() => api.getTenants())
+            : () => Promise.resolve(catalogCache.tenantsRes),
+          fetchCatalog
+            ? safeApiCall(() => api.getMenus({ include_unavailable: true }))
+            : () => Promise.resolve(catalogCache.menusRes),
+          isVendor && fetchCatalog
+            ? safeApiCall(() => api.getVendorTenant())
+            : () => Promise.resolve(isVendor ? catalogCache.vendorTenantRes : null),
+          isVendor && fetchCatalog
+            ? safeApiCall(() => api.getVendorMenus())
+            : () => Promise.resolve(isVendor ? catalogCache.vendorMenusRes : null),
+          currentUser
+            ? safeApiCall(() => (isVendor ? api.getVendorOrders() : api.getOrders()))
+            : () => Promise.resolve(null),
+          !isVendor && currentUser
+            ? safeApiCall(() => api.getCart())
+            : () => Promise.resolve(null),
+          currentUser
+            ? safeApiCall(() => api.getNotifications())
+            : () => Promise.resolve(null),
+          fetchCatalog && (currentUser || !isBackground)
+            ? safeApiCall(() => api.getPromos())
+            : () => Promise.resolve(catalogCache.promosRes),
+          isVendor && fetchCatalog
+            ? safeApiCall(() => api.getVendorPromos())
+            : () => Promise.resolve(isVendor ? catalogCache.vendorPromosRes : null),
+        ],
+        isBackground ? 2 : 3
+      );
+
+      if (currentUser && unauthorizedDetected && (getStoredToken() || "") === tokenAtStart) {
+        clearStoredSession();
+        setCurrentUser(null);
+        setAuthError(
+          "Sesi login tidak valid atau telah kedaluwarsa. Silakan login kembali."
+        );
+        return;
+      }
+
+      if (tenantsRes) catalogCache.tenantsRes = tenantsRes;
+      if (menusRes) catalogCache.menusRes = menusRes;
+      if (vendorTenantRes) catalogCache.vendorTenantRes = vendorTenantRes;
+      if (vendorMenusRes) catalogCache.vendorMenusRes = vendorMenusRes;
+      if (promosRes) catalogCache.promosRes = promosRes;
+      if (vendorPromosRes) catalogCache.vendorPromosRes = vendorPromosRes;
 
       await waitForThemeTransitionIdle();
 
@@ -1557,11 +1652,18 @@ export default function App() {
         tenantsRes?.data?.find((t) => t.id_user === currentUser?.id_user) ||
         null;
       const vendorRevRes =
-        isVendor && myTenant?.id_tenant
+        isVendor && fetchCatalog && myTenant?.id_tenant
           ? await api.getReviews({ id_tenant: myTenant.id_tenant }).catch(() => null)
-          : null;
+          : isVendor
+            ? catalogCache.vendorRevRes
+            : null;
+      if (vendorRevRes) catalogCache.vendorRevRes = vendorRevRes;
 
       await waitForThemeTransitionIdle();
+
+      if (syncEpochRef.current !== epochAtStart) {
+        return;
+      }
 
       const syncSig = JSON.stringify([
         currentUser?.id_user || 0,
@@ -2670,6 +2772,8 @@ export default function App() {
           : verifiedOrder.status_pesanan || "Sedang Diproses",
       };
 
+      syncEpochRef.current += 1;
+      lastSyncSigRef.current = "";
       setActiveOrder(orderSummaryObj);
       setActiveOrderId(oid);
       setActiveQueueCode(orderSummaryObj.nomor_antrean);

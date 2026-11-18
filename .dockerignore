@@ -1,4 +1,4 @@
-# Exclude local artifacts, docs, build caches, and dependencies from deploy context
+# Keep Docker build contexts lean while preserving required Laravel directories
 .git
 .github
 assets
@@ -13,10 +13,6 @@ backend/.phpunit.result.cache
 backend/vendor
 backend/node_modules
 backend/storage/logs/*.log
-backend/storage/framework/cache/data/*
-backend/storage/framework/sessions/*
-backend/storage/framework/testing/*
-backend/storage/framework/views/*
 backend/storage/app/db.json.tmp
 *.log
 *.tmp

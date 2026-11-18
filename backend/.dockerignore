@@ -1,4 +1,4 @@
-# Keep Docker / Railpack deploy contexts lean and fast
+# Keep Docker build contexts lean while preserving required Laravel directories
 .git
 .github
 .env
@@ -9,10 +9,6 @@
 vendor
 node_modules
 storage/logs/*.log
-storage/framework/cache/data/*
-storage/framework/sessions/*
-storage/framework/testing/*
-storage/framework/views/*
 storage/app/db.json.tmp
 *.log
 *.tmp
