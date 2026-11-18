@@ -78,7 +78,7 @@ class TenantController extends Controller
 
         // Pre-aggregate review stats in a single query instead of querying per tenant
         $reviewStatsByTenant = [];
-        if ($tenantCollection->isNotEmpty() && Schema::hasTable('reviews')) {
+        if ($tenantCollection->isNotEmpty()) {
             $tenantIds = $tenantCollection->pluck('id_tenant')->all();
             $rows = \App\Models\Review::whereIn('id_tenant', $tenantIds)
                 ->selectRaw('id_tenant, COUNT(*) as cnt, AVG(rating) as avg_rating')
