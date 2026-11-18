@@ -76,6 +76,11 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -90,6 +95,26 @@ body {
 
 button, input, select, textarea {
   font-family: inherit;
+}
+
+/* Remove the default blue tap flash / long-press selection on mobile controls */
+button,
+a,
+label,
+[role="button"],
+[role="tab"] {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+[role="button"]:focus:not(:focus-visible),
+[role="tab"]:focus:not(:focus-visible) {
+  outline: none;
 }
 
 input[type="password"]::-ms-reveal,

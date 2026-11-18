@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\MenuController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\OrderMessageController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PromoController;
 use App\Http\Controllers\Api\ReviewController;
@@ -132,6 +133,14 @@ $registerApiRoutes = function () {
         Route::patch('/payments/{id}/verification', [PaymentController::class, 'verify'])
             ->whereNumber('id')
             ->middleware('role:Customer,Vendor,Administrator');
+
+        // Order Chat (Pembeli <-> Tenant, aktif setelah pesanan dibayar)
+        Route::middleware(['role:Customer,Vendor,Administrator', 'throttle:120,1'])->group(function () {
+            Route::get('/orders/{id}/messages', [OrderMessageController::class, 'index'])->whereNumber('id');
+            Route::post('/orders/{id}/messages', [OrderMessageController::class, 'store'])->whereNumber('id');
+            Route::get('/vendor/orders/{id}/messages', [OrderMessageController::class, 'index'])->whereNumber('id');
+            Route::post('/vendor/orders/{id}/messages', [OrderMessageController::class, 'store'])->whereNumber('id');
+        });
 
         // Vendor API & Pengelolaan Tenant/Menu/Pesanan
         Route::middleware('role:Vendor,Administrator')->group(function () {

@@ -7,6 +7,7 @@ use App\Models\Cart;
 use App\Models\Notification;
 use App\Models\Order;
 use App\Models\OrderDetail;
+use App\Models\OrderMessage;
 use App\Models\Promo;
 use App\Models\StatusHistory;
 use App\Models\Tenant;
@@ -723,12 +724,40 @@ class OrderController extends Controller
                 : \App\Models\Review::where('id_pesanan', $order->id_pesanan)->get()->toArray();
         }
 
+        $chatCount = 0;
+        $lastChat = null;
+        static $hasMessagesTable = null;
+        $hasMessagesTable ??= Schema::hasTable('order_messages');
+        if ($hasMessagesTable) {
+            $chatCount = OrderMessage::where('id_pesanan', $order->id_pesanan)->count();
+            $last = $chatCount > 0
+                ? OrderMessage::where('id_pesanan', $order->id_pesanan)->orderByDesc('id_pesan')->first()
+                : null;
+            if ($last) {
+                $lastChat = [
+                    'id_pesan' => $last->id_pesan,
+                    'id_pengirim' => $last->id_pengirim,
+                    'peran_pengirim' => $last->peran_pengirim,
+                    'nama_pengirim' => $last->nama_pengirim,
+                    'teks' => (string) ($last->teks ?? ''),
+                    'has_image' => !empty($last->gambar),
+                    'waktu' => $last->waktu?->format('Y-m-d H:i:s'),
+                ];
+            }
+        }
+
+        $isPaid = in_array($order->status_pesanan, OrderMessageController::PAID_STATUSES, true)
+            || ($latestPayment && $latestPayment->status_verifikasi === 'Terverifikasi');
+
         return [
             'id_pesanan' => $order->id_pesanan,
             'id_user' => $order->id_user,
             'id_tenant' => $order->id_tenant,
             'nomor_antrean' => $order->nomor_antrean,
             'status_pesanan' => $order->status_pesanan,
+            'is_paid' => $isPaid,
+            'chat_count' => $chatCount,
+            'last_chat' => $lastChat,
             'total_harga' => (int) $order->total_harga,
             'catatan' => $order->catatan,
             'waktu_pesan' => $order->waktu_pesan?->format('Y-m-d H:i:s'),
