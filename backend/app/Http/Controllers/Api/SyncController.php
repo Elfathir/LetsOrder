@@ -8,6 +8,7 @@ use App\Models\Promo;
 use App\Models\Review;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -18,6 +19,24 @@ class SyncController extends Controller
     {
         $syncStartedAt = microtime(true);
         $syncLastMark = $syncStartedAt;
+        
+        $queryStats = [
+            'count' => 0,
+            'total_ms' => 0,
+            'slowest_ms' => 0,
+            'slowest_sql' => null,
+        ];
+        
+        DB::listen(function ($query) use (&$queryStats) {
+            $queryStats['count']++;
+            $queryStats['total_ms'] += $query->time;
+        
+            if ($query->time > $queryStats['slowest_ms']) {
+                $queryStats['slowest_ms'] = $query->time;
+                $queryStats['slowest_sql'] = $query->sql;
+            }
+        });
+        
         $bearer = $request->bearerToken();
         $user = $bearer ? Auth::guard('sanctum')->user() : null;
 
@@ -171,6 +190,13 @@ class SyncController extends Controller
         
         Log::info('SYNC timing total', [
             'ms' => round((microtime(true) - $syncStartedAt) * 1000, 2),
+        ]);
+
+        Log::info('SYNC database queries', [
+            'count' => $queryStats['count'],
+            'total_ms' => round($queryStats['total_ms'], 2),
+            'slowest_ms' => round($queryStats['slowest_ms'], 2),
+            'slowest_sql' => $queryStats['slowest_sql'],
         ]);
         
         return response()->json([
