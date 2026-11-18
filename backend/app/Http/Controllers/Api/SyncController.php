@@ -10,7 +10,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class SyncController extends Controller
@@ -101,14 +100,14 @@ class SyncController extends Controller
                     )
                     : collect();
 
-                if (Schema::hasTable('promos') && $vendorTenant) {
+                if ($vendorTenant) {
                     $vendorPromos = Promo::where('id_tenant', $vendorTenant['id_tenant'])
                         ->orderByDesc('id_promo')
                         ->get();
                 } else {
                     $vendorPromos = [];
                 }
-                if ($vendorTenant && Schema::hasTable('reviews')) {
+                if ($vendorTenant) {
                     $vendorReviews = Review::with([
                         'user:id_user,username,nama',
                         'menu:id_menu,nama_menu',
