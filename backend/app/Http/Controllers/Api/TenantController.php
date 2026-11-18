@@ -47,10 +47,16 @@ class TenantController extends Controller
         $includeUnconfigured = $request->boolean('include_unconfigured', false);
 
         if ($compact) {
-            $cols = ['id_tenant', 'id_user', 'nama_tenant', 'deskripsi', 'status_buka'];
-            if (Schema::hasColumn('tenants', 'jam_buka')) {
-                array_push($cols, 'jam_buka', 'jam_tutup', 'auto_schedule');
-            }
+            $cols = [
+                'id_tenant',
+                'id_user',
+                'nama_tenant',
+                'deskripsi',
+                'status_buka',
+                'jam_buka',
+                'jam_tutup',
+                'auto_schedule',
+            ];
             $query->select($cols)->selectRaw(MediaController::previewSql('logo', 'logo', false));
             $query->with([
                 'user' => fn ($q) => $q->select('id_user')->selectRaw(MediaController::previewSql('avatar', 'avatar', false)),
@@ -185,10 +191,16 @@ class TenantController extends Controller
     {
         $query = Tenant::where('id_user', $userId);
         if ($compact) {
-            $cols = ['id_tenant', 'id_user', 'nama_tenant', 'deskripsi', 'status_buka'];
-            if (Schema::hasColumn('tenants', 'jam_buka')) {
-                array_push($cols, 'jam_buka', 'jam_tutup', 'auto_schedule');
-            }
+            $cols = [
+                'id_tenant',
+                'id_user',
+                'nama_tenant',
+                'deskripsi',
+                'status_buka',
+                'jam_buka',
+                'jam_tutup',
+                'auto_schedule',
+            ];
             $query->select($cols)->selectRaw(MediaController::previewSql('logo', 'logo', false));
             $query->with([
                 'user' => fn ($q) => $q->select('id_user')->selectRaw(MediaController::previewSql('avatar', 'avatar', false)),
@@ -349,20 +361,23 @@ class TenantController extends Controller
         $avgRating = null;
         if ($reviewStatsByTenant !== null) {
             $stat = $reviewStatsByTenant[(int) $tenant->id_tenant] ?? null;
+        
             if ($stat && $stat['cnt'] > 0) {
                 $reviewsCount = (int) $stat['cnt'];
                 $avgRating = number_format((float) $stat['avg'], 1, '.', '');
             }
-        } elseif (Schema::hasTable('reviews')) {
+        } else {
             $stats = \App\Models\Review::where('id_tenant', $tenant->id_tenant)
                 ->selectRaw('COUNT(*) as cnt, AVG(rating) as avg_rating')
                 ->first();
+        
             $reviewsCount = (int) ($stats->cnt ?? 0);
+        
             if ($reviewsCount > 0) {
                 $avgRating = number_format((float) $stats->avg_rating, 1, '.', '');
             }
         }
-
+        
         return [
             'id_tenant' => $tenant->id_tenant,
             'id_user' => $tenant->id_user,
