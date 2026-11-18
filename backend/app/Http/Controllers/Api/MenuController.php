@@ -18,7 +18,19 @@ class MenuController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Menu::with(['tenant', 'category']);
+        $compact = $request->boolean('compact_media', false);
+        $data = $this->indexData($request, $compact);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Daftar menu berhasil diambil.',
+            'data' => $data,
+        ], 200);
+    }
+
+    public function indexData(Request $request, bool $compact = false)
+    {
+        $query = $this->buildMenuQuery($compact);
 
         if ($request->filled('id_tenant')) {
             $query->where('id_tenant', (int) $request->query('id_tenant'));
@@ -45,11 +57,35 @@ class MenuController extends Controller
 
         $menus = $query->orderBy('id_menu', 'asc')->get();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Daftar menu berhasil diambil.',
-            'data' => $this->attachReviewStats($menus),
-        ], 200);
+        return $this->attachReviewStats($menus, $compact);
+    }
+
+    private function buildMenuQuery(bool $compact)
+    {
+        if (!$compact) {
+            return Menu::with(['tenant', 'category']);
+        }
+
+        $tenantCols = ['id_tenant', 'id_user', 'nama_tenant', 'deskripsi', 'status_buka'];
+        if (Schema::hasColumn('tenants', 'jam_buka')) {
+            array_push($tenantCols, 'jam_buka', 'jam_tutup', 'auto_schedule');
+        }
+
+        return Menu::select([
+            'id_menu',
+            'id_tenant',
+            'id_kategori',
+            'nama_menu',
+            'deskripsi',
+            'harga',
+            'estimasi_menit',
+            'status_tersedia',
+        ])
+            ->selectRaw(MediaController::previewSql('gambar', 'gambar', true))
+            ->with([
+                'category',
+                'tenant' => fn ($q) => $q->select($tenantCols)->selectRaw(MediaController::previewSql('logo', 'logo', false)),
+            ]);
     }
 
     /**
@@ -79,9 +115,21 @@ class MenuController extends Controller
     public function vendorMenus(Request $request)
     {
         $user = $request->user();
+        $compact = $request->boolean('compact_media', false);
+        $data = $this->vendorMenusData($request, $user, $compact);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Daftar menu tenant berhasil diambil.',
+            'data' => $data,
+        ], 200);
+    }
+
+    public function vendorMenusData(Request $request, $user, bool $compact = false)
+    {
         $tenantIds = Tenant::where('id_user', $user->id_user)->pluck('id_tenant');
 
-        $query = Menu::with(['tenant', 'category'])
+        $query = $this->buildMenuQuery($compact)
             ->whereIn('id_tenant', $tenantIds);
 
         if ($request->filled('id_kategori')) {
@@ -100,11 +148,7 @@ class MenuController extends Controller
 
         $menus = $query->orderBy('id_menu', 'asc')->get();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Daftar menu tenant berhasil diambil.',
-            'data' => $this->attachReviewStats($menus),
-        ], 200);
+        return $this->attachReviewStats($menus, $compact);
     }
 
     /**
@@ -194,7 +238,7 @@ class MenuController extends Controller
         ], 201);
     }
 
-    private function attachReviewStats($menus)
+    private function attachReviewStats($menus, bool $compactMedia = false)
     {
         $statsByMenu = [];
         if (Schema::hasTable('reviews') && $menus->isNotEmpty()) {
@@ -210,8 +254,28 @@ class MenuController extends Controller
             }
         }
 
-        return $menus->map(function (Menu $menu) use ($statsByMenu) {
+        return $menus->map(function (Menu $menu) use ($statsByMenu, $compactMedia) {
             $arr = $menu->toArray();
+            if ($compactMedia) {
+                $arr['gambar'] = MediaController::compactMediaValue(
+                    'menu',
+                    (int) $menu->id_menu,
+                    $menu->gambar_preview ?? '',
+                    $menu->gambar_len ?? 0
+                );
+                unset($arr['gambar_preview'], $arr['gambar_len']);
+                if (isset($arr['tenant']) && is_array($arr['tenant'])) {
+                    $tLogo = MediaController::compactMediaValue(
+                        'tenant',
+                        (int) ($arr['tenant']['id_tenant'] ?? 0),
+                        $arr['tenant']['logo_preview'] ?? '',
+                        $arr['tenant']['logo_len'] ?? 0
+                    );
+                    $arr['tenant']['logo'] = $tLogo;
+                    $arr['tenant']['gambar'] = $tLogo;
+                    unset($arr['tenant']['logo_preview'], $arr['tenant']['logo_len']);
+                }
+            }
             $st = $statsByMenu[(int) $menu->id_menu] ?? null;
             $arr['rating'] = $st ? $st['avg'] : null;
             $arr['reviews'] = $st ? $st['cnt'] : 0;
@@ -256,8 +320,12 @@ class MenuController extends Controller
             $validated['deskripsi'] = '';
         }
 
-        if (array_key_exists('gambar', $validated) && $validated['gambar'] === null) {
-            $validated['gambar'] = $menu->gambar ?? '';
+        if (array_key_exists('gambar', $validated)) {
+            if ($validated['gambar'] === null) {
+                $validated['gambar'] = $menu->gambar ?? '';
+            } elseif (MediaController::isMediaEndpointRef($validated['gambar'])) {
+                unset($validated['gambar']);
+            }
         }
 
         $menu->update($validated);

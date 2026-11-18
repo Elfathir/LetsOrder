@@ -17,6 +17,18 @@ class TenantController extends Controller
      */
     public function index(Request $request)
     {
+        $compact = $request->boolean('compact_media', false);
+        $tenants = $this->indexData($request, $compact);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Daftar tenant berhasil diambil.',
+            'data' => $tenants,
+        ], 200);
+    }
+
+    public function indexData(Request $request, bool $compact = false): \Illuminate\Support\Collection
+    {
         $query = Tenant::query();
 
         if ($request->has('status_buka') && $request->query('status_buka') !== '') {
@@ -34,8 +46,24 @@ class TenantController extends Controller
 
         $includeUnconfigured = $request->boolean('include_unconfigured', false);
 
+        if ($compact) {
+            $cols = ['id_tenant', 'id_user', 'nama_tenant', 'deskripsi', 'status_buka'];
+            if (Schema::hasColumn('tenants', 'jam_buka')) {
+                array_push($cols, 'jam_buka', 'jam_tutup', 'auto_schedule');
+            }
+            $query->select($cols)->selectRaw(MediaController::previewSql('logo', 'logo', false));
+            $query->with([
+                'user' => fn ($q) => $q->select('id_user')->selectRaw(MediaController::previewSql('avatar', 'avatar', false)),
+                'menus' => fn ($q) => $q->select('id_menu', 'id_tenant')->selectRaw(MediaController::previewSql('gambar', 'gambar', true)),
+            ]);
+        } else {
+            $query->with([
+                'user:id_user,avatar',
+                'menus' => fn ($q) => $q->select('id_menu', 'id_tenant', 'gambar'),
+            ]);
+        }
+
         $tenantCollection = $query
-            ->with(['user:id_user,avatar', 'menus' => fn ($q) => $q->select('id_menu', 'id_tenant', 'gambar')])
             ->orderByDesc('status_buka')
             ->orderBy('id_tenant', 'asc')
             ->get()
@@ -58,15 +86,9 @@ class TenantController extends Controller
             }
         }
 
-        $tenants = $tenantCollection
-            ->map(fn (Tenant $t) => $this->formatTenant($t, $reviewStatsByTenant))
+        return $tenantCollection
+            ->map(fn (Tenant $t) => $this->formatTenant($t, $reviewStatsByTenant, $compact))
             ->values();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Daftar tenant berhasil diambil.',
-            'data' => $tenants,
-        ], 200);
     }
 
     /**
@@ -142,12 +164,10 @@ class TenantController extends Controller
     public function vendorTenant(Request $request)
     {
         $user = $request->user();
+        $compact = $request->boolean('compact_media', false);
+        $data = $this->vendorTenantData((int) $user->id_user, $compact);
 
-        $tenant = Tenant::with(['menus.category'])
-            ->where('id_user', $user->id_user)
-            ->first();
-
-        if (!$tenant) {
+        if (!$data) {
             return response()->json([
                 'success' => false,
                 'message' => 'Data tenant untuk akun Vendor ini belum ditemukan.',
@@ -157,8 +177,33 @@ class TenantController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Informasi tenant berhasil diambil.',
-            'data' => $this->formatTenant($tenant),
+            'data' => $data,
         ], 200);
+    }
+
+    public function vendorTenantData(int $userId, bool $compact = false): ?array
+    {
+        $query = Tenant::where('id_user', $userId);
+        if ($compact) {
+            $cols = ['id_tenant', 'id_user', 'nama_tenant', 'deskripsi', 'status_buka'];
+            if (Schema::hasColumn('tenants', 'jam_buka')) {
+                array_push($cols, 'jam_buka', 'jam_tutup', 'auto_schedule');
+            }
+            $query->select($cols)->selectRaw(MediaController::previewSql('logo', 'logo', false));
+            $query->with([
+                'user' => fn ($q) => $q->select('id_user')->selectRaw(MediaController::previewSql('avatar', 'avatar', false)),
+                'menus' => fn ($q) => $q->select('id_menu', 'id_tenant')->selectRaw(MediaController::previewSql('gambar', 'gambar', true)),
+            ]);
+        } else {
+            $query->with(['user:id_user,avatar', 'menus.category']);
+        }
+
+        $tenant = $query->first();
+        if (!$tenant) {
+            return null;
+        }
+
+        return $this->formatTenant($tenant, null, $compact);
     }
 
     /**
@@ -231,8 +276,12 @@ class TenantController extends Controller
             $validated['deskripsi'] = '';
         }
 
-        if (array_key_exists('logo', $validated) && $validated['logo'] === null) {
-            $validated['logo'] = $tenant->logo ?? '';
+        if (array_key_exists('logo', $validated)) {
+            if ($validated['logo'] === null) {
+                $validated['logo'] = $tenant->logo ?? '';
+            } elseif (MediaController::isMediaEndpointRef($validated['logo'])) {
+                unset($validated['logo']);
+            }
         }
 
         if (!Schema::hasColumn('tenants', 'jam_buka')) {
@@ -253,7 +302,8 @@ class TenantController extends Controller
         $defaultDescriptions = ['', 'tenant kantin kampus upnvj', 'tenant kantin kampus', 'campus canteen tenant'];
         $desc = strtolower(trim((string) ($tenant->deskripsi ?? '')));
         $hasCustomDesc = !in_array($desc, $defaultDescriptions, true);
-        $hasLogo = !empty($tenant->logo) && $tenant->logo !== 'tenant/default.png';
+        $rawLogoVal = (string) ($tenant->logo_preview ?? $tenant->logo ?? '');
+        $hasLogo = $rawLogoVal !== '' && $rawLogoVal !== 'tenant/default.png';
         $hasMenus = $tenant->relationLoaded('menus')
             ? $tenant->menus->isNotEmpty()
             : Menu::where('id_tenant', $tenant->id_tenant)->exists();
@@ -261,18 +311,39 @@ class TenantController extends Controller
         return $hasCustomDesc || $hasLogo || $hasMenus;
     }
 
-    private function formatTenant(Tenant $tenant, ?array $reviewStatsByTenant = null): array
+    private function formatTenant(Tenant $tenant, ?array $reviewStatsByTenant = null, bool $compactMedia = false): array
     {
         $defaultDescriptions = ['', 'tenant kantin kampus upnvj', 'tenant kantin kampus', 'campus canteen tenant'];
         $rawDesc = trim((string) ($tenant->deskripsi ?? ''));
         $cleanDesc = in_array(strtolower($rawDesc), $defaultDescriptions, true) ? '' : $rawDesc;
 
-        $rawLogo = $tenant->logo && $tenant->logo !== 'tenant/default.png' ? $tenant->logo : '';
-        $userAvatar = $tenant->relationLoaded('user') ? ($tenant->user?->avatar ?? '') : '';
-        $menuImg = $tenant->relationLoaded('menus')
-            ? ($tenant->menus->first(fn ($m) => !empty($m->gambar) && $m->gambar !== 'menu/default.png')?->gambar ?? '')
-            : '';
-        $effectiveImage = $rawLogo ?: ($userAvatar ?: $menuImg);
+        if ($compactMedia) {
+            $logoPreview = trim((string) ($tenant->logo_preview ?? $tenant->logo ?? ''));
+            $rawLogo = ($logoPreview !== '' && $logoPreview !== 'tenant/default.png')
+                ? MediaController::compactMediaValue('tenant', (int) $tenant->id_tenant, $logoPreview, $tenant->logo_len ?? strlen($logoPreview))
+                : '';
+
+            $userAvatarRaw = $tenant->relationLoaded('user') ? trim((string) ($tenant->user?->avatar_preview ?? $tenant->user?->avatar ?? '')) : '';
+            $userAvatar = $userAvatarRaw !== ''
+                ? MediaController::compactMediaValue('tenant', (int) $tenant->id_tenant, $userAvatarRaw, $tenant->user?->avatar_len ?? strlen($userAvatarRaw))
+                : '';
+
+            $firstMenu = $tenant->relationLoaded('menus')
+                ? $tenant->menus->first(fn ($m) => !empty($m->gambar_preview ?? $m->gambar) && ($m->gambar_preview ?? $m->gambar) !== 'menu/default.png')
+                : null;
+            $menuImgRaw = $firstMenu ? trim((string) ($firstMenu->gambar_preview ?? $firstMenu->gambar ?? '')) : '';
+            $menuImg = $menuImgRaw !== ''
+                ? MediaController::compactMediaValue('tenant', (int) $tenant->id_tenant, $menuImgRaw, $firstMenu->gambar_len ?? strlen($menuImgRaw))
+                : '';
+            $effectiveImage = $rawLogo ?: ($userAvatar ?: $menuImg);
+        } else {
+            $rawLogo = $tenant->logo && $tenant->logo !== 'tenant/default.png' ? $tenant->logo : '';
+            $userAvatar = $tenant->relationLoaded('user') ? ($tenant->user?->avatar ?? '') : '';
+            $menuImg = $tenant->relationLoaded('menus')
+                ? ($tenant->menus->first(fn ($m) => !empty($m->gambar) && $m->gambar !== 'menu/default.png')?->gambar ?? '')
+                : '';
+            $effectiveImage = $rawLogo ?: ($userAvatar ?: $menuImg);
+        }
 
         $reviewsCount = 0;
         $avgRating = null;

@@ -37,33 +37,89 @@ class OrderController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-
-        $relations = [
-            'tenant',
-            'orderDetails.menu',
-            'payments',
-            'statusHistories',
-        ];
-        if (Schema::hasTable('reviews')) {
-            $relations[] = 'reviews';
-        }
-        $query = Order::with($relations)->where('id_user', $user->id_user);
-
-        if ($request->filled('status_pesanan')) {
-            $query->where('status_pesanan', $request->query('status_pesanan'));
-        }
-
-        $orders = $query
-            ->orderByDesc('waktu_pesan')
-            ->orderByDesc('id_pesanan')
-            ->get()
-            ->map(fn (Order $order) => $this->formatOrderResponse($order));
+        $compact = $request->boolean('compact_media', false);
+        $statusFilter = $request->filled('status_pesanan') ? (string) $request->query('status_pesanan') : null;
+        $orders = $this->ordersDataForUser($user, false, $compact, $statusFilter);
 
         return response()->json([
             'success' => true,
             'message' => 'Daftar pesanan berhasil diambil.',
             'data' => $orders,
         ], 200);
+    }
+
+    public function ordersDataForUser($user, bool $asVendor = false, bool $compact = false, ?string $statusFilter = null)
+    {
+        $hasReviews = Schema::hasTable('reviews');
+        $relations = [
+            'payments',
+            'statusHistories',
+        ];
+        if ($asVendor) {
+            $relations[] = 'user:id_user,username,nama,email,peran';
+        }
+        if ($compact) {
+            $tenantCols = ['id_tenant', 'id_user', 'nama_tenant', 'deskripsi', 'status_buka'];
+            if (Schema::hasColumn('tenants', 'jam_buka')) {
+                array_push($tenantCols, 'jam_buka', 'jam_tutup', 'auto_schedule');
+            }
+            $relations['tenant'] = fn ($q) => $q->select($tenantCols)->selectRaw(MediaController::previewSql('logo', 'logo', false));
+            $relations['orderDetails'] = fn ($q) => $q->with([
+                'menu' => fn ($mq) => $mq->select(['id_menu', 'id_tenant', 'id_kategori', 'nama_menu', 'harga', 'estimasi_menit', 'status_tersedia'])
+                    ->selectRaw(MediaController::previewSql('gambar', 'gambar', true)),
+            ]);
+        } else {
+            $relations[] = 'tenant';
+            $relations[] = 'orderDetails.menu';
+        }
+        if ($hasReviews) {
+            $relations[] = 'reviews';
+        }
+
+        $query = Order::with($relations);
+        if ($asVendor) {
+            $tenantIds = Tenant::where('id_user', $user->id_user)->pluck('id_tenant');
+            if ($tenantIds->isEmpty()) {
+                return collect([]);
+            }
+            $query->whereIn('id_tenant', $tenantIds);
+        } else {
+            $query->where('id_user', $user->id_user);
+        }
+
+        if ($statusFilter !== null && $statusFilter !== '') {
+            $query->where('status_pesanan', $statusFilter);
+        }
+
+        $orderRows = $query
+            ->orderByDesc('waktu_pesan')
+            ->orderByDesc('id_pesanan')
+            ->get();
+
+        // Batch-load OrderMessage counts & latest chat instead of 2 queries per order
+        $chatStatsByOrder = [];
+        if ($orderRows->isNotEmpty() && Schema::hasTable('order_messages')) {
+            $orderIds = $orderRows->pluck('id_pesanan')->all();
+            $counts = OrderMessage::whereIn('id_pesanan', $orderIds)
+                ->selectRaw('id_pesanan, COUNT(*) as cnt, MAX(id_pesan) as max_id')
+                ->groupBy('id_pesanan')
+                ->get();
+            $latestIds = $counts->pluck('max_id')->filter()->values()->all();
+            $latestById = !empty($latestIds)
+                ? OrderMessage::whereIn('id_pesan', $latestIds)->get()->keyBy('id_pesan')
+                : collect();
+            foreach ($counts as $c) {
+                $latestMsg = $latestById->get((int) $c->max_id);
+                $chatStatsByOrder[(int) $c->id_pesanan] = [
+                    'cnt' => (int) $c->cnt,
+                    'last' => $latestMsg,
+                ];
+            }
+        }
+
+        return $orderRows
+            ->map(fn (Order $order) => $this->formatOrderResponse($order, $hasReviews, $chatStatsByOrder, $compact))
+            ->values();
     }
 
     /**
@@ -328,29 +384,9 @@ class OrderController extends Controller
     public function vendorOrders(Request $request)
     {
         $user = $request->user();
-        $tenantIds = Tenant::where('id_user', $user->id_user)->pluck('id_tenant');
-
-        $relations = [
-            'user',
-            'tenant',
-            'orderDetails.menu',
-            'payments',
-            'statusHistories',
-        ];
-        if (Schema::hasTable('reviews')) {
-            $relations[] = 'reviews';
-        }
-        $query = Order::with($relations)->whereIn('id_tenant', $tenantIds);
-
-        if ($request->filled('status_pesanan')) {
-            $query->where('status_pesanan', $request->query('status_pesanan'));
-        }
-
-        $orders = $query
-            ->orderByDesc('waktu_pesan')
-            ->orderByDesc('id_pesanan')
-            ->get()
-            ->map(fn (Order $order) => $this->formatOrderResponse($order));
+        $compact = $request->boolean('compact_media', false);
+        $statusFilter = $request->filled('status_pesanan') ? (string) $request->query('status_pesanan') : null;
+        $orders = $this->ordersDataForUser($user, true, $compact, $statusFilter);
 
         return response()->json([
             'success' => true,
@@ -718,20 +754,41 @@ class OrderController extends Controller
     /**
      * Menyusun format response pesanan yang konsisten dengan API Specification.
      */
-    private function formatOrderResponse(Order $order): array
-    {
+    private function formatOrderResponse(
+        Order $order,
+        ?bool $hasReviewsTable = null,
+        ?array $chatStatsByOrder = null,
+        bool $compactMedia = false
+    ): array {
         $details = $order->relationLoaded('orderDetails')
-            ? $order->orderDetails->map(fn (OrderDetail $detail) => [
-                'id_detail' => $detail->id_detail,
-                'id_pesanan' => $detail->id_pesanan,
-                'id_menu' => $detail->id_menu,
-                'nama_menu' => $detail->menu?->nama_menu,
-                'harga' => $detail->menu?->harga,
-                'gambar' => $detail->menu?->gambar,
-                'jumlah' => $detail->jumlah,
-                'subtotal' => $detail->subtotal,
-                'menu' => $detail->menu,
-            ])->values()
+            ? $order->orderDetails->map(function (OrderDetail $detail) use ($compactMedia) {
+                $menuModel = $detail->menu;
+                $gambar = $menuModel?->gambar;
+                $menuPayload = $menuModel;
+                if ($compactMedia && $menuModel) {
+                    $gambar = MediaController::compactMediaValue(
+                        'menu',
+                        (int) $menuModel->id_menu,
+                        $menuModel->gambar_preview ?? '',
+                        $menuModel->gambar_len ?? 0
+                    );
+                    $menuArr = $menuModel->toArray();
+                    $menuArr['gambar'] = $gambar;
+                    unset($menuArr['gambar_preview'], $menuArr['gambar_len']);
+                    $menuPayload = $menuArr;
+                }
+                return [
+                    'id_detail' => $detail->id_detail,
+                    'id_pesanan' => $detail->id_pesanan,
+                    'id_menu' => $detail->id_menu,
+                    'nama_menu' => $menuModel?->nama_menu,
+                    'harga' => $menuModel?->harga,
+                    'gambar' => $gambar,
+                    'jumlah' => $detail->jumlah,
+                    'subtotal' => $detail->subtotal,
+                    'menu' => $menuPayload,
+                ];
+            })->values()
             : [];
 
         $latestPayment = $order->relationLoaded('payments')
@@ -739,7 +796,8 @@ class OrderController extends Controller
             : null;
 
         $reviews = [];
-        if (Schema::hasTable('reviews')) {
+        $reviewsAvailable = $hasReviewsTable ?? Schema::hasTable('reviews');
+        if ($reviewsAvailable) {
             $reviews = $order->relationLoaded('reviews')
                 ? $order->reviews->toArray()
                 : \App\Models\Review::where('id_pesanan', $order->id_pesanan)->get()->toArray();
@@ -747,23 +805,61 @@ class OrderController extends Controller
 
         $chatCount = 0;
         $lastChat = null;
-        static $hasMessagesTable = null;
-        $hasMessagesTable ??= Schema::hasTable('order_messages');
-        if ($hasMessagesTable) {
-            $chatCount = OrderMessage::where('id_pesanan', $order->id_pesanan)->count();
-            $last = $chatCount > 0
-                ? OrderMessage::where('id_pesanan', $order->id_pesanan)->orderByDesc('id_pesan')->first()
-                : null;
-            if ($last) {
-                $lastChat = [
-                    'id_pesan' => $last->id_pesan,
-                    'id_pengirim' => $last->id_pengirim,
-                    'peran_pengirim' => $last->peran_pengirim,
-                    'nama_pengirim' => $last->nama_pengirim,
-                    'teks' => (string) ($last->teks ?? ''),
-                    'has_image' => !empty($last->gambar),
-                    'waktu' => $last->waktu?->format('Y-m-d H:i:s'),
-                ];
+        if ($chatStatsByOrder !== null) {
+            $stat = $chatStatsByOrder[(int) $order->id_pesanan] ?? null;
+            if ($stat) {
+                $chatCount = (int) $stat['cnt'];
+                $last = $stat['last'];
+                if ($last) {
+                    $lastChat = [
+                        'id_pesan' => $last->id_pesan,
+                        'id_pengirim' => $last->id_pengirim,
+                        'peran_pengirim' => $last->peran_pengirim,
+                        'nama_pengirim' => $last->nama_pengirim,
+                        'teks' => (string) ($last->teks ?? ''),
+                        'has_image' => !empty($last->gambar),
+                        'waktu' => $last->waktu?->format('Y-m-d H:i:s'),
+                    ];
+                }
+            }
+        } else {
+            static $hasMessagesTable = null;
+            $hasMessagesTable ??= Schema::hasTable('order_messages');
+            if ($hasMessagesTable) {
+                $chatCount = OrderMessage::where('id_pesanan', $order->id_pesanan)->count();
+                $last = $chatCount > 0
+                    ? OrderMessage::where('id_pesanan', $order->id_pesanan)->orderByDesc('id_pesan')->first()
+                    : null;
+                if ($last) {
+                    $lastChat = [
+                        'id_pesan' => $last->id_pesan,
+                        'id_pengirim' => $last->id_pengirim,
+                        'peran_pengirim' => $last->peran_pengirim,
+                        'nama_pengirim' => $last->nama_pengirim,
+                        'teks' => (string) ($last->teks ?? ''),
+                        'has_image' => !empty($last->gambar),
+                        'waktu' => $last->waktu?->format('Y-m-d H:i:s'),
+                    ];
+                }
+            }
+        }
+
+        $tenantPayload = null;
+        if ($order->relationLoaded('tenant') && $order->tenant) {
+            if ($compactMedia) {
+                $tArr = $order->tenant->toArray();
+                $tLogo = MediaController::compactMediaValue(
+                    'tenant',
+                    (int) $order->tenant->id_tenant,
+                    $tArr['logo_preview'] ?? '',
+                    $tArr['logo_len'] ?? 0
+                );
+                $tArr['logo'] = $tLogo;
+                $tArr['gambar'] = $tLogo;
+                unset($tArr['logo_preview'], $tArr['logo_len']);
+                $tenantPayload = $tArr;
+            } else {
+                $tenantPayload = $order->tenant;
             }
         }
 
@@ -784,7 +880,7 @@ class OrderController extends Controller
             'catatan' => $order->catatan,
             'waktu_pesan' => $order->waktu_pesan?->format('Y-m-d H:i:s'),
             'user' => $order->relationLoaded('user') ? $order->user : null,
-            'tenant' => $order->relationLoaded('tenant') ? $order->tenant : null,
+            'tenant' => $tenantPayload,
             'details' => $details,
             'order_details' => $details,
             'payment' => $latestPayment,

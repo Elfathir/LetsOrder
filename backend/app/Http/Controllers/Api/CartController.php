@@ -16,13 +16,20 @@ class CartController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $cart = $this->getOrCreateCart($user->id_user);
+        $compact = $request->boolean('compact_media', false);
 
         return response()->json([
             'success' => true,
             'message' => 'Keranjang berhasil diambil.',
-            'data' => $this->formatCartPayload($cart),
+            'data' => $this->cartPayloadForUser((int) $user->id_user, $compact),
         ], 200);
+    }
+
+    public function cartPayloadForUser(int $userId, bool $compact = false): array
+    {
+        $cart = $this->getOrCreateCart($userId);
+
+        return $this->formatCartPayload($cart, $compact);
     }
 
     /**
@@ -221,15 +228,34 @@ class CartController extends Controller
     /**
      * Menyusun struktur response keranjang sesuai spesifikasi API.
      */
-    private function formatCartPayload(Cart $cart): array
+    private function formatCartPayload(Cart $cart, bool $compact = false): array
     {
-        $cart->load(['cartItems.menu.tenant', 'cartItems.menu.category']);
+        if ($compact) {
+            $cart->load([
+                'cartItems.menu' => fn ($q) => $q->select([
+                    'id_menu',
+                    'id_tenant',
+                    'id_kategori',
+                    'nama_menu',
+                    'harga',
+                    'estimasi_menit',
+                    'status_tersedia',
+                ])->selectRaw(MediaController::previewSql('gambar', 'gambar', true))
+                    ->with([
+                        'category',
+                        'tenant' => fn ($tq) => $tq->select(['id_tenant', 'id_user', 'nama_tenant', 'status_buka'])
+                            ->selectRaw(MediaController::previewSql('logo', 'logo', false)),
+                    ]),
+            ]);
+        } else {
+            $cart->load(['cartItems.menu.tenant', 'cartItems.menu.category']);
+        }
 
         $totalHarga = 0;
         $totalItem = 0;
         $tenantInfo = null;
 
-        $items = $cart->cartItems->map(function (CartItem $item) use (&$totalHarga, &$totalItem, &$tenantInfo) {
+        $items = $cart->cartItems->map(function (CartItem $item) use (&$totalHarga, &$totalItem, &$tenantInfo, $compact) {
             $harga = $item->menu ? (int) $item->menu->harga : 0;
             $jumlah = (int) $item->jumlah;
             $subtotal = $harga * $jumlah;
@@ -238,7 +264,45 @@ class CartController extends Controller
             $totalItem += $jumlah;
 
             if (!$tenantInfo && $item->menu && $item->menu->tenant) {
-                $tenantInfo = $item->menu->tenant;
+                $tArr = $item->menu->tenant->toArray();
+                if ($compact) {
+                    $tLogo = MediaController::compactMediaValue(
+                        'tenant',
+                        (int) $item->menu->tenant->id_tenant,
+                        $tArr['logo_preview'] ?? '',
+                        $tArr['logo_len'] ?? 0
+                    );
+                    $tArr['logo'] = $tLogo;
+                    $tArr['gambar'] = $tLogo;
+                    unset($tArr['logo_preview'], $tArr['logo_len']);
+                }
+                $tenantInfo = $tArr;
+            }
+
+            $menuPayload = $item->menu;
+            $itemImg = $item->menu?->gambar;
+            if ($compact && $item->menu) {
+                $itemImg = MediaController::compactMediaValue(
+                    'menu',
+                    (int) $item->menu->id_menu,
+                    $item->menu->gambar_preview ?? '',
+                    $item->menu->gambar_len ?? 0
+                );
+                $menuArr = $item->menu->toArray();
+                $menuArr['gambar'] = $itemImg;
+                unset($menuArr['gambar_preview'], $menuArr['gambar_len']);
+                if (isset($menuArr['tenant']) && is_array($menuArr['tenant'])) {
+                    $tLogo = MediaController::compactMediaValue(
+                        'tenant',
+                        (int) ($menuArr['tenant']['id_tenant'] ?? 0),
+                        $menuArr['tenant']['logo_preview'] ?? '',
+                        $menuArr['tenant']['logo_len'] ?? 0
+                    );
+                    $menuArr['tenant']['logo'] = $tLogo;
+                    $menuArr['tenant']['gambar'] = $tLogo;
+                    unset($menuArr['tenant']['logo_preview'], $menuArr['tenant']['logo_len']);
+                }
+                $menuPayload = $menuArr;
             }
 
             return [
@@ -247,7 +311,7 @@ class CartController extends Controller
                 'id_menu' => $item->id_menu,
                 'nama_menu' => $item->menu?->nama_menu,
                 'harga' => $harga,
-                'gambar' => $item->menu?->gambar,
+                'gambar' => $itemImg,
                 'estimasi_menit' => $item->menu?->estimasi_menit,
                 'status_tersedia' => $item->menu?->status_tersedia,
                 'id_tenant' => $item->menu?->id_tenant,
@@ -255,14 +319,14 @@ class CartController extends Controller
                 'jumlah' => $jumlah,
                 'catatan' => $item->catatan,
                 'subtotal' => $subtotal,
-                'menu' => $item->menu,
+                'menu' => $menuPayload,
             ];
         })->values();
 
         return [
             'id_keranjang' => $cart->id_keranjang,
             'id_user' => $cart->id_user,
-            'id_tenant' => $tenantInfo?->id_tenant,
+            'id_tenant' => is_array($tenantInfo) ? ($tenantInfo['id_tenant'] ?? null) : $tenantInfo?->id_tenant,
             'tenant' => $tenantInfo,
             'items' => $items,
             'total_item' => $totalItem,

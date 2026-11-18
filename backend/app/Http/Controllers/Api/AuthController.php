@@ -511,7 +511,7 @@ class AuthController extends Controller
         if (array_key_exists('tanggal_lahir', $validated)) {
             $user->tanggal_lahir = $validated['tanggal_lahir'];
         }
-        if (array_key_exists('avatar', $validated)) {
+        if (array_key_exists('avatar', $validated) && !MediaController::isMediaEndpointRef($validated['avatar'])) {
             $user->avatar = $validated['avatar'];
         }
         $user->save();
@@ -524,7 +524,11 @@ class AuthController extends Controller
                     $tenant->nama_tenant = trim((string) $validated['nama_tenant']);
                     $changed = true;
                 }
-                if (!empty($validated['avatar']) && (!$tenant->logo || $tenant->logo === 'tenant/default.png')) {
+                if (
+                    !empty($validated['avatar']) &&
+                    !MediaController::isMediaEndpointRef($validated['avatar']) &&
+                    (!$tenant->logo || $tenant->logo === 'tenant/default.png')
+                ) {
                     $tenant->logo = $validated['avatar'];
                     $changed = true;
                 }

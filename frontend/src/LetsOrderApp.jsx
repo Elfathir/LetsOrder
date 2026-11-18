@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import {
   api,
+  resolveMediaUrl,
   getStoredToken,
   getStoredUser,
   setStoredSession,
@@ -820,7 +821,7 @@ function isSafeImageSrc(value) {
 
 const SafeImage = memo(function SafeImage({ src, alt, className = "", style = {}, fallbackType = "food", iconSize = 28 }) {
   const [failed, setFailed] = useState(false);
-  const rawSrc = typeof src === "string" ? src.trim() : "";
+  const rawSrc = resolveMediaUrl(typeof src === "string" ? src : "");
   const cleanSrc = isSafeImageSrc(rawSrc) ? rawSrc : "";
 
   useEffect(() => {
@@ -1555,15 +1556,30 @@ export default function App() {
           return null;
         });
 
-      if (currentUser && (!isBackground || fetchCatalog)) {
-        try {
-          const meRes = await api.me();
-          if ((getStoredToken() || "") !== tokenAtStart) {
-            return;
-          }
-          const validUser =
-            meRes?.data?.user || (meRes?.data?.id_user ? meRes.data : null);
-          if (!validUser) {
+      const isVendor = currentUser?.peran === "Vendor";
+      let usedUnifiedSync = false;
+      let tenantsRes = null;
+      let menusRes = null;
+      let vendorTenantRes = null;
+      let vendorMenusRes = null;
+      let ordersRes = null;
+      let cartRes = null;
+      let notifRes = null;
+      let promosRes = null;
+      let vendorPromosRes = null;
+      let vendorRevRes = null;
+
+      try {
+        const syncRes = await api.sync({
+          catalog: fetchCatalog ? 1 : 0,
+          compact_media: 1,
+        });
+        if ((getStoredToken() || "") !== tokenAtStart) {
+          return;
+        }
+        const sData = syncRes?.data;
+        if (sData && !Array.isArray(sData) && "authenticated" in sData) {
+          if (currentUser && (!sData.authenticated || !sData.user)) {
             clearStoredSession();
             setCurrentUser(null);
             setAuthError(
@@ -1571,63 +1587,140 @@ export default function App() {
             );
             return;
           }
-        } catch (err) {
-          if ((getStoredToken() || "") !== tokenAtStart) {
-            return;
+          usedUnifiedSync = true;
+          tenantsRes = fetchCatalog
+            ? sData.tenants
+              ? { data: sData.tenants }
+              : null
+            : catalogCache.tenantsRes;
+          menusRes = fetchCatalog
+            ? sData.menus
+              ? { data: sData.menus }
+              : null
+            : catalogCache.menusRes;
+          promosRes = fetchCatalog
+            ? sData.promos
+              ? { data: sData.promos }
+              : null
+            : catalogCache.promosRes;
+          if (isVendor) {
+            vendorTenantRes = sData.vendor_tenant
+              ? { data: sData.vendor_tenant }
+              : catalogCache.vendorTenantRes;
+            vendorMenusRes = fetchCatalog
+              ? sData.vendor_menus
+                ? { data: sData.vendor_menus }
+                : null
+              : catalogCache.vendorMenusRes;
+            vendorPromosRes = fetchCatalog
+              ? sData.vendor_promos
+                ? { data: sData.vendor_promos }
+                : null
+              : catalogCache.vendorPromosRes;
+            vendorRevRes = fetchCatalog
+              ? sData.vendor_reviews
+                ? { data: sData.vendor_reviews }
+                : null
+              : catalogCache.vendorRevRes;
+            ordersRes = sData.vendor_orders ? { data: sData.vendor_orders } : null;
+          } else {
+            ordersRes = sData.orders ? { data: sData.orders } : null;
+            cartRes = sData.cart ? { data: sData.cart } : null;
           }
-          if (err?.status === 401) {
-            clearStoredSession();
-            setCurrentUser(null);
-            setAuthError(
-              "Sesi login tidak valid atau telah kedaluwarsa. Silakan login kembali."
-            );
-            return;
-          }
+          notifRes = sData.notifications ? { data: sData.notifications } : null;
+        }
+      } catch (err) {
+        if ((getStoredToken() || "") !== tokenAtStart) {
+          return;
+        }
+        if (err?.status === 401) {
+          clearStoredSession();
+          setCurrentUser(null);
+          setAuthError(
+            "Sesi login tidak valid atau telah kedaluwarsa. Silakan login kembali."
+          );
+          return;
         }
       }
-      const isVendor = currentUser?.peran === "Vendor";
-      const [
-        tenantsRes,
-        menusRes,
-        vendorTenantRes,
-        vendorMenusRes,
-        ordersRes,
-        cartRes,
-        notifRes,
-        promosRes,
-        vendorPromosRes,
-      ] = await runWithConcurrency(
+
+      if (!usedUnifiedSync) {
+        if (currentUser && (!isBackground || fetchCatalog)) {
+          try {
+            const meRes = await api.me();
+            if ((getStoredToken() || "") !== tokenAtStart) {
+              return;
+            }
+            const validUser =
+              meRes?.data?.user || (meRes?.data?.id_user ? meRes.data : null);
+            if (!validUser) {
+              clearStoredSession();
+              setCurrentUser(null);
+              setAuthError(
+                "Sesi akun tidak dapat diverifikasi oleh server. Silakan login kembali."
+              );
+              return;
+            }
+          } catch (err) {
+            if ((getStoredToken() || "") !== tokenAtStart) {
+              return;
+            }
+            if (err?.status === 401) {
+              clearStoredSession();
+              setCurrentUser(null);
+              setAuthError(
+                "Sesi login tidak valid atau telah kedaluwarsa. Silakan login kembali."
+              );
+              return;
+            }
+          }
+        }
         [
-          fetchCatalog
-            ? safeApiCall(() => api.getTenants())
-            : () => Promise.resolve(catalogCache.tenantsRes),
-          fetchCatalog
-            ? safeApiCall(() => api.getMenus({ include_unavailable: true }))
-            : () => Promise.resolve(catalogCache.menusRes),
-          isVendor && fetchCatalog
-            ? safeApiCall(() => api.getVendorTenant())
-            : () => Promise.resolve(isVendor ? catalogCache.vendorTenantRes : null),
-          isVendor && fetchCatalog
-            ? safeApiCall(() => api.getVendorMenus())
-            : () => Promise.resolve(isVendor ? catalogCache.vendorMenusRes : null),
-          currentUser
-            ? safeApiCall(() => (isVendor ? api.getVendorOrders() : api.getOrders()))
-            : () => Promise.resolve(null),
-          !isVendor && currentUser
-            ? safeApiCall(() => api.getCart())
-            : () => Promise.resolve(null),
-          currentUser
-            ? safeApiCall(() => api.getNotifications())
-            : () => Promise.resolve(null),
-          fetchCatalog && (currentUser || !isBackground)
-            ? safeApiCall(() => api.getPromos())
-            : () => Promise.resolve(catalogCache.promosRes),
-          isVendor && fetchCatalog
-            ? safeApiCall(() => api.getVendorPromos())
-            : () => Promise.resolve(isVendor ? catalogCache.vendorPromosRes : null),
-        ],
-        isBackground ? 2 : 3
-      );
+          tenantsRes,
+          menusRes,
+          vendorTenantRes,
+          vendorMenusRes,
+          ordersRes,
+          cartRes,
+          notifRes,
+          promosRes,
+          vendorPromosRes,
+        ] = await runWithConcurrency(
+          [
+            fetchCatalog
+              ? safeApiCall(() => api.getTenants({ compact_media: 1 }))
+              : () => Promise.resolve(catalogCache.tenantsRes),
+            fetchCatalog
+              ? safeApiCall(() => api.getMenus({ include_unavailable: true, compact_media: 1 }))
+              : () => Promise.resolve(catalogCache.menusRes),
+            isVendor && fetchCatalog
+              ? safeApiCall(() => api.getVendorTenant({ compact_media: 1 }))
+              : () => Promise.resolve(isVendor ? catalogCache.vendorTenantRes : null),
+            isVendor && fetchCatalog
+              ? safeApiCall(() => api.getVendorMenus({ compact_media: 1 }))
+              : () => Promise.resolve(isVendor ? catalogCache.vendorMenusRes : null),
+            currentUser
+              ? safeApiCall(() =>
+                  isVendor
+                    ? api.getVendorOrders({ compact_media: 1 })
+                    : api.getOrders({ compact_media: 1 })
+                )
+              : () => Promise.resolve(null),
+            !isVendor && currentUser
+              ? safeApiCall(() => api.getCart({ compact_media: 1 }))
+              : () => Promise.resolve(null),
+            currentUser
+              ? safeApiCall(() => api.getNotifications())
+              : () => Promise.resolve(null),
+            fetchCatalog && (currentUser || !isBackground)
+              ? safeApiCall(() => api.getPromos())
+              : () => Promise.resolve(catalogCache.promosRes),
+            isVendor && fetchCatalog
+              ? safeApiCall(() => api.getVendorPromos())
+              : () => Promise.resolve(isVendor ? catalogCache.vendorPromosRes : null),
+          ],
+          isBackground ? 2 : 3
+        );
+      }
 
       if (currentUser && unauthorizedDetected && (getStoredToken() || "") === tokenAtStart) {
         clearStoredSession();
@@ -1651,12 +1744,14 @@ export default function App() {
         vendorTenantRes?.data ||
         tenantsRes?.data?.find((t) => t.id_user === currentUser?.id_user) ||
         null;
-      const vendorRevRes =
-        isVendor && fetchCatalog && myTenant?.id_tenant
-          ? await api.getReviews({ id_tenant: myTenant.id_tenant }).catch(() => null)
-          : isVendor
-            ? catalogCache.vendorRevRes
-            : null;
+      if (!usedUnifiedSync) {
+        vendorRevRes =
+          isVendor && fetchCatalog && myTenant?.id_tenant
+            ? await api.getReviews({ id_tenant: myTenant.id_tenant }).catch(() => null)
+            : isVendor
+              ? catalogCache.vendorRevRes
+              : null;
+      }
       if (vendorRevRes) catalogCache.vendorRevRes = vendorRevRes;
 
       await waitForThemeTransitionIdle();
@@ -3218,12 +3313,13 @@ export default function App() {
     setStoreSettingsError("");
     try {
       const cleanTenantName = storeForm.nama_tenant.trim();
+      const rawLogoVal = String(storeForm.logo || "").trim();
+      const isMediaRefLogo = /^(?:https?:\/\/[^/]+)?\/api\/(?:v1\/)?media\//i.test(rawLogoVal);
       const res = await api.updateVendorTenant({
         nama_tenant: cleanTenantName,
         deskripsi: storeForm.deskripsi.trim(),
         booth: storeForm.booth.trim(),
-        logo: storeForm.logo,
-        gambar: storeForm.logo,
+        ...(isMediaRefLogo ? {} : { logo: storeForm.logo, gambar: storeForm.logo }),
         jam_buka: storeForm.jam_buka,
         jam_tutup: storeForm.jam_tutup,
         auto_schedule: Boolean(storeForm.auto_schedule),
@@ -3240,13 +3336,15 @@ export default function App() {
             email: currentUser.email || "",
             no_telp: currentUser.no_telp || "",
             nama_tenant: cleanTenantName,
-            avatar: storeForm.logo || "",
+            ...(isMediaRefLogo ? {} : { avatar: storeForm.logo || "" }),
           });
           const updatedUser = {
             ...currentUser,
-            ...(profRes?.user || {}),
+            ...(profRes?.data?.user || profRes?.user || {}),
             nama_tenant: cleanTenantName,
-            avatar: storeForm.logo || "",
+            avatar: isMediaRefLogo
+              ? res?.data?.logo || currentUser.avatar || storeForm.logo || ""
+              : storeForm.logo || "",
           };
           setCurrentUser(updatedUser);
           setStoredSession(localStorage.getItem("letsorder_auth_token") || "session", updatedUser);
@@ -3254,7 +3352,9 @@ export default function App() {
           const updatedUser = {
             ...currentUser,
             nama_tenant: cleanTenantName,
-            avatar: storeForm.logo || "",
+            avatar: isMediaRefLogo
+              ? res?.data?.logo || currentUser.avatar || storeForm.logo || ""
+              : storeForm.logo || "",
           };
           setCurrentUser(updatedUser);
           setStoredSession(localStorage.getItem("letsorder_auth_token") || "session", updatedUser);
@@ -3747,7 +3847,7 @@ export default function App() {
                   >
                     {currentUser?.avatar ? (
                       <img
-                        src={currentUser.avatar}
+                        src={resolveMediaUrl(currentUser.avatar)}
                         alt={displayName}
                         style={{ width: "100%", height: "100%", objectFit: "cover" }}
                       />
@@ -9667,7 +9767,7 @@ export default function App() {
                     >
                       {currentUser?.avatar ? (
                         <img
-                          src={currentUser.avatar}
+                          src={resolveMediaUrl(currentUser.avatar)}
                           alt={displayName}
                           style={{ width: "100%", height: "100%", objectFit: "cover" }}
                         />
@@ -9902,7 +10002,8 @@ export default function App() {
                         no_telp: profileForm.no_telp,
                         jenis_kelamin: profileForm.jenis_kelamin,
                         tanggal_lahir: profileForm.tanggal_lahir,
-                        ...(portalMode === "tenant"
+                        ...(portalMode === "tenant" ||
+                        /^(?:https?:\/\/[^/]+)?\/api\/(?:v1\/)?media\//i.test(String(profileForm.avatar || "").trim())
                           ? {}
                           : { avatar: profileForm.avatar }),
                       };
@@ -10258,7 +10359,7 @@ export default function App() {
                           >
                             {profileForm.avatar ? (
                               <img
-                                src={profileForm.avatar}
+                                src={resolveMediaUrl(profileForm.avatar)}
                                 alt="Profile Avatar"
                                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
                               />
@@ -12078,7 +12179,7 @@ export default function App() {
                   >
                     {storeForm.logo ? (
                       <img
-                        src={storeForm.logo}
+                        src={resolveMediaUrl(storeForm.logo)}
                         alt="Tenant Profile"
                         style={{ width: "100%", height: "100%", objectFit: "cover" }}
                       />

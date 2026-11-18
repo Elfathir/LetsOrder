@@ -9,6 +9,15 @@ export const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL
 ).replace(/\/$/, "");
 
+export function resolveMediaUrl(src) {
+  if (typeof src !== "string") return "";
+  const trimmed = src.trim();
+  if (trimmed.startsWith("/api/")) {
+    return `${API_BASE_URL}${trimmed.slice(4)}`;
+  }
+  return trimmed;
+}
+
 const TOKEN_STORAGE_KEY = "letsorder_auth_token";
 const USER_STORAGE_KEY = "letsorder_auth_user";
 
@@ -102,6 +111,7 @@ function buildQuery(params = {}) {
 
 export const api = {
   checkHealth: () => request("/health"),
+  sync: (params) => request(`/sync${buildQuery(params)}`),
 
   checkAvailability: (data) =>
     request("/auth/check-availability", {
@@ -172,7 +182,7 @@ export const api = {
   getMenus: (params) => request(`/menus${buildQuery(params)}`),
   getMenu: (id) => request(`/menus/${id}`),
 
-  getCart: () => request("/cart"),
+  getCart: (params) => request(`/cart${buildQuery(params)}`),
   clearCart: () =>
     request("/cart", {
       method: "DELETE",
@@ -248,7 +258,7 @@ export const api = {
       method: "PATCH",
     }),
 
-  getVendorTenant: () => request("/vendor/tenant"),
+  getVendorTenant: (params) => request(`/vendor/tenant${buildQuery(params)}`),
   updateVendorTenant: (data) =>
     request("/vendor/tenant", {
       method: "PATCH",

@@ -499,7 +499,22 @@ function isTenantOpenNow(tenant) {
   return hhmm >= openStr || hhmm < closeStr;
 }
 
-function createEnrichContext() {
+function isMediaEndpointRef(val) {
+  if (typeof val !== "string") return false;
+  return /^(?:https?:\/\/[^/]+)?\/api\/(?:v1\/)?media\/(?:tenant|menu|user)\/\d+/i.test(val.trim());
+}
+
+function compactMediaUrl(type, id, rawVal) {
+  const trimmed = String(rawVal || "").trim();
+  if (!trimmed || trimmed === "menu/default.png" || trimmed === "tenant/default.png") return "";
+  if (/^data:image\//i.test(trimmed)) {
+    const version = crypto.createHash("md5").update(trimmed).digest("hex").slice(0, 10);
+    return `/api/media/${type}/${id}?v=${version}`;
+  }
+  return trimmed;
+}
+
+function createEnrichContext(compactMedia = false) {
   const userById = new Map();
   for (const u of db.users || []) userById.set(Number(u.id_user), u);
 
@@ -556,6 +571,7 @@ function createEnrichContext() {
   }
 
   return {
+    compactMedia: Boolean(compactMedia),
     userById,
     tenantById,
     categoryById,
@@ -612,12 +628,18 @@ function enrichTenant(tenant, ctx = null) {
     ? ctx.menusByTenant.get(tid) || []
     : db.menus.filter((m) => Number(m.id_tenant) === tid);
   const menuImgFallback = tenantMenus.find((m) => m.gambar)?.gambar || "";
-  const effectiveImage = tenant.gambar || tenant.logo || owner?.avatar || menuImgFallback || "";
+  const effectiveRaw = tenant.gambar || tenant.logo || owner?.avatar || menuImgFallback || "";
+  const logoOut = ctx?.compactMedia
+    ? compactMediaUrl("tenant", tid, tenant.logo || effectiveRaw)
+    : tenant.logo || effectiveRaw;
+  const effectiveOut = ctx?.compactMedia
+    ? compactMediaUrl("tenant", tid, effectiveRaw)
+    : effectiveRaw;
   const enriched = {
     ...tenant,
     deskripsi: cleanDesc,
-    logo: tenant.logo || effectiveImage,
-    gambar: effectiveImage,
+    logo: logoOut,
+    gambar: effectiveOut,
     is_configured: isTenantConfigured(tenant, ctx),
     jam_buka: tenant.jam_buka || "07:00",
     jam_tutup: tenant.jam_tutup || "21:00",
@@ -663,8 +685,12 @@ function enrichMenu(menu, ctx = null) {
           menuReviews.length
         ).toFixed(1)
       : null;
+  const gambarOut = ctx?.compactMedia
+    ? compactMediaUrl("menu", menu.id_menu, menu.gambar)
+    : menu.gambar;
   return {
     ...menu,
+    gambar: gambarOut,
     available: Boolean(menu.status_tersedia),
     tenant_name: tenant?.nama_tenant || menu.tenant_name || "Canteen Tenant",
     kategori_nama: category?.nama_kategori || menu.kategori_nama || "Rice & Mains",
@@ -719,11 +745,16 @@ function enrichOrder(order, ctx = null) {
     const m = ctx
       ? ctx.menuById.get(Number(d.id_menu))
       : db.menus.find((x) => x.id_menu === d.id_menu);
+    const rawDetailImg = m?.gambar || d.gambar || "";
+    const detailImgOut =
+      ctx?.compactMedia && (m?.id_menu || d.id_menu)
+        ? compactMediaUrl("menu", m?.id_menu || d.id_menu, rawDetailImg)
+        : rawDetailImg;
     return {
       ...d,
-      gambar: m?.gambar || d.gambar || "",
+      gambar: detailImgOut,
       estimasi_menit: m?.estimasi_menit || d.estimasi_menit || 8,
-      menu: m || null,
+      menu: m ? (ctx?.compactMedia ? { ...m, gambar: detailImgOut } : m) : null,
     };
   });
   return {
@@ -1705,7 +1736,7 @@ async function handleApiRequest(req, res) {
     if (body.no_telp !== undefined) user.no_telp = nextPhone.slice(0, 30);
     if (body.jenis_kelamin !== undefined) user.jenis_kelamin = String(body.jenis_kelamin).slice(0, 20);
     if (body.tanggal_lahir !== undefined) user.tanggal_lahir = String(body.tanggal_lahir).slice(0, 20);
-    if (body.avatar !== undefined) user.avatar = body.avatar;
+    if (body.avatar !== undefined && !isMediaEndpointRef(body.avatar)) user.avatar = body.avatar;
 
     let tenant = null;
     if (user.peran === "Vendor") {
@@ -1713,7 +1744,7 @@ async function handleApiRequest(req, res) {
       if (body.nama_tenant) tenant.nama_tenant = String(body.nama_tenant).trim().slice(0, 100);
       if (body.deskripsi !== undefined) tenant.deskripsi = String(body.deskripsi).slice(0, 500);
       if (body.booth !== undefined) tenant.booth = String(body.booth).slice(0, 100);
-      if (body.avatar !== undefined && body.avatar && !tenant.logo) {
+      if (body.avatar !== undefined && body.avatar && !isMediaEndpointRef(body.avatar) && !tenant.logo) {
         tenant.logo = body.avatar;
         tenant.gambar = body.avatar;
       }
@@ -1758,7 +1789,223 @@ async function handleApiRequest(req, res) {
     });
   }
 
-  // ---- Public Catalog Routes ----
+  // ---- Public Catalog & Unified Sync / Cacheable Media Routes ----
+
+  const mediaMatch = pathname.match(/^\/media\/(tenant|menu|user)\/(\d+)$/);
+  if (mediaMatch && method === "GET") {
+    const type = mediaMatch[1];
+    const targetId = Number(mediaMatch[2]);
+    let rawImg = "";
+    if (type === "menu") {
+      rawImg = db.menus.find((m) => Number(m.id_menu) === targetId)?.gambar || "";
+    } else if (type === "user") {
+      rawImg = db.users.find((u) => Number(u.id_user) === targetId)?.avatar || "";
+    } else if (type === "tenant") {
+      const t = db.tenants.find((x) => Number(x.id_tenant) === targetId);
+      if (t) {
+        const owner = db.users.find((u) => Number(u.id_user) === Number(t.id_user));
+        const menuImg =
+          db.menus.find((m) => Number(m.id_tenant) === targetId && m.gambar && m.gambar !== "menu/default.png")?.gambar || "";
+        const rawLogo = t.logo && t.logo !== "tenant/default.png" ? t.logo : "";
+        const rawGambar = t.gambar && t.gambar !== "tenant/default.png" ? t.gambar : "";
+        rawImg = rawGambar || rawLogo || owner?.avatar || menuImg || "";
+      }
+    }
+    const trimmed = String(rawImg || "").trim();
+    const imgMatch = trimmed.match(/^data:(image\/(?:png|jpeg|jpg|webp|gif));base64,([\s\S]+)$/i);
+    if (!imgMatch) {
+      if (/^https?:\/\//i.test(trimmed)) {
+        res.writeHead(302, { ...getCorsHeaders(req), Location: trimmed });
+        res.end();
+        return;
+      }
+      return sendJson(req, res, 404, { success: false, message: "Media tidak ditemukan." });
+    }
+    const etag = `"${crypto.createHash("md5").update(trimmed).digest("hex")}"`;
+    const cacheHeaders = {
+      "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+      ETag: etag,
+      "Access-Control-Allow-Origin": "*",
+      "X-Content-Type-Options": "nosniff",
+    };
+    if (req.headers["if-none-match"] === etag) {
+      res.writeHead(304, cacheHeaders);
+      res.end();
+      return;
+    }
+    const buf = Buffer.from(imgMatch[2].replace(/\s+/g, ""), "base64");
+    const mime = imgMatch[1].toLowerCase() === "image/jpg" ? "image/jpeg" : imgMatch[1].toLowerCase();
+    res.writeHead(200, {
+      ...cacheHeaders,
+      "Content-Type": mime,
+      "Content-Length": String(buf.length),
+    });
+    res.end(buf);
+    return;
+  }
+
+  if (pathname === "/sync" && method === "GET") {
+    const authHeader = req.headers.authorization || "";
+    const hasBearer = /^Bearer\s+\S+/i.test(authHeader);
+    const user = hasBearer ? getAuthUser(req) : null;
+    if (hasBearer && !user) {
+      return sendJson(req, res, 401, { success: false, message: "Unauthenticated." });
+    }
+    const includeCatalog = urlObj.searchParams.get("catalog") !== "0";
+    const compactMedia = urlObj.searchParams.get("compact_media") !== "0";
+    const ctx = createEnrichContext(compactMedia);
+    const isVendor = Boolean(user && String(user.peran).toLowerCase() === "vendor");
+    const isCustomer = Boolean(user && String(user.peran).toLowerCase() === "customer");
+    const rawVendorTenant = isVendor
+      ? db.tenants.find((t) => Number(t.id_user) === Number(user.id_user)) || null
+      : null;
+    const vendorTenant = rawVendorTenant ? enrichTenant(rawVendorTenant, ctx) : null;
+
+    let tenants = null;
+    let menus = null;
+    let promos = null;
+    let vendorMenus = null;
+    let vendorPromos = null;
+    let vendorReviews = null;
+
+    if (includeCatalog) {
+      tenants = db.tenants
+        .filter((t) => isTenantConfigured(t, ctx))
+        .map((t) => enrichTenant(t, ctx));
+      menus = db.menus.map((m) => enrichMenu(m, ctx));
+      promos = (db.promos || [])
+        .filter((p) => {
+          if (!p.aktif) return false;
+          const limit = Number(p.batas_per_user ?? 1);
+          if (user && limit > 0) {
+            const used = (db.orders || []).filter(
+              (o) =>
+                Number(o.id_user) === Number(user.id_user) &&
+                String(o.promo_code || "").toUpperCase() === String(p.kode_promo || "").toUpperCase() &&
+                o.status_pesanan !== "Dibatalkan"
+            ).length;
+            if (used >= limit) return false;
+          }
+          return true;
+        })
+        .map((p) => {
+          const limit = Number(p.batas_per_user ?? 1);
+          const used = user
+            ? (db.orders || []).filter(
+                (o) =>
+                  Number(o.id_user) === Number(user.id_user) &&
+                  String(o.promo_code || "").toUpperCase() === String(p.kode_promo || "").toUpperCase() &&
+                  o.status_pesanan !== "Dibatalkan"
+              ).length
+            : 0;
+          return {
+            ...p,
+            batas_per_user: limit,
+            used_by_user: used,
+            sisa_klaim: limit > 0 ? Math.max(0, limit - used) : null,
+          };
+        });
+
+      if (isVendor && rawVendorTenant) {
+        vendorMenus = db.menus
+          .filter((m) => m.id_tenant === rawVendorTenant.id_tenant)
+          .map((m) => enrichMenu(m, ctx));
+        vendorPromos = (db.promos || []).filter(
+          (p) => Number(p.id_tenant) === Number(rawVendorTenant.id_tenant)
+        );
+        vendorReviews = (db.reviews || [])
+          .filter((r) => Number(r.id_tenant) === Number(rawVendorTenant.id_tenant))
+          .map((r) => {
+            const menuObj = ctx.menuById.get(Number(r.id_menu));
+            const userObj = ctx.userById.get(Number(r.id_user));
+            const orderObj = db.orders.find((o) => Number(o.id_pesanan) === Number(r.id_pesanan));
+            return {
+              ...r,
+              nama_menu: r.nama_menu || menuObj?.nama_menu || "Menu",
+              reviewer_name: r.reviewer_name || userObj?.nama || userObj?.username || "Pelanggan",
+              nomor_antrean: r.nomor_antrean || orderObj?.nomor_antrean || null,
+            };
+          })
+          .sort((a, b) => b.id_review - a.id_review);
+      } else if (isVendor) {
+        vendorMenus = [];
+        vendorPromos = [];
+        vendorReviews = [];
+      }
+    }
+
+    let orders = null;
+    let vendorOrders = null;
+    let cart = null;
+    let notifications = null;
+
+    if (user) {
+      if (isVendor) {
+        vendorOrders = rawVendorTenant
+          ? db.orders
+              .filter((o) => o.id_tenant === rawVendorTenant.id_tenant)
+              .sort((a, b) => b.id_pesanan - a.id_pesanan)
+              .map((o) => enrichOrder(o, ctx))
+          : [];
+      } else {
+        orders = db.orders
+          .filter((o) => o.id_user === user.id_user)
+          .sort((a, b) => b.id_pesanan - a.id_pesanan)
+          .map((o) => enrichOrder(o, ctx));
+        if (isCustomer) {
+          const rawItems = db.carts[user.id_user] || [];
+          cart = {
+            items: rawItems
+              .map((ci) => {
+                const m = ctx.menuById.get(Number(ci.id_menu));
+                if (!m) return null;
+                const enriched = enrichMenu(m, ctx);
+                return {
+                  id_item_keranjang: ci.id_item_keranjang,
+                  id_menu: m.id_menu,
+                  id_tenant: m.id_tenant,
+                  nama_menu: m.nama_menu,
+                  tenant_name: enriched.tenant_name,
+                  harga: m.harga,
+                  jumlah: ci.jumlah,
+                  subtotal: m.harga * ci.jumlah,
+                  gambar: enriched.gambar,
+                };
+              })
+              .filter(Boolean),
+          };
+        }
+      }
+      notifications = db.notifications.filter((n) => n.id_user === user.id_user);
+    }
+
+    let userPayload = null;
+    if (user) {
+      userPayload = sanitizeUserResponse(user, vendorTenant);
+      if (compactMedia && userPayload.avatar) {
+        userPayload.avatar = compactMediaUrl("user", user.id_user, userPayload.avatar);
+      }
+    }
+
+    return sendJson(req, res, 200, {
+      success: true,
+      data: {
+        authenticated: Boolean(user),
+        user: userPayload,
+        tenants,
+        menus,
+        promos,
+        orders,
+        cart,
+        notifications,
+        vendor_tenant: vendorTenant,
+        vendor_menus: vendorMenus,
+        vendor_orders: vendorOrders,
+        vendor_promos: vendorPromos,
+        vendor_reviews: vendorReviews,
+      },
+    });
+  }
 
   if (pathname === "/categories" && method === "GET") {
     return sendJson(
@@ -1776,7 +2023,8 @@ async function handleApiRequest(req, res) {
 
   if (pathname === "/tenants" && method === "GET") {
     const includeUnconfigured = urlObj.searchParams.get("include_unconfigured") === "true";
-    const ctx = createEnrichContext();
+    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const ctx = createEnrichContext(compactMedia);
     return sendJson(req, res, 200, {
       success: true,
       message: "Daftar tenant berhasil diambil.",
@@ -1863,7 +2111,8 @@ async function handleApiRequest(req, res) {
   if (tenantMenusMatch && method === "GET") {
     const idTenant = Number(tenantMenusMatch[1]);
     const includeUnavailable = urlObj.searchParams.get("include_unavailable") === "true";
-    const ctx = createEnrichContext();
+    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const ctx = createEnrichContext(compactMedia);
     const menus = db.menus
       .filter((m) => m.id_tenant === idTenant && (includeUnavailable || Boolean(m.status_tersedia)))
       .map((m) => enrichMenu(m, ctx));
@@ -1876,7 +2125,8 @@ async function handleApiRequest(req, res) {
 
   if (pathname === "/menus" && method === "GET") {
     const includeUnavailable = urlObj.searchParams.get("include_unavailable") === "true";
-    const ctx = createEnrichContext();
+    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const ctx = createEnrichContext(compactMedia);
     const list = db.menus
       .filter((m) => (includeUnavailable ? true : Boolean(m.status_tersedia)))
       .map((m) => enrichMenu(m, ctx));
@@ -1892,12 +2142,14 @@ async function handleApiRequest(req, res) {
   if (pathname === "/cart" && method === "GET") {
     const user = requireAuth(req, res);
     if (!user || !requireRole(req, res, user, "Customer")) return;
+    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
     const rawItems = db.carts[user.id_user] || [];
+    const ctx = createEnrichContext(compactMedia);
     const items = rawItems
       .map((ci) => {
-        const m = db.menus.find((x) => x.id_menu === ci.id_menu);
+        const m = ctx.menuById.get(Number(ci.id_menu));
         if (!m) return null;
-        const enriched = enrichMenu(m);
+        const enriched = enrichMenu(m, ctx);
         return {
           id_item_keranjang: ci.id_item_keranjang,
           id_menu: m.id_menu,
@@ -1907,7 +2159,7 @@ async function handleApiRequest(req, res) {
           harga: m.harga,
           jumlah: ci.jumlah,
           subtotal: m.harga * ci.jumlah,
-          gambar: m.gambar,
+          gambar: enriched.gambar,
         };
       })
       .filter(Boolean);
@@ -2025,7 +2277,8 @@ async function handleApiRequest(req, res) {
     const user = requireAuth(req, res);
     if (!user || !requireRole(req, res, user, "Customer", "Administrator")) return;
     const isAdmin = String(user.peran).toLowerCase() === "administrator";
-    const ctx = createEnrichContext();
+    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const ctx = createEnrichContext(compactMedia);
     const list = db.orders
       .filter((o) => (isAdmin ? true : o.id_user === user.id_user))
       .sort((a, b) => b.id_pesanan - a.id_pesanan)
@@ -2242,7 +2495,8 @@ async function handleApiRequest(req, res) {
         data: [],
       });
     }
-    const ctx = createEnrichContext();
+    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const ctx = createEnrichContext(compactMedia);
     const list = db.orders
       .filter((o) => (isAdmin ? true : o.id_tenant === tenant.id_tenant))
       .sort((a, b) => b.id_pesanan - a.id_pesanan)
@@ -2815,10 +3069,12 @@ async function handleApiRequest(req, res) {
     const hadTenant = db.tenants.some((t) => t.id_user === user.id_user);
     const tenant = ensureTenantForVendor(user);
     if (!hadTenant && tenant) saveDb(db);
+    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const ctx = compactMedia ? createEnrichContext(true) : null;
     return sendJson(req, res, 200, {
       success: true,
       message: "Informasi tenant berhasil diambil.",
-      data: enrichTenant(tenant),
+      data: enrichTenant(tenant, ctx),
     });
   }
 
@@ -2837,7 +3093,7 @@ async function handleApiRequest(req, res) {
     if (body.nama_tenant !== undefined) tenant.nama_tenant = String(body.nama_tenant).trim().slice(0, 100);
     if (body.deskripsi !== undefined) tenant.deskripsi = String(body.deskripsi).slice(0, 500);
     if (body.booth !== undefined) tenant.booth = String(body.booth).slice(0, 100);
-    if (imgInput !== undefined) {
+    if (imgInput !== undefined && !isMediaEndpointRef(imgInput)) {
       tenant.gambar = imgInput;
       tenant.logo = imgInput;
     }
@@ -2978,7 +3234,8 @@ async function handleApiRequest(req, res) {
     const hadTenant = !isAdmin && db.tenants.some((t) => t.id_user === user.id_user);
     const tenant = isAdmin ? null : ensureTenantForVendor(user);
     if (!hadTenant && tenant) saveDb(db);
-    const ctx = createEnrichContext();
+    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const ctx = createEnrichContext(compactMedia);
     const menus = db.menus
       .filter((m) => (isAdmin ? true : m.id_tenant === tenant.id_tenant))
       .map((m) => enrichMenu(m, ctx));
@@ -3066,7 +3323,7 @@ async function handleApiRequest(req, res) {
     }
     if (body.nama_menu !== undefined) menu.nama_menu = String(body.nama_menu).trim().slice(0, 100);
     if (body.deskripsi !== undefined) menu.deskripsi = String(body.deskripsi).slice(0, 500);
-    if (body.gambar !== undefined) menu.gambar = body.gambar;
+    if (body.gambar !== undefined && !isMediaEndpointRef(body.gambar)) menu.gambar = body.gambar;
     if (body.estimasi_menit !== undefined) menu.estimasi_menit = Math.max(1, Math.min(180, Number(body.estimasi_menit)));
     if (body.kategori_nama !== undefined) {
       const c = db.categories.find((x) => x.nama_kategori === body.kategori_nama);

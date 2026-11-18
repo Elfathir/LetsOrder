@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\MenuController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OrderController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\Api\OrderMessageController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PromoController;
 use App\Http\Controllers\Api\ReviewController;
+use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\Api\TenantController;
 use Illuminate\Support\Facades\Route;
 
@@ -57,7 +59,12 @@ $registerApiRoutes = function () {
         });
     });
 
-    // Public Catalog: Categories, Tenants, Menus
+    // Public Catalog & Unified Sync / Cacheable Media
+    Route::get('/sync', [SyncController::class, 'index']);
+    Route::get('/media/{type}/{id}', [MediaController::class, 'show'])
+        ->whereIn('type', ['tenant', 'menu', 'user'])
+        ->whereNumber('id');
+
     Route::get('/categories', [CategoryController::class, 'index']);
     Route::get('/categories/{id}', [CategoryController::class, 'show'])->whereNumber('id');
 
