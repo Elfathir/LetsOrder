@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use Illuminate\Support\Facades\Cache;
 
 class CategoryController extends Controller
 {
@@ -12,7 +13,9 @@ class CategoryController extends Controller
      */
     public function index()
     {
-        $categories = Category::orderBy('id_kategori', 'asc')->get();
+        $categories = Cache::remember('categories.all', 3600, function () {
+            return Category::orderBy('id_kategori', 'asc')->get();
+        });
 
         return response()->json([
             'success' => true,
