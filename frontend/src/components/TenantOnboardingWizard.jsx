@@ -48,7 +48,7 @@ export default function TenantOnboardingWizard({
   currentUser,
   onBackToRegister,
 }) {
-  const rootRef = useRef(null);
+  const bodyWrapRef = useRef(null);
   const [renderedStep, setRenderedStep] = useState(tenantOnboardingStep);
   const [isFading, setIsFading] = useState(false);
 
@@ -57,7 +57,7 @@ export default function TenantOnboardingWizard({
     setIsFading(true);
     const timer = setTimeout(() => {
       setRenderedStep(tenantOnboardingStep);
-      if (rootRef.current) rootRef.current.scrollTop = 0;
+      if (bodyWrapRef.current) bodyWrapRef.current.scrollTop = 0;
       setIsFading(false);
     }, 220);
     return () => clearTimeout(timer);
@@ -65,55 +65,9 @@ export default function TenantOnboardingWizard({
 
   return (
     <div
-      ref={rootRef}
       data-testid="tenant-onboarding-wizard"
       className="onboarding-wizard-root"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1450,
-        backgroundColor: "var(--bg-auth-page)",
-        display: "flex",
-        flexDirection: "column",
-        overflowY: "auto",
-        overflowX: "hidden",
-      }}
     >
-      {/* Top Bar: Language Switcher & Dark Mode Toggle */}
-      <div className="onboarding-header-bar">
-        <button
-          type="button"
-          className="header-lang-btn btn-interactive"
-          onClick={handleToggleLang}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            minWidth: 74,
-            padding: "7px 12px",
-            borderRadius: "var(--radius-pill)",
-            border: "1px solid var(--border-light)",
-            backgroundColor: "var(--bg-card)",
-            color: "var(--maroon)",
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: "pointer",
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
-          <Globe size={14} color="var(--text-muted)" />
-          <span>{lang}</span>
-        </button>
-        {ThemeToggleButton && (
-          <ThemeToggleButton
-            darkTitle={t?.themeToDark}
-            lightTitle={t?.themeToLight}
-            size={36}
-          />
-        )}
-      </div>
-
       {/* Floating Corner Food Plate Photos Only (Zero Text, Zero Card Box) */}
       <div
         aria-hidden="true"
@@ -144,43 +98,78 @@ export default function TenantOnboardingWizard({
         ))}
       </div>
 
-      {/* Centered Open Full-Page Content (No Pop-Up Box) */}
-      <div className="onboarding-body-wrap">
+      {/* Pinned Top Bar: Always visible at top on Desktop, iPad, HP, and Zoom */}
+      <div className="onboarding-header-bar">
+        <button
+          type="button"
+          className="header-lang-btn btn-interactive"
+          onClick={handleToggleLang}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            minWidth: 74,
+            padding: "7px 12px",
+            borderRadius: "var(--radius-pill)",
+            border: "1px solid var(--border-light)",
+            backgroundColor: "var(--bg-card)",
+            color: "var(--maroon)",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            boxShadow: "var(--shadow-sm)",
+          }}
+        >
+          <Globe size={14} color="var(--text-muted)" />
+          <span>{lang}</span>
+        </button>
+        {ThemeToggleButton && (
+          <ThemeToggleButton
+            darkTitle={t?.themeToDark}
+            lightTitle={t?.themeToLight}
+            size={34}
+          />
+        )}
+      </div>
+
+      {/* Scrollable Body Below Pinned Header (margin: auto 0 avoids top clipping on zoom/mobile) */}
+      <div ref={bodyWrapRef} className="onboarding-body-wrap">
         <div
           className={`onboarding-content-box${renderedStep === 2 ? " is-step-2" : ""}`}
         >
           {/* Step Progress Bar directly on page */}
-          <div style={{ marginBottom: 28 }}>
+          <div style={{ marginBottom: 18 }}>
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                marginBottom: 10,
+                marginBottom: 8,
               }}
             >
               <div
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 8,
-                  padding: "6px 14px",
+                  gap: 6,
+                  padding: "4px 12px",
                   borderRadius: "var(--radius-pill)",
                   backgroundColor: "var(--orange-soft)",
                   color: "var(--orange-dark)",
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: 800,
                   letterSpacing: "0.04em",
                 }}
               >
-                <Store size={14} />
+                <Store size={13} />
                 <span>
                   {lang === "EN"
                     ? `STORE SETUP · STEP ${tenantOnboardingStep} OF 2`
                     : `PENGATURAN TOKO · LANGKAH ${tenantOnboardingStep} DARI 2`}
                 </span>
               </div>
-              <span style={{ fontSize: 13, fontWeight: 800, color: "var(--text-muted)" }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: "var(--text-muted)" }}>
                 {tenantOnboardingStep === 1 ? "50%" : "100%"}
               </span>
             </div>
@@ -188,7 +177,7 @@ export default function TenantOnboardingWizard({
             <div
               style={{
                 width: "100%",
-                height: 8,
+                height: 6,
                 borderRadius: 999,
                 backgroundColor: "var(--border-light)",
                 overflow: "hidden",
@@ -212,7 +201,7 @@ export default function TenantOnboardingWizard({
               <div
                 style={{
                   width: "100%",
-                  padding: "4px 2px 16px",
+                  padding: "2px 2px 8px",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
@@ -224,7 +213,7 @@ export default function TenantOnboardingWizard({
                   style={{
                     fontWeight: 900,
                     color: "var(--maroon)",
-                    marginBottom: 10,
+                    marginBottom: 6,
                     letterSpacing: "-0.015em",
                   }}
                 >
@@ -234,8 +223,8 @@ export default function TenantOnboardingWizard({
                   className="onboarding-subtitle"
                   style={{
                     color: "var(--text-muted)",
-                    lineHeight: 1.55,
-                    marginBottom: 30,
+                    lineHeight: 1.5,
+                    marginBottom: 20,
                   }}
                 >
                   {lang === "EN"
@@ -244,18 +233,18 @@ export default function TenantOnboardingWizard({
                 </p>
 
                 {/* Circular Avatar Preview */}
-                <div style={{ position: "relative", marginBottom: 24 }}>
+                <div style={{ position: "relative", marginBottom: 16 }}>
                   <div
                     className="onboarding-avatar-circle"
                     style={{
                       borderRadius: "50%",
                       backgroundColor: "var(--bg-cream)",
                       border: onboardingForm.logo
-                        ? "4px solid var(--orange)"
-                        : "3px dashed var(--border-input)",
+                        ? "3.5px solid var(--orange)"
+                        : "2.5px dashed var(--border-input)",
                       boxShadow: onboardingForm.logo
-                        ? "0 16px 36px rgba(248, 163, 75, 0.28)"
-                        : "0 10px 26px rgba(82, 42, 40, 0.08)",
+                        ? "0 14px 30px rgba(248, 163, 75, 0.25)"
+                        : "0 8px 22px rgba(82, 42, 40, 0.08)",
                       overflow: "hidden",
                       display: "flex",
                       flexDirection: "column",
@@ -276,12 +265,12 @@ export default function TenantOnboardingWizard({
                           display: "flex",
                           flexDirection: "column",
                           alignItems: "center",
-                          gap: 8,
+                          gap: 6,
                           color: "var(--text-muted)",
                         }}
                       >
-                        <Store size={48} color="var(--orange)" />
-                        <span style={{ fontSize: 13, fontWeight: 800 }}>
+                        <Store size={38} color="var(--orange)" />
+                        <span style={{ fontSize: 12, fontWeight: 800 }}>
                           {lang === "EN" ? "No photo yet" : "Belum ada foto"}
                         </span>
                       </div>
@@ -293,10 +282,10 @@ export default function TenantOnboardingWizard({
                       className="animate-fade"
                       style={{
                         position: "absolute",
-                        bottom: 8,
-                        right: 8,
-                        width: 38,
-                        height: 38,
+                        bottom: 4,
+                        right: 4,
+                        width: 34,
+                        height: 34,
                         borderRadius: "50%",
                         backgroundColor: "#1F7A4C",
                         color: "#FFFFFF",
@@ -304,10 +293,10 @@ export default function TenantOnboardingWizard({
                         alignItems: "center",
                         justifyContent: "center",
                         boxShadow: "0 4px 12px rgba(31, 122, 76, 0.35)",
-                        border: "3px solid var(--bg-auth-page)",
+                        border: "2.5px solid var(--bg-auth-page)",
                       }}
                     >
-                      <CheckCircle2 size={19} />
+                      <CheckCircle2 size={17} />
                     </div>
                   )}
                 </div>
@@ -319,7 +308,7 @@ export default function TenantOnboardingWizard({
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 8,
-                    padding: "12px 26px",
+                    padding: "10px 22px",
                     borderRadius: "var(--radius-pill)",
                     border: "1.5px solid var(--orange)",
                     backgroundColor: onboardingForm.logo ? "var(--bg-card)" : "var(--orange-soft)",
@@ -327,10 +316,10 @@ export default function TenantOnboardingWizard({
                     fontWeight: 800,
                     cursor: "pointer",
                     boxShadow: "var(--shadow-sm)",
-                    marginBottom: 12,
+                    marginBottom: 8,
                   }}
                 >
-                  <Upload size={16} />
+                  <Upload size={15} />
                   <span>
                     {onboardingForm.logo
                       ? lang === "EN"
@@ -364,7 +353,7 @@ export default function TenantOnboardingWizard({
                   />
                 </label>
 
-                <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 24 }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
                   {lang === "EN"
                     ? "Format: .JPEG, .PNG · Use your stall logo or signature dish photo"
                     : "Format: .JPEG, .PNG · Gunakan logo atau foto hidangan andalan Anda"}
@@ -379,9 +368,9 @@ export default function TenantOnboardingWizard({
                       borderRadius: 12,
                       backgroundColor: "var(--alert-error-bg)",
                       color: "var(--alert-error-text)",
-                      fontSize: 13,
+                      fontSize: 12.5,
                       fontWeight: 700,
-                      marginBottom: 16,
+                      marginBottom: 14,
                     }}
                   >
                     {onboardingError}
@@ -392,10 +381,10 @@ export default function TenantOnboardingWizard({
                 <div
                   style={{
                     width: "100%",
-                    maxWidth: 400,
+                    maxWidth: 340,
                     display: "flex",
                     flexDirection: "column",
-                    gap: 12,
+                    gap: 10,
                     alignItems: "stretch",
                   }}
                 >

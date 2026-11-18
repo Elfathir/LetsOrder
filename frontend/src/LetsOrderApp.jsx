@@ -10858,21 +10858,7 @@ export default function App() {
       )}
 
       {(!currentUser || isAuthOpen) && tenantOnboardingStep === 0 && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1200,
-            backgroundColor: "var(--bg-auth-page)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "16px 20px",
-            overflowY: "auto",
-            overflowX: "hidden",
-          }}
-        >
+        <div className="auth-page-overlay">
           <div className="auth-header-controls">
             <button
               type="button"
@@ -10904,7 +10890,9 @@ export default function App() {
               size={34}
             />
           </div>
-          <div style={{ textAlign: "center", marginBottom: 14, flexShrink: 0 }}>
+          <div className="auth-page-scroll">
+            <div className="auth-page-inner">
+              <div style={{ textAlign: "center", marginBottom: 14, flexShrink: 0 }}>
             <div style={{ display: "inline-block", marginBottom: 6 }}>
               <svg width="54" height="54" viewBox="0 0 100 100" fill="none">
                 <circle cx="50" cy="50" r="46" stroke="#D49354" strokeWidth="3" />
@@ -11704,6 +11692,8 @@ export default function App() {
               </span>
             )}
           </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -11791,8 +11781,8 @@ export default function App() {
             className="animate-modal-zoom"
             style={{
               width: "100%",
-              maxWidth: 500,
-              maxHeight: "88vh",
+              maxWidth: 450,
+              maxHeight: "86vh",
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
