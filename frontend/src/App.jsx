@@ -11152,6 +11152,76 @@ export default function App() {
                     autoComplete="off"
                     placeholder={
                       loginRoleTab === "Vendor"
+                        ? lang === "EN"
+                          ? "Enter tenant username"
+                          : "Masukkan username tenant"
+                        : lang === "EN"
+                          ? "Enter your username"
+                          : "Masukkan username Anda"
+                    }
+                    value={authForm.username}
+                    onChange={(e) => setAuthForm((prev) => ({ ...prev, username: e.target.value }))}
+                    style={{
+                      border: "none",
+                      outline: "none",
+                      background: "transparent",
+                      fontSize: 14,
+                      color: "var(--maroon)",
+                      width: "100%",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {authMode === "register" && (
+                <>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
+                      {loginRoleTab === "Vendor"
+                        ? lang === "EN"
+                          ? "Canteen / Tenant Name"
+                          : "Nama Kantin / Tenant"
+                        : lang === "EN"
+                          ? "Full Name"
+                          : "Nama Lengkap"}
+                    </label>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "10px 14px",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--border-input)",
+                      }}
+                    >
+                      <Store size={16} color="var(--text-muted)" />
+                      <input
+                        type="text"
+                        required
+                        autoComplete="off"
+                        placeholder={
+                          loginRoleTab === "Vendor"
+                            ? lang === "EN"
+                              ? "e.g. Campus Nusantara Canteen"
+                              : "Contoh: Kantin Nusantara"
+                            : lang === "EN"
+                              ? "Enter your full name"
+                              : "Masukkan nama lengkap Anda"
+                        }
+                        value={loginRoleTab === "Vendor" ? authForm.nama_tenant : authForm.nama}
+                        onChange={(e) =>
+                          setAuthForm((prev) => ({
+                            ...prev,
+                            nama: e.target.value,
+                            nama_tenant: e.target.value,
+                          }))
+                        }
+                        style={{
+                          border: "none",
+                          outline: "none",
+                          background: "transparent",
+                          fontSize: 14,
                           color: "var(--maroon)",
                           width: "100%",
                         }}
