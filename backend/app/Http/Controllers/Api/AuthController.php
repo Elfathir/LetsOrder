@@ -48,7 +48,7 @@ class AuthController extends Controller
             $tenant = \App\Models\Tenant::create([
                 'id_user' => $user->id_user,
                 'nama_tenant' => $request->input('nama_tenant') ?: $nama,
-                'deskripsi' => 'Tenant Kantin Kampus UPNVJ',
+                'deskripsi' => '',
                 'logo' => '',
                 'status_buka' => true,
             ]);
@@ -581,7 +581,7 @@ class AuthController extends Controller
             \App\Models\Tenant::create([
                 'id_user' => $user->id_user,
                 'nama_tenant' => $nama,
-                'deskripsi' => 'Tenant Kantin Kampus',
+                'deskripsi' => '',
                 'logo' => '',
                 'status_buka' => true,
             ]);

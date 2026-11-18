@@ -81,6 +81,8 @@
 
 html {
   -webkit-tap-highlight-color: transparent;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -102,12 +104,21 @@ button,
 a,
 label,
 [role="button"],
-[role="tab"] {
+[role="tab"],
+.btn-interactive,
+.card-hover {
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
   touch-action: manipulation;
+}
+
+button::selection,
+button *::selection,
+[role="tab"]::selection,
+[role="tab"] *::selection {
+  background: transparent;
 }
 
 button:focus:not(:focus-visible),
@@ -491,8 +502,26 @@ html.theme-wave-active *::after {
   cursor: pointer;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   white-space: nowrap;
+}
+
+.nav-tab-label {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-tab-label::after {
+  content: attr(data-label);
+  font-weight: 800;
+  height: 0;
+  visibility: hidden;
+  overflow: hidden;
+  user-select: none;
+  pointer-events: none;
 }
 
 .mobile-bottom-nav {

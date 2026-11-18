@@ -417,8 +417,24 @@ function isTenantOpenNow(tenant) {
   return hhmm >= openStr || hhmm < closeStr;
 }
 
+function isTenantConfigured(tenant) {
+  if (!tenant) return false;
+  const defaultDescs = ["", "tenant kantin kampus upnvj", "tenant kantin kampus", "campus canteen tenant"];
+  const rawDesc = String(tenant.deskripsi || "").trim().toLowerCase();
+  const hasCustomDesc = !defaultDescs.includes(rawDesc);
+  const hasLogo = Boolean(
+    (tenant.logo && tenant.logo !== "tenant/default.png") ||
+      (tenant.gambar && tenant.gambar !== "tenant/default.png")
+  );
+  const hasMenus = (db.menus || []).some((m) => Number(m.id_tenant) === Number(tenant.id_tenant));
+  return hasCustomDesc || hasLogo || hasMenus;
+}
+
 function enrichTenant(tenant) {
   if (!tenant) return null;
+  const defaultDescs = ["", "tenant kantin kampus upnvj", "tenant kantin kampus", "campus canteen tenant"];
+  const rawDesc = String(tenant.deskripsi || "").trim();
+  const cleanDesc = defaultDescs.includes(rawDesc.toLowerCase()) ? "" : rawDesc;
   const owner = db.users.find((u) => u.id_user === tenant.id_user) || null;
   const tenantReviews = (db.reviews || []).filter(
     (r) => Number(r.id_tenant) === Number(tenant.id_tenant)
@@ -435,8 +451,10 @@ function enrichTenant(tenant) {
   const effectiveImage = tenant.gambar || tenant.logo || owner?.avatar || menuImgFallback || "";
   return {
     ...tenant,
+    deskripsi: cleanDesc,
     logo: tenant.logo || effectiveImage,
     gambar: effectiveImage,
+    is_configured: isTenantConfigured(tenant),
     jam_buka: tenant.jam_buka || "07:00",
     jam_tutup: tenant.jam_tutup || "21:00",
     auto_schedule: Boolean(tenant.auto_schedule),
@@ -727,8 +745,8 @@ function ensureTenantForVendor(user, namaTenantOverride) {
       id_tenant: nextTenantId,
       id_user: user.id_user,
       nama_tenant: namaTenantOverride || user.nama || user.username,
-      deskripsi: "Campus Canteen Tenant",
-      booth: `Stand #${nextTenantId} · Campus Canteen`,
+      deskripsi: "",
+      booth: "",
       estimasi_menit: "5-10 min",
       kategori_utama: "Rice & Mains",
       logo: user.avatar || "",
@@ -1515,10 +1533,13 @@ async function handleApiRequest(req, res) {
   }
 
   if (pathname === "/tenants" && method === "GET") {
+    const includeUnconfigured = urlObj.searchParams.get("include_unconfigured") === "true";
     return sendJson(req, res, 200, {
       success: true,
       message: "Daftar tenant berhasil diambil.",
-      data: db.tenants.map(enrichTenant),
+      data: db.tenants
+        .filter((t) => includeUnconfigured || isTenantConfigured(t))
+        .map(enrichTenant),
     });
   }
 

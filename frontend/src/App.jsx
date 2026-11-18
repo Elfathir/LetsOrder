@@ -2568,11 +2568,80 @@ export default function App() {
     );
   };
 
+  const isTenantStoreConfigured = useCallback(
+    (tenantObj) => {
+      if (!tenantObj) return false;
+      if (tenantObj.is_configured !== undefined) return Boolean(tenantObj.is_configured);
+      const defaultDescs = ["", "tenant kantin kampus upnvj", "tenant kantin kampus", "campus canteen tenant"];
+      const rawDesc = String(tenantObj.deskripsi || tenantObj.tagline || "").trim().toLowerCase();
+      const hasCustomDesc = !defaultDescs.includes(rawDesc);
+      const hasLogo = Boolean(
+        (tenantObj.logo && tenantObj.logo !== "tenant/default.png") ||
+          (tenantObj.gambar && tenantObj.gambar !== "tenant/default.png")
+      );
+      const hasMenus = menusList.some((m) => Number(m.id_tenant) === Number(tenantObj.id_tenant));
+      return hasCustomDesc || hasLogo || hasMenus;
+    },
+    [menusList]
+  );
+
+  const isMyStoreConfigured = useMemo(() => {
+    if (!myTenantInfo) return false;
+    if (myTenantInfo.is_configured !== undefined) return Boolean(myTenantInfo.is_configured);
+    const defaultDescs = ["", "tenant kantin kampus upnvj", "tenant kantin kampus", "campus canteen tenant"];
+    const rawDesc = String(myTenantInfo.deskripsi || "").trim().toLowerCase();
+    const hasCustomDesc = !defaultDescs.includes(rawDesc);
+    const hasLogo = Boolean(
+      (myTenantInfo.logo && myTenantInfo.logo !== "tenant/default.png") ||
+        (myTenantInfo.gambar && myTenantInfo.gambar !== "tenant/default.png")
+    );
+    return hasCustomDesc || hasLogo || tenantMenus.length > 0;
+  }, [myTenantInfo, tenantMenus.length]);
+
+  const openTenantMenuFromItem = useCallback(
+    (item) => {
+      if (!item) return;
+      const itemTenantId = Number(item.id_tenant || item.tenant?.id_tenant || 0);
+      const matchedTenant =
+        tenantsList.find((t) => Number(t.id_tenant) === itemTenantId) ||
+        (item.tenant
+          ? {
+              ...item.tenant,
+              id_tenant: itemTenantId || item.tenant.id_tenant,
+              nama_tenant: item.tenant.nama_tenant || item.tenant_name || "Kantin",
+              gambar: item.tenant.gambar || item.tenant.logo || "",
+              jam_buka: item.tenant.jam_buka || "07:00",
+              jam_tutup: item.tenant.jam_tutup || "21:00",
+            }
+          : {
+              id_tenant: itemTenantId,
+              nama_tenant: item.tenant_name || "Kantin",
+              deskripsi: "",
+              logo: "",
+              gambar: "",
+              jam_buka: "07:00",
+              jam_tutup: "21:00",
+              status_buka: true,
+            });
+      closeFoodDetail();
+      setTenantMenuQuery("");
+      setActiveTenantView(matchedTenant);
+      setNavTab("tenant");
+      if (typeof window !== "undefined" && window.scrollTo) {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    },
+    [tenantsList]
+  );
+
   const openStoreSettingsModal = () => {
     setStoreSettingsError("");
+    const defaultDescs = ["tenant kantin kampus upnvj", "tenant kantin kampus", "campus canteen tenant"];
+    const rawDesc = String(myTenantInfo?.deskripsi || "").trim();
+    const cleanDesc = defaultDescs.includes(rawDesc.toLowerCase()) ? "" : rawDesc;
     setStoreForm({
       nama_tenant: myTenantInfo?.nama_tenant || displayName || "",
-      deskripsi: myTenantInfo?.deskripsi || "",
+      deskripsi: cleanDesc,
       booth: myTenantInfo?.booth || "",
       logo: myTenantInfo?.logo || myTenantInfo?.gambar || "",
       jam_buka: myTenantInfo?.jam_buka || "07:00",
@@ -2747,13 +2816,14 @@ export default function App() {
   const filteredTenants = useMemo(() => {
     const q = tenantSearchQuery.trim().toLowerCase();
     return tenantsList.filter((t) => {
+      if (!isTenantStoreConfigured(t)) return false;
       return (
         !q ||
         String(t.nama_tenant || "").toLowerCase().includes(q) ||
         String(t.tagline || t.deskripsi || "").toLowerCase().includes(q)
       );
     });
-  }, [tenantsList, tenantSearchQuery]);
+  }, [tenantsList, tenantSearchQuery, isTenantStoreConfigured]);
 
   const tenantMenuItems = useMemo(() => {
     if (!activeTenantView) return [];
@@ -2937,7 +3007,7 @@ export default function App() {
                         fontWeight: active ? 800 : 500,
                       }}
                     >
-                      <span>{tab.label}</span>
+                      <span className="nav-tab-label" data-label={tab.label}>{tab.label}</span>
                       {tab.badge && (
                         <span
                           key={tab.badge}
@@ -3322,6 +3392,91 @@ export default function App() {
                         </button>
                       </div>
                     </div>
+                    {!isMyStoreConfigured && (
+                      <div
+                        style={{
+                          marginBottom: 24,
+                          padding: "20px 24px",
+                          borderRadius: "var(--radius-xl)",
+                          backgroundColor: "var(--bg-card)",
+                          border: "1.5px dashed var(--orange)",
+                          boxShadow: "var(--shadow-sm)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          flexWrap: "wrap",
+                          gap: 16,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 16, flex: "1 1 320px" }}>
+                          <div
+                            style={{
+                              width: 52,
+                              height: 52,
+                              borderRadius: 16,
+                              backgroundColor: "var(--orange-soft)",
+                              color: "var(--orange-dark)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Store size={24} />
+                          </div>
+                          <div>
+                            <div
+                              style={{
+                                display: "inline-block",
+                                padding: "2px 9px",
+                                borderRadius: "var(--radius-pill)",
+                                backgroundColor: "var(--bg-cream)",
+                                color: "var(--orange-dark)",
+                                fontSize: 10.5,
+                                fontWeight: 800,
+                                letterSpacing: "0.05em",
+                                marginBottom: 4,
+                              }}
+                            >
+                              {lang === "EN" ? "STORE NOT LIVE YET" : "TOKO BELUM TAMPIL DI PENGGUNA"}
+                            </div>
+                            <h3 style={{ fontSize: 17, fontWeight: 800, color: "var(--maroon)", marginBottom: 3 }}>
+                              {lang === "EN"
+                                ? "Set up your canteen store profile first"
+                                : "Buat & lengkapi profil toko tenant Anda terlebih dahulu"}
+                            </h3>
+                            <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.45 }}>
+                              {lang === "EN"
+                                ? "Your tenant won't appear on the customer Tenant tab until you add a store description, profile photo (PP), or menu."
+                                : "Toko Anda belum ditampilkan di halaman Kantin pembeli. Lengkapi deskripsi toko, foto profil (PP), lokasi stand, dan jam buka agar tampil ke pembeli."}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={openStoreSettingsModal}
+                          className="btn-interactive btn-lift"
+                          style={{
+                            padding: "11px 20px",
+                            borderRadius: "var(--radius-pill)",
+                            border: "none",
+                            backgroundColor: "var(--orange)",
+                            color: "#FFFFFF",
+                            fontSize: 13.5,
+                            fontWeight: 800,
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                            boxShadow: "0 4px 12px rgba(248, 163, 75, 0.35)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          <Pencil size={14} />
+                          <span>{lang === "EN" ? "Set Up Store Now" : "Buat Toko Sekarang"}</span>
+                        </button>
+                      </div>
+                    )}
                     <div
                       className="grid-kpi-4"
                       style={{
@@ -5531,9 +5686,35 @@ export default function App() {
                                     fontSize: 12,
                                     color: "var(--text-muted)",
                                     marginBottom: 14,
+                                    flexWrap: "wrap",
                                   }}
                                 >
-                                  <span>{item.tenant_name}</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openTenantMenuFromItem(item);
+                                    }}
+                                    style={{
+                                      border: "none",
+                                      background: "transparent",
+                                      padding: 0,
+                                      margin: 0,
+                                      fontSize: 12,
+                                      fontWeight: 700,
+                                      color: "var(--maroon)",
+                                      cursor: "pointer",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 4,
+                                      textDecoration: "underline",
+                                      textUnderlineOffset: 2,
+                                    }}
+                                    title={lang === "EN" ? `Go to ${item.tenant_name}` : `Ke menu ${item.tenant_name}`}
+                                  >
+                                    <Store size={12} color="var(--orange-dark)" />
+                                    <span>{item.tenant_name}</span>
+                                  </button>
                                   <span>·</span>
                                   <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
                                     <Clock size={12} />
@@ -5689,18 +5870,20 @@ export default function App() {
                           style={{
                             borderRadius: "var(--radius-lg)",
                             backgroundColor: "var(--bg-card)",
+                            border: "1px solid var(--border-light)",
+                            boxShadow: "var(--shadow-sm)",
                             overflow: "hidden",
                             cursor: "pointer",
+                            display: "flex",
+                            flexDirection: "column",
                           }}
                         >
                           <div
                             style={{
                               height: 190,
-                              borderRadius: "var(--radius-lg)",
                               backgroundColor: "var(--bg-warm-img)",
                               overflow: "hidden",
                               position: "relative",
-                              marginBottom: 10,
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -5749,34 +5932,61 @@ export default function App() {
                           </div>
                           <div
                             style={{
+                              padding: "14px 18px 16px",
                               display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              padding: "4px 2px",
+                              flexDirection: "column",
+                              gap: 4,
                             }}
                           >
-                            <span
-                              style={{
-                                fontSize: 16,
-                                fontWeight: 800,
-                                color: "var(--maroon)",
-                              }}
-                            >
-                              {tenant.nama_tenant}
-                            </span>
-                            <span
+                            <div
                               style={{
                                 display: "flex",
                                 alignItems: "center",
-                                gap: 4,
-                                fontSize: 14,
-                                fontWeight: 700,
-                                color: "var(--maroon)",
+                                justifyContent: "space-between",
+                                gap: 10,
                               }}
                             >
-                              <Star size={14} fill="#F8A34B" color="#F8A34B" />
-                              <span>{tenant.rating || (lang === "EN" ? "New" : "Baru")}</span>
-                            </span>
+                              <span
+                                style={{
+                                  fontSize: 16,
+                                  fontWeight: 800,
+                                  color: "var(--maroon)",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                   minWidth: 0,
+                                }}
+                              >
+                                {tenant.nama_tenant}
+                              </span>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  fontSize: 13.5,
+                                  fontWeight: 700,
+                                  color: "var(--maroon)",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <Star size={14} fill="#F8A34B" color="#F8A34B" />
+                                <span>{tenant.rating || (lang === "EN" ? "New" : "Baru")}</span>
+                              </span>
+                            </div>
+                            {tenant.deskripsi && (
+                              <div
+                                style={{
+                                  fontSize: 12.5,
+                                  color: "var(--text-muted)",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {tenant.deskripsi}
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -5851,28 +6061,118 @@ export default function App() {
                         justifyContent: "space-between",
                         marginBottom: 24,
                         flexWrap: "wrap",
-                        gap: 12,
+                        gap: 18,
+                        padding: "22px 26px",
+                        borderRadius: "var(--radius-xl)",
+                        backgroundColor: "var(--bg-card)",
+                        border: "1px solid var(--border-light)",
+                        boxShadow: "var(--shadow-sm)",
                       }}
                     >
-                      <div>
-                        <h1
+                      <div style={{ display: "flex", alignItems: "center", gap: 18, flex: "1 1 300px", minWidth: 0 }}>
+                        <div
                           style={{
-                            fontSize: 32,
-                            fontWeight: 900,
-                            color: "var(--maroon)",
-                            letterSpacing: "-0.02em",
+                            width: 74,
+                            height: 74,
+                            borderRadius: 18,
+                            overflow: "hidden",
+                            backgroundColor: "var(--bg-warm-img)",
+                            border: "1px solid var(--border-light)",
+                            flexShrink: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                           }}
                         >
-                          {t.navMenu}
-                        </h1>
-                        <p style={{ fontSize: 14, color: "var(--text-muted)" }}>
-                          {tenantMenuItems.length} {t.itemsUnit} · {activeTenantView.nama_tenant} ·{" "}
-                          {isTenantOpenAt(activeTenantView, liveClock)
-                            ? `${lang === "EN" ? "Open until" : "Buka sampai"} ${activeTenantView.jam_tutup || "21:00"}`
-                            : `${lang === "EN" ? "Closed · Opens at" : "Tutup · Buka pukul"} ${activeTenantView.jam_buka || "07:00"}`}
-                          {" · "}
-                          <LiveClockText />
-                        </p>
+                          <SafeImage
+                            src={activeTenantView.gambar || activeTenantView.logo}
+                            alt={activeTenantView.nama_tenant}
+                            fallbackType="store"
+                            iconSize={32}
+                          />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 5,
+                                padding: "3px 10px",
+                                borderRadius: "var(--radius-pill)",
+                                backgroundColor: "var(--bg-cream)",
+                                color: "var(--maroon)",
+                                fontSize: 11,
+                                fontWeight: 800,
+                                letterSpacing: "0.06em",
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              <Store size={12} color="var(--orange-dark)" />
+                              <span>{t.navMenu}</span>
+                            </span>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 5,
+                                padding: "3px 10px",
+                                borderRadius: "var(--radius-pill)",
+                                backgroundColor: isTenantOpenAt(activeTenantView, liveClock)
+                                  ? "rgba(22, 163, 74, 0.12)"
+                                  : "var(--status-cancelled-bg)",
+                                color: isTenantOpenAt(activeTenantView, liveClock)
+                                  ? "#15803D"
+                                  : "var(--text-muted)",
+                                fontSize: 11.5,
+                                fontWeight: 700,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: 6,
+                                  height: 6,
+                                  borderRadius: "50%",
+                                  backgroundColor: isTenantOpenAt(activeTenantView, liveClock) ? "#16A34A" : "#9CA3AF",
+                                }}
+                              />
+                              <span>
+                                {isTenantOpenAt(activeTenantView, liveClock)
+                                  ? `${lang === "EN" ? "Open until" : "Buka sampai"} ${activeTenantView.jam_tutup || "21:00"}`
+                                  : `${lang === "EN" ? "Closed · Opens at" : "Tutup · Buka pukul"} ${activeTenantView.jam_buka || "07:00"}`}
+                              </span>
+                            </span>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                                fontSize: 12.5,
+                                fontWeight: 800,
+                                color: "var(--maroon)",
+                              }}
+                            >
+                              <Star size={13} fill="#F8A34B" color="#F8A34B" />
+                              <span>{activeTenantView.rating || (lang === "EN" ? "New" : "Baru")}</span>
+                            </span>
+                          </div>
+                          <h1
+                            style={{
+                              fontSize: "clamp(26px, 3.6vw, 36px)",
+                              fontWeight: 900,
+                              color: "var(--maroon)",
+                              letterSpacing: "-0.02em",
+                              lineHeight: 1.15,
+                              marginBottom: 4,
+                            }}
+                          >
+                            {activeTenantView.nama_tenant}
+                          </h1>
+                          <p style={{ fontSize: 13.5, color: "var(--text-muted)" }}>
+                            {activeTenantView.deskripsi ? `${activeTenantView.deskripsi} · ` : ""}
+                            {tenantMenuItems.length} {t.itemsUnit} · <LiveClockText />
+                          </p>
+                        </div>
                       </div>
                       <div
                         className="search-pill-box"
@@ -9603,10 +9903,31 @@ export default function App() {
                           flexWrap: "wrap",
                         }}
                       >
-                        <span style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 700, color: "var(--maroon)" }}>
-                          <Store size={14} />
-                          {activeMenuDetail.tenant_name}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => openTenantMenuFromItem(activeMenuDetail)}
+                          className="btn-interactive"
+                          title={lang === "EN" ? `View ${activeMenuDetail.tenant_name} menu` : `Lihat menu ${activeMenuDetail.tenant_name}`}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                            padding: "4px 10px",
+                            borderRadius: "var(--radius-pill)",
+                            border: "1px solid var(--border-light)",
+                            backgroundColor: "var(--bg-cream)",
+                            fontWeight: 800,
+                            fontSize: 12.5,
+                            color: "var(--maroon)",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Store size={13} color="var(--orange-dark)" />
+                          <span style={{ textDecoration: "underline", textUnderlineOffset: 2 }}>
+                            {activeMenuDetail.tenant_name}
+                          </span>
+                          <ChevronRight size={13} color="var(--maroon)" />
+                        </button>
                         <span>·</span>
                         <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
                           <Clock size={14} />

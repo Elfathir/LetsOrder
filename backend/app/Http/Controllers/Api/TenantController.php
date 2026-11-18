@@ -32,12 +32,16 @@ class TenantController extends Controller
             });
         }
 
+        $includeUnconfigured = $request->boolean('include_unconfigured', false);
+
         $tenants = $query
             ->with(['user:id_user,avatar', 'menus' => fn ($q) => $q->select('id_menu', 'id_tenant', 'gambar')])
             ->orderByDesc('status_buka')
             ->orderBy('id_tenant', 'asc')
             ->get()
-            ->map(fn (Tenant $t) => $this->formatTenant($t));
+            ->filter(fn (Tenant $t) => $includeUnconfigured || self::isTenantConfigured($t))
+            ->map(fn (Tenant $t) => $this->formatTenant($t))
+            ->values();
 
         return response()->json([
             'success' => true,
@@ -225,8 +229,25 @@ class TenantController extends Controller
         ], 200);
     }
 
+    public static function isTenantConfigured(Tenant $tenant): bool
+    {
+        $defaultDescriptions = ['', 'tenant kantin kampus upnvj', 'tenant kantin kampus', 'campus canteen tenant'];
+        $desc = strtolower(trim((string) ($tenant->deskripsi ?? '')));
+        $hasCustomDesc = !in_array($desc, $defaultDescriptions, true);
+        $hasLogo = !empty($tenant->logo) && $tenant->logo !== 'tenant/default.png';
+        $hasMenus = $tenant->relationLoaded('menus')
+            ? $tenant->menus->isNotEmpty()
+            : Menu::where('id_tenant', $tenant->id_tenant)->exists();
+
+        return $hasCustomDesc || $hasLogo || $hasMenus;
+    }
+
     private function formatTenant(Tenant $tenant): array
     {
+        $defaultDescriptions = ['', 'tenant kantin kampus upnvj', 'tenant kantin kampus', 'campus canteen tenant'];
+        $rawDesc = trim((string) ($tenant->deskripsi ?? ''));
+        $cleanDesc = in_array(strtolower($rawDesc), $defaultDescriptions, true) ? '' : $rawDesc;
+
         $rawLogo = $tenant->logo && $tenant->logo !== 'tenant/default.png' ? $tenant->logo : '';
         $userAvatar = $tenant->relationLoaded('user') ? ($tenant->user?->avatar ?? '') : '';
         $menuImg = $tenant->relationLoaded('menus')
@@ -250,9 +271,10 @@ class TenantController extends Controller
             'id_tenant' => $tenant->id_tenant,
             'id_user' => $tenant->id_user,
             'nama_tenant' => $tenant->nama_tenant,
-            'deskripsi' => $tenant->deskripsi,
+            'deskripsi' => $cleanDesc,
             'logo' => $rawLogo ?: $effectiveImage,
             'gambar' => $effectiveImage,
+            'is_configured' => self::isTenantConfigured($tenant),
             'status_buka' => (bool) $tenant->status_buka,
             'jam_buka' => $tenant->jam_buka ?? '07:00',
             'jam_tutup' => $tenant->jam_tutup ?? '21:00',

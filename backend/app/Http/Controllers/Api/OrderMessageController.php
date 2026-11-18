@@ -7,14 +7,40 @@ use App\Models\Notification;
 use App\Models\Order;
 use App\Models\OrderMessage;
 use App\Support\ImageValidator;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class OrderMessageController extends Controller
 {
     public const PAID_STATUSES = ['Sedang Diproses', 'Diproses', 'Siap Diambil', 'Selesai'];
+
+    /**
+     * Pastikan tabel order_messages tersedia meskipun php artisan migrate belum dijalankan manual.
+     */
+    public static function ensureTableExists(): void
+    {
+        try {
+            if (!Schema::hasTable('order_messages')) {
+                Schema::create('order_messages', function (Blueprint $table) {
+                    $table->increments('id_pesan');
+                    $table->unsignedInteger('id_pesanan');
+                    $table->unsignedInteger('id_pengirim');
+                    $table->string('peran_pengirim', 20);
+                    $table->string('nama_pengirim', 120);
+                    $table->text('teks')->nullable();
+                    $table->longText('gambar')->nullable();
+                    $table->dateTime('waktu');
+                    $table->index('id_pesanan');
+                });
+            }
+        } catch (\Throwable $e) {
+            Log::warning('order_messages.auto_create_failed', ['error' => $e->getMessage()]);
+        }
+    }
 
     /**
      * Chat hanya terbuka setelah pembayaran terverifikasi
@@ -35,6 +61,7 @@ class OrderMessageController extends Controller
 
     public function index(Request $request, int $id)
     {
+        self::ensureTableExists();
         [$order, $access, $error] = $this->resolveOrder($request, $id);
         if ($error) {
             return $error;
@@ -63,6 +90,7 @@ class OrderMessageController extends Controller
 
     public function store(Request $request, int $id)
     {
+        self::ensureTableExists();
         [$order, $access, $error] = $this->resolveOrder($request, $id);
         if ($error) {
             return $error;
