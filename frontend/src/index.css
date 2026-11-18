@@ -434,7 +434,7 @@ html.theme-wave-active *::after {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-subtle);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border-input);
@@ -442,6 +442,39 @@ html.theme-wave-active *::after {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-light);
+}
+
+.modal-scroll-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-input) transparent;
+}
+.modal-scroll-body::-webkit-scrollbar {
+  width: 5px;
+}
+.modal-scroll-body::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 6px 0;
+}
+.modal-scroll-body::-webkit-scrollbar-thumb {
+  background: var(--border-input);
+  border-radius: 999px;
+}
+
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(2deg);
+  }
+}
+
+.animate-float-slow {
+  animation: floatSlow 5.5s ease-in-out infinite;
 }
 
 /* Responsive Layout Classes (Desktop -> Tablet -> Mobile/HP) */

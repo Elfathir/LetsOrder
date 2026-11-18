@@ -43,6 +43,8 @@ import {
   MessageCircle,
   Image as ImageIcon,
   Send,
+  UtensilsCrossed,
+  Upload,
 } from "lucide-react";
 import {
   api,
@@ -1962,7 +1964,7 @@ export default function App() {
           setNavTab("home");
         }
       } else {
-        await api.register({
+        const regRes = await api.register({
           username: authForm.username,
           nama: authForm.nama || authForm.username,
           email: authForm.email,
@@ -1970,6 +1972,10 @@ export default function App() {
           peran: loginRoleTab,
           nama_tenant: authForm.nama_tenant || authForm.username,
         });
+        const initialTenantName = (authForm.nama_tenant || authForm.username || "").trim();
+        const initialEmail = (authForm.email || "").trim();
+        const savedUsername = authForm.username;
+        const savedPassword = authForm.password;
         setAuthForm({
           username: "",
           nama: "",
@@ -1978,10 +1984,50 @@ export default function App() {
           nama_tenant: "",
           new_password: "",
         });
-        setAuthMode("login");
-        setAuthSuccess(
-          "Pendaftaran berhasil! Silakan login menggunakan username dan password Anda."
-        );
+
+        if (loginRoleTab === "Vendor") {
+          let token = regRes?.token || regRes?.data?.token;
+          let user = regRes?.user || regRes?.data?.user || regRes?.data;
+          if (!token || !user?.id_user) {
+            const loginRes = await api.login({
+              login: savedUsername,
+              password: savedPassword,
+            });
+            token = loginRes?.token || loginRes?.data?.token;
+            user = loginRes?.user || loginRes?.data?.user;
+          }
+          if (user) {
+            setStoredSession(token || "session", user);
+            setCurrentUser(user);
+            setIsAuthOpen(false);
+            setOnboardingError("");
+            setOnboardingForm({
+              logo: "",
+              nama_tenant: initialTenantName || user.nama_tenant || user.nama || user.username || "",
+              email: initialEmail || user.email || "",
+              no_telp: user.no_telp || "",
+              booth: "",
+              deskripsi: "",
+              jam_buka: "07:00",
+              jam_tutup: "21:00",
+              status_buka: true,
+              auto_schedule: true,
+            });
+            try {
+              if (user.id_user) {
+                localStorage.setItem(`letsorder_tenant_onboarding_${user.id_user}`, "1");
+              }
+            } catch {
+              // Ignore storage errors
+            }
+            setTenantOnboardingStep(1);
+          }
+        } else {
+          setAuthMode("login");
+          setAuthSuccess(
+            "Pendaftaran berhasil! Silakan login menggunakan username dan password Anda."
+          );
+        }
       }
     } catch (err) {
       setAuthError(err.message || "Gagal memproses autentikasi.");
@@ -2809,6 +2855,137 @@ export default function App() {
     [tenantsList]
   );
 
+  const [tenantOnboardingStep, setTenantOnboardingStep] = useState(0);
+  const [onboardingError, setOnboardingError] = useState("");
+  const [onboardingSaving, setOnboardingSaving] = useState(false);
+  const [onboardingForm, setOnboardingForm] = useState({
+    logo: "",
+    nama_tenant: "",
+    email: "",
+    no_telp: "",
+    booth: "",
+    deskripsi: "",
+    jam_buka: "07:00",
+    jam_tutup: "21:00",
+    status_buka: true,
+    auto_schedule: true,
+  });
+
+  useEffect(() => {
+    if (!currentUser?.id_user) {
+      setTenantOnboardingStep(0);
+      return;
+    }
+    if (currentUser?.peran === "Vendor") {
+      try {
+        const pendingStep = localStorage.getItem(`letsorder_tenant_onboarding_${currentUser.id_user}`);
+        if (pendingStep === "1" || pendingStep === "2") {
+          setTenantOnboardingStep((prev) => (prev > 0 ? prev : Number(pendingStep)));
+          setOnboardingForm((prev) => ({
+            ...prev,
+            nama_tenant: prev.nama_tenant || currentUser.nama_tenant || currentUser.nama || currentUser.username || "",
+            email: prev.email || currentUser.email || "",
+            no_telp: prev.no_telp || currentUser.no_telp || "",
+          }));
+        }
+      } catch {
+        // Ignore storage read errors
+      }
+    } else {
+      setTenantOnboardingStep(0);
+    }
+  }, [currentUser]);
+
+  const isOnboardingStep2Valid = useMemo(() => {
+    const cleanPhone = String(onboardingForm.no_telp || "").replace(/\D/g, "");
+    const cleanEmail = String(onboardingForm.email || "").trim();
+    return (
+      Boolean(onboardingForm.logo) &&
+      String(onboardingForm.nama_tenant || "").trim().length >= 2 &&
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) &&
+      cleanPhone.length >= 8 &&
+      String(onboardingForm.booth || "").trim().length >= 2 &&
+      String(onboardingForm.deskripsi || "").trim().length >= 5 &&
+      Boolean(onboardingForm.jam_buka) &&
+      Boolean(onboardingForm.jam_tutup)
+    );
+  }, [onboardingForm]);
+
+  const handleCompleteTenantOnboarding = async (e) => {
+    if (e?.preventDefault) e.preventDefault();
+    if (!isOnboardingStep2Valid || onboardingSaving) return;
+    setOnboardingError("");
+    setOnboardingSaving(true);
+    try {
+      const cleanName = onboardingForm.nama_tenant.trim();
+      const cleanEmail = onboardingForm.email.trim();
+      const cleanPhone = String(onboardingForm.no_telp || "").replace(/\D/g, "");
+      const cleanBooth = onboardingForm.booth.trim();
+      const cleanDesc = onboardingForm.deskripsi.trim();
+
+      const profileRes = await api.updateProfile({
+        nama: currentUser?.nama || cleanName,
+        email: cleanEmail,
+        no_telp: cleanPhone,
+        nama_tenant: cleanName,
+        avatar: onboardingForm.logo,
+      });
+
+      const tenantRes = await api.updateVendorTenant({
+        nama_tenant: cleanName,
+        deskripsi: cleanDesc,
+        booth: cleanBooth,
+        logo: onboardingForm.logo,
+        gambar: onboardingForm.logo,
+        jam_buka: onboardingForm.jam_buka || "07:00",
+        jam_tutup: onboardingForm.jam_tutup || "21:00",
+        auto_schedule: Boolean(onboardingForm.auto_schedule),
+        status_buka: Boolean(onboardingForm.status_buka),
+      });
+
+      if (tenantRes?.data) {
+        setMyTenantInfo(tenantRes.data);
+        setIsStoreOpen(Boolean(tenantRes.data.status_buka ?? onboardingForm.status_buka));
+      }
+
+      const updatedUser = {
+        ...(currentUser || {}),
+        ...(profileRes?.user || {}),
+        nama_tenant: cleanName,
+        email: cleanEmail,
+        no_telp: cleanPhone,
+        avatar: onboardingForm.logo,
+      };
+      setCurrentUser(updatedUser);
+      setStoredSession(localStorage.getItem("letsorder_auth_token") || "session", updatedUser);
+
+      try {
+        if (currentUser?.id_user) {
+          localStorage.removeItem(`letsorder_tenant_onboarding_${currentUser.id_user}`);
+        }
+      } catch {
+        // Ignore storage errors
+      }
+
+      setTenantOnboardingStep(0);
+      setVendorTab("dashboard");
+      notify(
+        lang === "EN"
+          ? "Your tenant store is now live! Welcome to your Dashboard."
+          : "Toko tenant Anda berhasil diluncurkan! Selamat datang di Dashboard.",
+        "success"
+      );
+      await syncFromApi();
+    } catch (err) {
+      setOnboardingError(
+        err?.message ||
+          (lang === "EN" ? "Failed to complete tenant setup." : "Gagal menyimpan pengaturan awal tenant.")
+      );
+    } finally {
+      setOnboardingSaving(false);
+    }
+  };
+
   const openStoreSettingsModal = () => {
     setStoreSettingsError("");
     const defaultDescs = ["tenant kantin kampus upnvj", "tenant kantin kampus", "campus canteen tenant"];
@@ -2818,7 +2995,7 @@ export default function App() {
       nama_tenant: myTenantInfo?.nama_tenant || displayName || "",
       deskripsi: cleanDesc,
       booth: myTenantInfo?.booth || "",
-      logo: myTenantInfo?.logo || myTenantInfo?.gambar || "",
+      logo: myTenantInfo?.logo || myTenantInfo?.gambar || currentUser?.avatar || "",
       jam_buka: myTenantInfo?.jam_buka || "07:00",
       jam_tutup: myTenantInfo?.jam_tutup || "21:00",
       auto_schedule: Boolean(myTenantInfo?.auto_schedule),
@@ -2831,8 +3008,9 @@ export default function App() {
     e.preventDefault();
     setStoreSettingsError("");
     try {
+      const cleanTenantName = storeForm.nama_tenant.trim();
       const res = await api.updateVendorTenant({
-        nama_tenant: storeForm.nama_tenant.trim(),
+        nama_tenant: cleanTenantName,
         deskripsi: storeForm.deskripsi.trim(),
         booth: storeForm.booth.trim(),
         logo: storeForm.logo,
@@ -2846,9 +3024,36 @@ export default function App() {
         setMyTenantInfo(res.data);
         setIsStoreOpen(Boolean(res.data.status_buka ?? storeForm.status_buka));
       }
+      if (currentUser) {
+        try {
+          const profRes = await api.updateProfile({
+            nama: currentUser.nama || cleanTenantName,
+            email: currentUser.email || "",
+            no_telp: currentUser.no_telp || "",
+            nama_tenant: cleanTenantName,
+            avatar: storeForm.logo || "",
+          });
+          const updatedUser = {
+            ...currentUser,
+            ...(profRes?.user || {}),
+            nama_tenant: cleanTenantName,
+            avatar: storeForm.logo || "",
+          };
+          setCurrentUser(updatedUser);
+          setStoredSession(localStorage.getItem("letsorder_auth_token") || "session", updatedUser);
+        } catch {
+          const updatedUser = {
+            ...currentUser,
+            nama_tenant: cleanTenantName,
+            avatar: storeForm.logo || "",
+          };
+          setCurrentUser(updatedUser);
+          setStoredSession(localStorage.getItem("letsorder_auth_token") || "session", updatedUser);
+        }
+      }
       setIsStoreSettingsOpen(false);
       notify(
-        lang === "EN" ? "Store settings updated!" : "Pengaturan kantin berhasil disimpan!",
+        lang === "EN" ? "Tenant settings updated!" : "Pengaturan tenant berhasil disimpan!",
         "success"
       );
       await syncFromApi();
@@ -3617,91 +3822,6 @@ export default function App() {
                         </button>
                       </div>
                     </div>
-                    {!isMyStoreConfigured && (
-                      <div
-                        style={{
-                          marginBottom: 24,
-                          padding: "20px 24px",
-                          borderRadius: "var(--radius-xl)",
-                          backgroundColor: "var(--bg-card)",
-                          border: "1.5px dashed var(--orange)",
-                          boxShadow: "var(--shadow-sm)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          flexWrap: "wrap",
-                          gap: 16,
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 16, flex: "1 1 320px" }}>
-                          <div
-                            style={{
-                              width: 52,
-                              height: 52,
-                              borderRadius: 16,
-                              backgroundColor: "var(--orange-soft)",
-                              color: "var(--orange-dark)",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              flexShrink: 0,
-                            }}
-                          >
-                            <Store size={24} />
-                          </div>
-                          <div>
-                            <div
-                              style={{
-                                display: "inline-block",
-                                padding: "2px 9px",
-                                borderRadius: "var(--radius-pill)",
-                                backgroundColor: "var(--bg-cream)",
-                                color: "var(--orange-dark)",
-                                fontSize: 10.5,
-                                fontWeight: 800,
-                                letterSpacing: "0.05em",
-                                marginBottom: 4,
-                              }}
-                            >
-                              {lang === "EN" ? "STORE NOT LIVE YET" : "TOKO BELUM TAMPIL DI PENGGUNA"}
-                            </div>
-                            <h3 style={{ fontSize: 17, fontWeight: 800, color: "var(--maroon)", marginBottom: 3 }}>
-                              {lang === "EN"
-                                ? "Set up your canteen store profile first"
-                                : "Buat & lengkapi profil toko tenant Anda terlebih dahulu"}
-                            </h3>
-                            <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.45 }}>
-                              {lang === "EN"
-                                ? "Your tenant won't appear on the customer Tenant tab until you add a store description, profile photo (PP), or menu."
-                                : "Toko Anda belum ditampilkan di halaman Kantin pembeli. Lengkapi deskripsi toko, foto profil (PP), lokasi stand, dan jam buka agar tampil ke pembeli."}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={openStoreSettingsModal}
-                          className="btn-interactive btn-lift"
-                          style={{
-                            padding: "11px 20px",
-                            borderRadius: "var(--radius-pill)",
-                            border: "none",
-                            backgroundColor: "var(--orange)",
-                            color: "#FFFFFF",
-                            fontSize: 13.5,
-                            fontWeight: 800,
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 8,
-                            boxShadow: "0 4px 12px rgba(248, 163, 75, 0.35)",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <Pencil size={14} />
-                          <span>{lang === "EN" ? "Set Up Store Now" : "Buat Toko Sekarang"}</span>
-                        </button>
-                      </div>
-                    )}
                     <div
                       className="grid-kpi-4"
                       style={{
@@ -9365,7 +9485,13 @@ export default function App() {
                   >
                     {[
                       { id: "profile", label: t.drawerProfile, icon: User },
-                      { id: "favorites", label: t.drawerFavorites, icon: Heart },
+                      portalMode === "tenant"
+                        ? {
+                            id: "tenant_settings",
+                            label: lang === "EN" ? "Tenant Settings" : "Pengaturan Tenant",
+                            icon: Store,
+                          }
+                        : { id: "favorites", label: t.drawerFavorites, icon: Heart },
                       { id: "notifications", label: t.drawerNotifications, icon: Bell },
                       { id: "help", label: t.drawerHelp, icon: HelpCircle },
                     ].map((item, idx, arr) => {
@@ -9375,7 +9501,11 @@ export default function App() {
                           key={item.id}
                           onClick={() => {
                             closeDrawer();
-                            openDrawerModal(item.id);
+                            if (item.id === "tenant_settings") {
+                              openStoreSettingsModal();
+                            } else {
+                              openDrawerModal(item.id);
+                            }
                           }}
                           className="drawer-item"
                           style={{
@@ -9473,25 +9603,27 @@ export default function App() {
                 className="animate-modal-zoom"
                 style={{
                   width: "100%",
-                  maxWidth: activeDrawerModal === "profile" ? 760 : 460,
-                  maxHeight: "90vh",
-                  overflowY: "auto",
+                  maxWidth: activeDrawerModal === "profile" ? (portalMode === "tenant" ? 520 : 760) : 460,
+                  maxHeight: "88vh",
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
                   backgroundColor: "var(--bg-card)",
                   borderRadius: "var(--radius-xl)",
-                  padding: activeDrawerModal === "profile" ? "30px 34px" : "26px 28px",
+                  padding: 0,
                   boxShadow: "0 20px 50px rgba(82, 42, 40, 0.24)",
                   border: "1px solid var(--border-light)",
                 }}
               >
                 <div
                   style={{
+                    flexShrink: 0,
                     display: "flex",
                     alignItems: "flex-start",
                     justifyContent: "space-between",
-                    paddingBottom: activeDrawerModal === "profile" ? 16 : 0,
-                    marginBottom: activeDrawerModal === "profile" ? 22 : 18,
-                    borderBottom:
-                      activeDrawerModal === "profile" ? "1px solid var(--border-light)" : "none",
+                    padding: activeDrawerModal === "profile" ? "22px 28px 16px" : "20px 26px 14px",
+                    borderBottom: "1px solid var(--border-light)",
+                    backgroundColor: "var(--bg-card)",
                   }}
                 >
                   <div>
@@ -9532,6 +9664,13 @@ export default function App() {
 
                 {activeDrawerModal === "profile" && (
                   <form
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      flex: "1 1 auto",
+                      minHeight: 0,
+                      overflow: "hidden",
+                    }}
                     onSubmit={async (e) => {
                       e.preventDefault();
                       setProfileAlert({ type: "", text: "" });
@@ -9554,10 +9693,9 @@ export default function App() {
                         no_telp: profileForm.no_telp,
                         jenis_kelamin: profileForm.jenis_kelamin,
                         tanggal_lahir: profileForm.tanggal_lahir,
-                        avatar: profileForm.avatar,
                         ...(portalMode === "tenant"
-                          ? { nama_tenant: profileForm.nama_tenant }
-                          : {}),
+                          ? {}
+                          : { avatar: profileForm.avatar }),
                       };
 
                       try {
@@ -9583,37 +9721,38 @@ export default function App() {
                       }
                     }}
                   >
-                    {profileAlert.text && (
-                      <div
-                        style={{
-                          padding: "10px 14px",
-                          borderRadius: 12,
-                          backgroundColor:
-                            profileAlert.type === "error" ? "var(--alert-error-bg)" : "var(--alert-success-bg)",
-                          border:
-                            profileAlert.type === "error"
-                              ? "1px solid var(--alert-error-border)"
-                              : "1px solid var(--alert-success-border)",
-                          color: profileAlert.type === "error" ? "var(--alert-error-text)" : "var(--alert-success-text)",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          marginBottom: 18,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        {profileAlert.type === "error" ? (
-                          <AlertCircle size={15} />
-                        ) : (
-                          <CheckCircle2 size={15} />
-                        )}
-                        <span>{profileAlert.text}</span>
-                      </div>
-                    )}
+                    <div className="modal-scroll-body" style={{ padding: "20px 28px" }}>
+                      {profileAlert.text && (
+                        <div
+                          style={{
+                            padding: "10px 14px",
+                            borderRadius: 12,
+                            backgroundColor:
+                              profileAlert.type === "error" ? "var(--alert-error-bg)" : "var(--alert-success-bg)",
+                            border:
+                              profileAlert.type === "error"
+                                ? "1px solid var(--alert-error-border)"
+                                : "1px solid var(--alert-success-border)",
+                            color: profileAlert.type === "error" ? "var(--alert-error-text)" : "var(--alert-success-text)",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            marginBottom: 18,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          {profileAlert.type === "error" ? (
+                            <AlertCircle size={15} />
+                          ) : (
+                            <CheckCircle2 size={15} />
+                          )}
+                          <span>{profileAlert.text}</span>
+                        </div>
+                      )}
 
-                    <div className="grid-profile-split">
-                      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <div className={portalMode === "tenant" ? "" : "grid-profile-split"}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                         <div className="profile-field-row">
                           <span className="profile-field-label">
                             Username
@@ -9821,34 +9960,6 @@ export default function App() {
                           )}
                         </div>
 
-                        {portalMode === "tenant" && (
-                          <div className="profile-field-row">
-                            <label className="profile-field-label">
-                              {lang === "EN" ? "Tenant Name" : "Nama Tenant"}
-                            </label>
-                            <input
-                              type="text"
-                              value={profileForm.nama_tenant}
-                              onChange={(e) =>
-                                setProfileForm((p) => ({
-                                  ...p,
-                                  nama_tenant: e.target.value,
-                                }))
-                              }
-                              placeholder={lang === "EN" ? "Enter canteen tenant name" : "Masukkan nama tenant kantin"}
-                              style={{
-                                width: "100%",
-                                padding: "10px 14px",
-                                borderRadius: 10,
-                                border: "1px solid var(--border-input)",
-                                fontSize: 14,
-                                color: "var(--maroon)",
-                                outline: "none",
-                              }}
-                            />
-                          </div>
-                        )}
-
                         <div className="profile-field-row">
                           <span className="profile-field-label">
                             {lang === "EN" ? "Gender" : "Jenis Kelamin"}
@@ -9914,110 +10025,120 @@ export default function App() {
                             }}
                           />
                         </div>
+                      </div>
 
-                        <div className="profile-field-row" style={{ marginTop: 6 }}>
-                          <div />
-                          <div>
-                            <button
-                              type="submit"
-                              className="btn-interactive btn-lift"
-                              style={{
-                                padding: "11px 30px",
-                                borderRadius: "var(--radius-pill)",
-                                border: "none",
-                                backgroundColor: "var(--orange)",
-                                color: "var(--on-orange-text)",
-                                fontSize: 14,
-                                fontWeight: 800,
-                                cursor: "pointer",
-                                boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
+                      {portalMode !== "tenant" && (
+                        <div className="profile-avatar-col">
+                          <div
+                            style={{
+                              width: 108,
+                              height: 108,
+                              borderRadius: "50%",
+                              backgroundColor: "var(--bg-cream)",
+                              border: "3px solid #EDD1B4",
+                              overflow: "hidden",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 32,
+                              fontWeight: 900,
+                              color: "var(--maroon)",
+                              marginBottom: 16,
+                              boxShadow: "0 6px 18px rgba(82, 42, 40, 0.1)",
+                            }}
+                          >
+                            {profileForm.avatar ? (
+                              <img
+                                src={profileForm.avatar}
+                                alt="Profile Avatar"
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                              />
+                            ) : (
+                              <span>{displayInitials}</span>
+                            )}
+                          </div>
+
+                          <label
+                            className="btn-interactive"
+                            style={{
+                              display: "inline-block",
+                              padding: "9px 20px",
+                              borderRadius: "var(--radius-pill)",
+                              border: "1px solid var(--border-input)",
+                              backgroundColor: "var(--bg-card)",
+                              color: "var(--maroon)",
+                              fontSize: 13,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              marginBottom: 12,
+                              boxShadow: "var(--shadow-sm)",
+                            }}
+                          >
+                            <span>{lang === "EN" ? "Choose Image" : "Pilih Gambar"}</span>
+                            <input
+                              type="file"
+                              accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                              style={{ display: "none" }}
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                try {
+                                  const compressed = await readAndCompressImageFile(file, 512, 0.85);
+                                  setProfileForm((p) => ({ ...p, avatar: compressed }));
+                                  setProfileAlert({ type: "", text: "" });
+                                } catch (err) {
+                                  setProfileAlert({
+                                    type: "error",
+                                    text: err.message || (lang === "EN" ? "Failed to process profile image." : "Gagal memproses foto profil."),
+                                  });
+                                }
                               }}
-                            >
-                              {lang === "EN" ? "Save" : "Simpan"}
-                            </button>
+                            />
+                          </label>
+
+                          <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                            <div>{lang === "EN" ? "File size: max 1 MB" : "Ukuran gambar: maks. 1 MB"}</div>
+                            <div>{lang === "EN" ? "Format: .JPEG, .PNG" : "Format gambar: .JPEG, .PNG"}</div>
                           </div>
                         </div>
+                      )}
                       </div>
+                    </div>
 
-                      <div className="profile-avatar-col">
-                        <div
-                          style={{
-                            width: 108,
-                            height: 108,
-                            borderRadius: "50%",
-                            backgroundColor: "var(--bg-cream)",
-                            border: "3px solid #EDD1B4",
-                            overflow: "hidden",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: 32,
-                            fontWeight: 900,
-                            color: "var(--maroon)",
-                            marginBottom: 16,
-                            boxShadow: "0 6px 18px rgba(82, 42, 40, 0.1)",
-                          }}
-                        >
-                          {profileForm.avatar ? (
-                            <img
-                              src={profileForm.avatar}
-                              alt="Profile Avatar"
-                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                            />
-                          ) : (
-                            <span>{displayInitials}</span>
-                          )}
-                        </div>
-
-                        <label
-                          className="btn-interactive"
-                          style={{
-                            display: "inline-block",
-                            padding: "9px 20px",
-                            borderRadius: "var(--radius-pill)",
-                            border: "1px solid var(--border-input)",
-                            backgroundColor: "var(--bg-card)",
-                            color: "var(--maroon)",
-                            fontSize: 13,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            marginBottom: 12,
-                            boxShadow: "var(--shadow-sm)",
-                          }}
-                        >
-                          <span>{lang === "EN" ? "Choose Image" : "Pilih Gambar"}</span>
-                          <input
-                            type="file"
-                            accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                            style={{ display: "none" }}
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              try {
-                                const compressed = await readAndCompressImageFile(file, 512, 0.85);
-                                setProfileForm((p) => ({ ...p, avatar: compressed }));
-                                setProfileAlert({ type: "", text: "" });
-                              } catch (err) {
-                                setProfileAlert({
-                                  type: "error",
-                                  text: err.message || (lang === "EN" ? "Failed to process profile image." : "Gagal memproses foto profil."),
-                                });
-                              }
-                            }}
-                          />
-                        </label>
-
-                        <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                          <div>{lang === "EN" ? "File size: max 1 MB" : "Ukuran gambar: maks. 1 MB"}</div>
-                          <div>{lang === "EN" ? "Format: .JPEG, .PNG" : "Format gambar: .JPEG, .PNG"}</div>
-                        </div>
-                      </div>
+                    <div
+                      style={{
+                        flexShrink: 0,
+                        padding: "14px 28px",
+                        borderTop: "1px solid var(--border-light)",
+                        backgroundColor: "var(--bg-card)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "flex-end",
+                      }}
+                    >
+                      <button
+                        type="submit"
+                        className="btn-interactive btn-lift"
+                        style={{
+                          padding: "11px 32px",
+                          borderRadius: "var(--radius-pill)",
+                          border: "none",
+                          backgroundColor: "var(--orange)",
+                          color: "var(--on-orange-text)",
+                          fontSize: 14,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                          boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
+                        }}
+                      >
+                        {lang === "EN" ? "Save" : "Simpan"}
+                      </button>
                     </div>
                   </form>
                 )}
 
                 {activeDrawerModal === "favorites" && (
-                  <div>
+                  <div className="modal-scroll-body" style={{ padding: "18px 26px 24px" }}>
                     {menusList.filter((m) => favoriteIds.includes(m.id_menu)).length === 0 ? (
                       <div style={{ textAlign: "center", padding: "24px 12px", color: "var(--text-muted)", fontSize: 14 }}>
                         {lang === "EN"
@@ -10079,7 +10200,7 @@ export default function App() {
                 )}
 
                 {activeDrawerModal === "notifications" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div className="modal-scroll-body" style={{ padding: "18px 26px 24px", display: "flex", flexDirection: "column", gap: 10 }}>
                     {notificationsList.some((n) => !n.status_baca) && (
                       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
                         <button
@@ -10156,7 +10277,7 @@ export default function App() {
                 )}
 
                 {activeDrawerModal === "help" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                  <div className="modal-scroll-body" style={{ padding: "18px 26px 24px", display: "flex", flexDirection: "column", gap: 12, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
                     <div style={{ padding: "12px 14px", borderRadius: 12, backgroundColor: "var(--bg-auth-page)", border: "1px solid var(--border-light)" }}>
                       <div style={{ fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>
                         {lang === "EN" ? "How do I pre-order food?" : "Bagaimana cara memesan makanan?"}
@@ -11031,76 +11152,6 @@ export default function App() {
                     autoComplete="off"
                     placeholder={
                       loginRoleTab === "Vendor"
-                        ? lang === "EN"
-                          ? "Enter tenant username"
-                          : "Masukkan username tenant"
-                        : lang === "EN"
-                          ? "Enter your username"
-                          : "Masukkan username Anda"
-                    }
-                    value={authForm.username}
-                    onChange={(e) => setAuthForm((prev) => ({ ...prev, username: e.target.value }))}
-                    style={{
-                      border: "none",
-                      outline: "none",
-                      background: "transparent",
-                      fontSize: 14,
-                      color: "var(--maroon)",
-                      width: "100%",
-                    }}
-                  />
-                </div>
-              </div>
-
-              {authMode === "register" && (
-                <>
-                  <div>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
-                      {loginRoleTab === "Vendor"
-                        ? lang === "EN"
-                          ? "Canteen / Tenant Name"
-                          : "Nama Kantin / Tenant"
-                        : lang === "EN"
-                          ? "Full Name"
-                          : "Nama Lengkap"}
-                    </label>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "10px 14px",
-                        borderRadius: "var(--radius-md)",
-                        border: "1px solid var(--border-input)",
-                      }}
-                    >
-                      <Store size={16} color="var(--text-muted)" />
-                      <input
-                        type="text"
-                        required
-                        autoComplete="off"
-                        placeholder={
-                          loginRoleTab === "Vendor"
-                            ? lang === "EN"
-                              ? "e.g. Campus Nusantara Canteen"
-                              : "Contoh: Kantin Nusantara"
-                            : lang === "EN"
-                              ? "Enter your full name"
-                              : "Masukkan nama lengkap Anda"
-                        }
-                        value={loginRoleTab === "Vendor" ? authForm.nama_tenant : authForm.nama}
-                        onChange={(e) =>
-                          setAuthForm((prev) => ({
-                            ...prev,
-                            nama: e.target.value,
-                            nama_tenant: e.target.value,
-                          }))
-                        }
-                        style={{
-                          border: "none",
-                          outline: "none",
-                          background: "transparent",
-                          fontSize: 14,
                           color: "var(--maroon)",
                           width: "100%",
                         }}
@@ -11556,6 +11607,821 @@ export default function App() {
         </div>
       )}
 
+      {tenantOnboardingStep > 0 && portalMode === "tenant" && (
+        <div
+          data-testid="tenant-onboarding-wizard"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1450,
+            backgroundColor: "var(--bg-auth-page)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px 16px",
+            overflowY: "auto",
+          }}
+        >
+          {/* Culinary & Canteen Vendor Atmospheric Background */}
+          <div
+            aria-hidden="true"
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 0,
+              overflow: "hidden",
+              pointerEvents: "none",
+            }}
+          >
+            <img
+              src="https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1800&q=80"
+              alt=""
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                opacity: 0.14,
+                filter: "saturate(1.15) contrast(1.05)",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background:
+                  "radial-gradient(circle at 18% 22%, rgba(248, 163, 75, 0.22) 0%, transparent 48%), radial-gradient(circle at 84% 78%, rgba(168, 219, 232, 0.28) 0%, transparent 50%), linear-gradient(180deg, rgba(253, 249, 243, 0.86) 0%, rgba(251, 243, 232, 0.94) 100%)",
+              }}
+            />
+
+            {/* Floating Food & Vendor Illustration Cards */}
+            <div
+              className="animate-float-slow"
+              style={{
+                position: "absolute",
+                top: "8%",
+                left: "5%",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 14px",
+                borderRadius: 18,
+                backgroundColor: "rgba(255, 255, 255, 0.88)",
+                backdropFilter: "blur(8px)",
+                boxShadow: "0 14px 32px rgba(82, 42, 40, 0.12)",
+                border: "1px solid rgba(237, 209, 180, 0.8)",
+              }}
+            >
+              <img
+                src="https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=240&q=80"
+                alt=""
+                style={{ width: 46, height: 46, borderRadius: 12, objectFit: "cover" }}
+              />
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 900, color: "var(--maroon)" }}>
+                  {lang === "EN" ? "Campus Canteen Stall" : "Gerai Kantin Kampus"}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>
+                  {lang === "EN" ? "Fresh daily dishes" : "Hidangan hangat siap saji"}
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="animate-float-slow"
+              style={{
+                position: "absolute",
+                bottom: "10%",
+                left: "6%",
+                animationDelay: "1.4s",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 14px",
+                borderRadius: 18,
+                backgroundColor: "rgba(255, 255, 255, 0.88)",
+                backdropFilter: "blur(8px)",
+                boxShadow: "0 14px 32px rgba(82, 42, 40, 0.12)",
+                border: "1px solid rgba(237, 209, 180, 0.8)",
+              }}
+            >
+              <img
+                src="https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=240&q=80"
+                alt=""
+                style={{ width: 46, height: 46, borderRadius: 12, objectFit: "cover" }}
+              />
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 900, color: "var(--maroon)" }}>
+                  {lang === "EN" ? "Zero Queue Pre-Order" : "Antrean Pesanan Digital"}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--orange-dark)", fontWeight: 700 }}>
+                  ★ 4.9 · {lang === "EN" ? "Fast Pickup" : "Langsung Ambil"}
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="animate-float-slow"
+              style={{
+                position: "absolute",
+                top: "12%",
+                right: "5%",
+                animationDelay: "0.8s",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 14px",
+                borderRadius: 18,
+                backgroundColor: "rgba(255, 255, 255, 0.88)",
+                backdropFilter: "blur(8px)",
+                boxShadow: "0 14px 32px rgba(82, 42, 40, 0.12)",
+                border: "1px solid rgba(237, 209, 180, 0.8)",
+              }}
+            >
+              <img
+                src="https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=240&q=80"
+                alt=""
+                style={{ width: 46, height: 46, borderRadius: 12, objectFit: "cover" }}
+              />
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 900, color: "var(--maroon)" }}>
+                  {lang === "EN" ? "Friendly Canteen Sellers" : "Mitra Penjual Kantin"}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>
+                  {lang === "EN" ? "Serve students easily" : "Kelola pesanan lebih praktis"}
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="animate-float-slow"
+              style={{
+                position: "absolute",
+                bottom: "12%",
+                right: "6%",
+                animationDelay: "2.1s",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 14px",
+                borderRadius: 18,
+                backgroundColor: "rgba(255, 255, 255, 0.88)",
+                backdropFilter: "blur(8px)",
+                boxShadow: "0 14px 32px rgba(82, 42, 40, 0.12)",
+                border: "1px solid rgba(237, 209, 180, 0.8)",
+              }}
+            >
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  backgroundColor: "var(--orange-soft)",
+                  color: "var(--orange-dark)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <UtensilsCrossed size={20} />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 900, color: "var(--maroon)" }}>
+                  {lang === "EN" ? "Ready to Launch" : "Siap Berjualan"}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>
+                  {lang === "EN" ? "2 quick steps" : "2 langkah cepat"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Onboarding Wizard Card */}
+          <div
+            className="animate-modal-zoom"
+            style={{
+              position: "relative",
+              zIndex: 2,
+              width: "100%",
+              maxWidth: tenantOnboardingStep === 1 ? 500 : 590,
+              maxHeight: "92vh",
+              display: "flex",
+              flexDirection: "column",
+              backgroundColor: "var(--bg-card)",
+              borderRadius: 28,
+              boxShadow: "0 24px 60px rgba(82, 42, 40, 0.22)",
+              border: "1px solid var(--border-light)",
+              overflow: "hidden",
+              transition: "max-width 0.45s cubic-bezier(0.22, 1, 0.36, 1)",
+            }}
+          >
+            {/* Wizard Top Progress Header */}
+            <div
+              style={{
+                flexShrink: 0,
+                padding: "20px 26px 16px",
+                background: "linear-gradient(135deg, var(--bg-cream) 0%, var(--bg-card) 100%)",
+                borderBottom: "1px solid var(--border-light)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "5px 12px",
+                    borderRadius: "var(--radius-pill)",
+                    backgroundColor: "var(--orange-soft)",
+                    color: "var(--orange-dark)",
+                    fontSize: 11.5,
+                    fontWeight: 800,
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  <Store size={14} />
+                  <span>
+                    {lang === "EN"
+                      ? `TENANT SETUP · STEP ${tenantOnboardingStep} OF 2`
+                      : `SETUP TENANT · LANGKAH ${tenantOnboardingStep} DARI 2`}
+                  </span>
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 800, color: "var(--text-muted)" }}>
+                  {tenantOnboardingStep === 1 ? "50%" : "100%"}
+                </span>
+              </div>
+
+              <div
+                style={{
+                  width: "100%",
+                  height: 7,
+                  borderRadius: 999,
+                  backgroundColor: "var(--border-light)",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: tenantOnboardingStep === 1 ? "50%" : "100%",
+                    height: "100%",
+                    borderRadius: 999,
+                    background: "linear-gradient(90deg, var(--orange) 0%, #E07A2E 100%)",
+                    transition: "width 0.48s cubic-bezier(0.22, 1, 0.36, 1)",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Horizontal Sliding Steps Viewport */}
+            <div className="modal-scroll-body" style={{ overflowX: "hidden" }}>
+              <div
+                style={{
+                  display: "flex",
+                  width: "200%",
+                  transform: tenantOnboardingStep === 1 ? "translateX(0%)" : "translateX(-50%)",
+                  transition: "transform 0.52s cubic-bezier(0.22, 1, 0.36, 1)",
+                  alignItems: "flex-start",
+                }}
+              >
+                {/* STEP 1: Set Up Your Profile Picture */}
+                <div
+                  style={{
+                    width: "50%",
+                    padding: "28px 28px 30px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    textAlign: "center",
+                  }}
+                >
+                  <h2 style={{ fontSize: 24, fontWeight: 900, color: "var(--maroon)", marginBottom: 6 }}>
+                    {lang === "EN" ? "Set up your profile picture" : "Set up your profile picture"}
+                  </h2>
+                  <p style={{ fontSize: 13.5, color: "var(--text-muted)", maxWidth: 380, lineHeight: 1.5, marginBottom: 24 }}>
+                    {lang === "EN"
+                      ? `Upload a clear profile picture or store photo for "${onboardingForm.nama_tenant || "your tenant"}". Customers will see this when browsing the canteen.`
+                      : `Pasang foto profil (PP) atau foto gerai terbaik untuk "${onboardingForm.nama_tenant || "tenant Anda"}" agar mudah dikenali pembeli.`}
+                  </p>
+
+                  {/* Circular Avatar Preview with Food Badge */}
+                  <div style={{ position: "relative", marginBottom: 20 }}>
+                    <div
+                      style={{
+                        width: 148,
+                        height: 148,
+                        borderRadius: "50%",
+                        backgroundColor: "var(--bg-cream)",
+                        border: onboardingForm.logo
+                          ? "4px solid var(--orange)"
+                          : "3px dashed var(--border-input)",
+                        boxShadow: onboardingForm.logo
+                          ? "0 14px 34px rgba(248, 163, 75, 0.28)"
+                          : "0 8px 24px rgba(82, 42, 40, 0.08)",
+                        overflow: "hidden",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        transition: "all 0.35s ease",
+                      }}
+                    >
+                      {onboardingForm.logo ? (
+                        <img
+                          src={onboardingForm.logo}
+                          alt="Tenant Profile Preview"
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, color: "var(--text-muted)" }}>
+                          <Store size={42} color="var(--orange)" />
+                          <span style={{ fontSize: 11.5, fontWeight: 800 }}>
+                            {lang === "EN" ? "No photo yet" : "Belum ada foto"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {onboardingForm.logo && (
+                      <div
+                        className="animate-fade"
+                        style={{
+                          position: "absolute",
+                          bottom: 4,
+                          right: 4,
+                          width: 36,
+                          height: 36,
+                          borderRadius: "50%",
+                          backgroundColor: "#1F7A4C",
+                          color: "#FFFFFF",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          boxShadow: "0 4px 12px rgba(31, 122, 76, 0.35)",
+                          border: "3px solid var(--bg-card)",
+                        }}
+                      >
+                        <CheckCircle2 size={18} />
+                      </div>
+                    )}
+                  </div>
+
+                  <label
+                    className="btn-interactive btn-lift"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "11px 24px",
+                      borderRadius: "var(--radius-pill)",
+                      border: "1.5px solid var(--orange)",
+                      backgroundColor: onboardingForm.logo ? "var(--bg-card)" : "var(--orange-soft)",
+                      color: "var(--maroon)",
+                      fontSize: 13.5,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      boxShadow: "var(--shadow-sm)",
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Upload size={15} />
+                    <span>
+                      {onboardingForm.logo
+                        ? lang === "EN"
+                          ? "Change Profile Picture"
+                          : "Ganti Foto Profil (PP)"
+                        : lang === "EN"
+                          ? "Upload Profile Picture"
+                          : "Pilih Foto Profil (PP)"}
+                    </span>
+                    <input
+                      data-testid="onboarding-pp-input"
+                      type="file"
+                      accept=".jpg,.jpeg,.png,image/jpeg,image/png,image/*"
+                      style={{ display: "none" }}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const compressed = await readAndCompressImageFile(file, 720, 0.85);
+                          setOnboardingForm((p) => ({ ...p, logo: compressed }));
+                          setOnboardingError("");
+                        } catch (err) {
+                          setOnboardingError(
+                            err?.message ||
+                              (lang === "EN" ? "Failed to process image." : "Gagal memproses gambar.")
+                          );
+                        }
+                      }}
+                    />
+                  </label>
+
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 22 }}>
+                    {lang === "EN"
+                      ? "Format: .JPEG, .PNG · Recommended square or store photo"
+                      : "Format: .JPEG, .PNG · Gunakan logo atau foto gerai makanan Anda"}
+                  </div>
+
+                  {onboardingError && tenantOnboardingStep === 1 && (
+                    <div
+                      role="alert"
+                      style={{
+                        width: "100%",
+                        padding: "10px 14px",
+                        borderRadius: 12,
+                        backgroundColor: "var(--alert-error-bg)",
+                        color: "var(--alert-error-text)",
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        marginBottom: 14,
+                      }}
+                    >
+                      {onboardingError}
+                    </div>
+                  )}
+
+                  {/* Next Button appears with smooth animation once PP is uploaded */}
+                  <div
+                    style={{
+                      width: "100%",
+                      maxHeight: onboardingForm.logo ? 72 : 0,
+                      opacity: onboardingForm.logo ? 1 : 0,
+                      transform: onboardingForm.logo ? "translateY(0) scale(1)" : "translateY(10px) scale(0.96)",
+                      overflow: "hidden",
+                      transition: "all 0.38s cubic-bezier(0.22, 1, 0.36, 1)",
+                      pointerEvents: onboardingForm.logo ? "auto" : "none",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      data-testid="onboarding-next-btn"
+                      onClick={() => {
+                        if (!onboardingForm.logo) return;
+                        setOnboardingError("");
+                        setTenantOnboardingStep(2);
+                        try {
+                          if (currentUser?.id_user) {
+                            localStorage.setItem(`letsorder_tenant_onboarding_${currentUser.id_user}`, "2");
+                          }
+                        } catch {
+                          // Ignore storage errors
+                        }
+                      }}
+                      className="btn-interactive btn-lift"
+                      style={{
+                        width: "100%",
+                        padding: "13px 22px",
+                        borderRadius: "var(--radius-pill)",
+                        border: "none",
+                        backgroundColor: "var(--orange)",
+                        color: "var(--on-orange-text)",
+                        fontSize: 14.5,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        boxShadow: "0 6px 18px rgba(248, 163, 75, 0.38)",
+                      }}
+                    >
+                      <span>{lang === "EN" ? "Next: Complete Tenant Profile" : "Selanjutnya"}</span>
+                      <ChevronRight size={17} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* STEP 2: Complete Tenant Details */}
+                <div
+                  style={{
+                    width: "50%",
+                    padding: "24px 28px 26px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
+                    <div
+                      style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: "50%",
+                        overflow: "hidden",
+                        border: "2.5px solid var(--orange)",
+                        backgroundColor: "var(--bg-cream)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {onboardingForm.logo ? (
+                        <img
+                          src={onboardingForm.logo}
+                          alt="Tenant PP"
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      ) : (
+                        <Store size={24} color="var(--orange)" />
+                      )}
+                    </div>
+                    <div>
+                      <h2 style={{ fontSize: 21, fontWeight: 900, color: "var(--maroon)", marginBottom: 2 }}>
+                        {lang === "EN" ? "Complete Your Tenant Details" : "Lengkapi Profil Toko Tenant"}
+                      </h2>
+                      <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                        {lang === "EN"
+                          ? "All fields marked with * are required before launching your store."
+                          : "Semua kolom bertanda * wajib diisi sebelum membuka toko ke dashboard."}
+                      </p>
+                    </div>
+                  </div>
+
+                  {onboardingError && tenantOnboardingStep === 2 && (
+                    <div
+                      role="alert"
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 12,
+                        backgroundColor: "var(--alert-error-bg)",
+                        color: "var(--alert-error-text)",
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        marginBottom: 14,
+                      }}
+                    >
+                      {onboardingError}
+                    </div>
+                  )}
+
+                  <form
+                    onSubmit={handleCompleteTenantOnboarding}
+                    style={{ display: "flex", flexDirection: "column", gap: 13 }}
+                  >
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>
+                          {lang === "EN" ? "Tenant Name *" : "Nama Tenant *"}
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={onboardingForm.nama_tenant}
+                          onChange={(e) => setOnboardingForm((p) => ({ ...p, nama_tenant: e.target.value }))}
+                          placeholder={lang === "EN" ? "e.g. Kantin Bu Sari" : "Contoh: Kantin Bu Sari"}
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            border: "1px solid var(--border-input)",
+                            fontSize: 13.5,
+                            color: "var(--maroon)",
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>
+                          {lang === "EN" ? "Phone / WhatsApp *" : "Nomor Telepon *"}
+                        </label>
+                        <input
+                          type="tel"
+                          required
+                          value={onboardingForm.no_telp}
+                          onChange={(e) => setOnboardingForm((p) => ({ ...p, no_telp: e.target.value }))}
+                          placeholder="081234567890"
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            border: "1px solid var(--border-input)",
+                            fontSize: 13.5,
+                            color: "var(--maroon)",
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>
+                          {lang === "EN" ? "Email Address *" : "Email Tenant *"}
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          value={onboardingForm.email}
+                          onChange={(e) => setOnboardingForm((p) => ({ ...p, email: e.target.value }))}
+                          placeholder="tenant@upnvj.ac.id"
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            border: "1px solid var(--border-input)",
+                            fontSize: 13.5,
+                            color: "var(--maroon)",
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>
+                          {lang === "EN" ? "Booth / Canteen Location *" : "Lokasi / Stand Kantin *"}
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={onboardingForm.booth}
+                          onChange={(e) => setOnboardingForm((p) => ({ ...p, booth: e.target.value }))}
+                          placeholder={lang === "EN" ? "e.g. Booth #3 · Building A" : "Contoh: Stand #3 · Kantin Gedung A"}
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            border: "1px solid var(--border-input)",
+                            fontSize: 13.5,
+                            color: "var(--maroon)",
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>
+                          {lang === "EN" ? "Opening Time *" : "Jam Buka *"}
+                        </label>
+                        <input
+                          type="time"
+                          required
+                          value={onboardingForm.jam_buka}
+                          onChange={(e) => setOnboardingForm((p) => ({ ...p, jam_buka: e.target.value }))}
+                          style={{
+                            width: "100%",
+                            padding: "9px 10px",
+                            borderRadius: 10,
+                            border: "1px solid var(--border-input)",
+                            fontSize: 13,
+                            color: "var(--maroon)",
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>
+                          {lang === "EN" ? "Closing Time *" : "Jam Tutup *"}
+                        </label>
+                        <input
+                          type="time"
+                          required
+                          value={onboardingForm.jam_tutup}
+                          onChange={(e) => setOnboardingForm((p) => ({ ...p, jam_tutup: e.target.value }))}
+                          style={{
+                            width: "100%",
+                            padding: "9px 10px",
+                            borderRadius: 10,
+                            border: "1px solid var(--border-input)",
+                            fontSize: 13,
+                            color: "var(--maroon)",
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>
+                          {lang === "EN" ? "Initial Status *" : "Status Buka/Tutup *"}
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOnboardingForm((p) => ({ ...p, status_buka: !p.status_buka }))
+                          }
+                          style={{
+                            width: "100%",
+                            padding: "9px 10px",
+                            borderRadius: 10,
+                            border: onboardingForm.status_buka
+                              ? "1.5px solid #2D8A56"
+                              : "1.5px solid var(--border-input)",
+                            backgroundColor: onboardingForm.status_buka ? "#EAF7EF" : "var(--bg-cream)",
+                            color: onboardingForm.status_buka ? "#1B683C" : "var(--maroon)",
+                            fontSize: 12.5,
+                            fontWeight: 800,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 6,
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: "50%",
+                              backgroundColor: onboardingForm.status_buka ? "#239B56" : "#C84336",
+                            }}
+                          />
+                          <span>
+                            {onboardingForm.status_buka
+                              ? lang === "EN"
+                                ? "Open"
+                                : "Buka"
+                              : lang === "EN"
+                                ? "Closed"
+                                : "Tutup"}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 4 }}>
+                        {lang === "EN" ? "Store Description *" : "Deskripsi Tenant *"}
+                      </label>
+                      <textarea
+                        rows={3}
+                        required
+                        value={onboardingForm.deskripsi}
+                        onChange={(e) => setOnboardingForm((p) => ({ ...p, deskripsi: e.target.value }))}
+                        placeholder={
+                          lang === "EN"
+                            ? "Describe your signature dishes, specialties, or canteen service..."
+                            : "Ceritakan menu andalan, spesialisasi masakan, atau layanan tenant kantin Anda..."
+                        }
+                        style={{
+                          width: "100%",
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: "1px solid var(--border-input)",
+                          fontSize: 13.5,
+                          color: "var(--maroon)",
+                          resize: "vertical",
+                        }}
+                      />
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        marginTop: 6,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setTenantOnboardingStep(1)}
+                        className="btn-interactive"
+                        style={{
+                          padding: "12px 18px",
+                          borderRadius: "var(--radius-pill)",
+                          border: "1px solid var(--border-input)",
+                          backgroundColor: "var(--bg-card)",
+                          color: "var(--maroon)",
+                          fontSize: 13.5,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {lang === "EN" ? "← Back" : "← Kembali"}
+                      </button>
+
+                      <button
+                        type="submit"
+                        data-testid="onboarding-launch-btn"
+                        disabled={!isOnboardingStep2Valid || onboardingSaving}
+                        className="btn-interactive btn-lift"
+                        style={{
+                          flex: 1,
+                          padding: "13px 22px",
+                          borderRadius: "var(--radius-pill)",
+                          border: "none",
+                          backgroundColor: isOnboardingStep2Valid ? "var(--orange)" : "var(--border-input)",
+                          color: isOnboardingStep2Valid ? "var(--on-orange-text)" : "var(--text-muted)",
+                          fontSize: 14,
+                          fontWeight: 800,
+                          cursor: isOnboardingStep2Valid && !onboardingSaving ? "pointer" : "not-allowed",
+                          boxShadow: isOnboardingStep2Valid
+                            ? "0 6px 18px rgba(248, 163, 75, 0.36)"
+                            : "none",
+                          opacity: onboardingSaving ? 0.7 : 1,
+                          transition: "all 0.25s ease",
+                        }}
+                      >
+                        {onboardingSaving
+                          ? lang === "EN"
+                            ? "Launching Store..."
+                            : "Menyiapkan Toko..."
+                          : lang === "EN"
+                            ? "Launch Store & Open Dashboard →"
+                            : "Set Up & Buka Dashboard →"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isStoreSettingsOpen && (
         <div
           style={{
@@ -11573,139 +12439,291 @@ export default function App() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
+            className="animate-modal-zoom"
             style={{
               width: "100%",
-              maxWidth: 480,
-              maxHeight: "90vh",
-              overflowY: "auto",
+              maxWidth: 500,
+              maxHeight: "88vh",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
               backgroundColor: "var(--bg-card)",
               borderRadius: "var(--radius-xl)",
-              padding: "26px",
-              boxShadow: "var(--shadow-card)",
+              padding: 0,
+              boxShadow: "0 20px 50px rgba(82, 42, 40, 0.24)",
               border: "1px solid var(--border-light)",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h3 style={{ fontSize: 19, fontWeight: 900, color: "var(--maroon)" }}>
-                {lang === "EN" ? "Canteen Store Settings" : "Pengaturan Kantin & Jam Buka"}
-              </h3>
+            {/* Fixed Header */}
+            <div
+              style={{
+                flexShrink: 0,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "20px 26px 15px",
+                borderBottom: "1px solid var(--border-light)",
+                backgroundColor: "var(--bg-card)",
+              }}
+            >
+              <div>
+                <h3 style={{ fontSize: 20, fontWeight: 900, color: "var(--maroon)", marginBottom: 2 }}>
+                  {lang === "EN" ? "Tenant Settings" : "Pengaturan Tenant"}
+                </h3>
+                <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                  {lang === "EN"
+                    ? "Manage your tenant profile picture, store details & operating hours"
+                    : "Kelola foto profil (PP), informasi gerai, dan jam operasional tenant"}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsStoreSettingsOpen(false)}
-                style={{ border: "none", background: "var(--bg-cream)", borderRadius: "50%", width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                style={{
+                  border: "none",
+                  background: "var(--bg-cream)",
+                  borderRadius: "50%",
+                  width: 34,
+                  height: 34,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
               >
                 <X size={16} color="var(--maroon)" />
               </button>
             </div>
-            {storeSettingsError && (
-              <div role="alert" style={{ padding: "10px 12px", borderRadius: 10, backgroundColor: "#FDF0EE", color: "#C84336", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
-                {storeSettingsError}
-              </div>
-            )}
-            <form onSubmit={handleSaveStoreSettings} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
-                  {lang === "EN" ? "Tenant Name" : "Nama Tenant"}
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={storeForm.nama_tenant}
-                  onChange={(e) => setStoreForm((p) => ({ ...p, nama_tenant: e.target.value }))}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
-                />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
-                  {lang === "EN" ? "Booth / Location" : "Lokasi / Stand"}
-                </label>
-                <input
-                  type="text"
-                  value={storeForm.booth}
-                  onChange={(e) => setStoreForm((p) => ({ ...p, booth: e.target.value }))}
-                  placeholder={lang === "EN" ? "e.g. Booth #1 · Building A Canteen" : "Contoh: Stand #1 · Kantin Gedung A"}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
-                />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
-                  {lang === "EN" ? "Description" : "Deskripsi Kantin"}
-                </label>
-                <textarea
-                  rows={2}
-                  value={storeForm.deskripsi}
-                  onChange={(e) => setStoreForm((p) => ({ ...p, deskripsi: e.target.value }))}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
-                />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
-                    {lang === "EN" ? "Opening Time" : "Jam Buka"}
-                  </label>
-                  <input
-                    type="time"
-                    value={storeForm.jam_buka}
-                    onChange={(e) => setStoreForm((p) => ({ ...p, jam_buka: e.target.value }))}
-                    style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
-                    {lang === "EN" ? "Closing Time" : "Jam Tutup"}
-                  </label>
-                  <input
-                    type="time"
-                    value={storeForm.jam_tutup}
-                    onChange={(e) => setStoreForm((p) => ({ ...p, jam_tutup: e.target.value }))}
-                    style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
-                  />
-                </div>
-              </div>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "var(--maroon)", cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={storeForm.auto_schedule}
-                  onChange={(e) => setStoreForm((p) => ({ ...p, auto_schedule: e.target.checked }))}
-                />
-                <span>
-                  {lang === "EN"
-                    ? "Automatically open/close based on schedule hours"
-                    : "Buka/tutup otomatis mengikuti jam operasional"}
-                </span>
-              </label>
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 6 }}>
-                  {lang === "EN" ? "Store Banner / Logo Photo" : "Foto / Logo Kantin"}
-                </label>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 64, height: 64, borderRadius: 12, overflow: "hidden", backgroundColor: "var(--bg-warm-img)", flexShrink: 0 }}>
-                    <SafeImage src={storeForm.logo} alt="Tenant preview" fallbackType="store" iconSize={24} />
-                  </div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={async (e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
-                      try {
-                        const dataUrl = await readAndCompressImageFile(f, 900, 0.8);
-                        setStoreForm((p) => ({ ...p, logo: dataUrl }));
-                      } catch (err) {
-                        setStoreSettingsError(err.message);
-                      }
-                    }}
-                    style={{ fontSize: 12 }}
-                  />
-                </div>
-              </div>
-              <button
-                type="submit"
-                className="btn-interactive btn-lift"
-                style={{ width: "100%", padding: "12px", borderRadius: "var(--radius-pill)", border: "none", backgroundColor: "var(--orange)", color: "var(--on-orange-text)", fontSize: 14, fontWeight: 800, cursor: "pointer", marginTop: 4 }}
+
+            <form
+              onSubmit={handleSaveStoreSettings}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                flex: "1 1 auto",
+                minHeight: 0,
+                overflow: "hidden",
+              }}
+            >
+              {/* Scrollable Content Body */}
+              <div
+                className="modal-scroll-body"
+                style={{
+                  padding: "20px 26px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 14,
+                }}
               >
-                {lang === "EN" ? "Save Store Settings" : "Simpan Pengaturan Kantin"}
-              </button>
+                {storeSettingsError && (
+                  <div
+                    role="alert"
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      backgroundColor: "#FDF0EE",
+                      color: "#C84336",
+                      fontSize: 13,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {storeSettingsError}
+                  </div>
+                )}
+
+                {/* Tenant Profile Picture (PP) moved from My Profile */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 18,
+                    padding: "14px 16px",
+                    borderRadius: 16,
+                    backgroundColor: "var(--bg-auth-page)",
+                    border: "1px solid var(--border-light)",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 84,
+                      height: 84,
+                      borderRadius: "50%",
+                      backgroundColor: "var(--bg-cream)",
+                      border: "3px solid #EDD1B4",
+                      overflow: "hidden",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      fontWeight: 900,
+                      color: "var(--maroon)",
+                      flexShrink: 0,
+                      boxShadow: "0 6px 16px rgba(82, 42, 40, 0.1)",
+                    }}
+                  >
+                    {storeForm.logo ? (
+                      <img
+                        src={storeForm.logo}
+                        alt="Tenant Profile"
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <span>{displayInitials}</span>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "var(--maroon)" }}>
+                      {lang === "EN" ? "Tenant Profile Picture (PP)" : "Foto Profil (PP) Tenant"}
+                    </div>
+                    <label
+                      className="btn-interactive"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "8px 16px",
+                        borderRadius: "var(--radius-pill)",
+                        border: "1px solid var(--border-input)",
+                        backgroundColor: "var(--bg-card)",
+                        color: "var(--maroon)",
+                        fontSize: 12.5,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        boxShadow: "var(--shadow-sm)",
+                      }}
+                    >
+                      <Upload size={13} />
+                      <span>{lang === "EN" ? "Choose Image" : "Pilih Gambar"}</span>
+                      <input
+                        type="file"
+                        accept=".jpg,.jpeg,.png,image/jpeg,image/png,image/*"
+                        style={{ display: "none" }}
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          try {
+                            const dataUrl = await readAndCompressImageFile(f, 800, 0.85);
+                            setStoreForm((p) => ({ ...p, logo: dataUrl }));
+                            setStoreSettingsError("");
+                          } catch (err) {
+                            setStoreSettingsError(err.message);
+                          }
+                        }}
+                      />
+                    </label>
+                    <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                      {lang === "EN"
+                        ? "Max 1 MB · Format: .JPEG, .PNG"
+                        : "Maks. 1 MB · Format: .JPEG, .PNG"}
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                    {lang === "EN" ? "Tenant Name" : "Nama Tenant"}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={storeForm.nama_tenant}
+                    onChange={(e) => setStoreForm((p) => ({ ...p, nama_tenant: e.target.value }))}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                    {lang === "EN" ? "Booth / Location" : "Lokasi / Stand"}
+                  </label>
+                  <input
+                    type="text"
+                    value={storeForm.booth}
+                    onChange={(e) => setStoreForm((p) => ({ ...p, booth: e.target.value }))}
+                    placeholder={lang === "EN" ? "e.g. Booth #1 · Building A Canteen" : "Contoh: Stand #1 · Kantin Gedung A"}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                    {lang === "EN" ? "Description" : "Deskripsi Kantin"}
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={storeForm.deskripsi}
+                    onChange={(e) => setStoreForm((p) => ({ ...p, deskripsi: e.target.value }))}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                  />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                      {lang === "EN" ? "Opening Time" : "Jam Buka"}
+                    </label>
+                    <input
+                      type="time"
+                      value={storeForm.jam_buka}
+                      onChange={(e) => setStoreForm((p) => ({ ...p, jam_buka: e.target.value }))}
+                      style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
+                      {lang === "EN" ? "Closing Time" : "Jam Tutup"}
+                    </label>
+                    <input
+                      type="time"
+                      value={storeForm.jam_tutup}
+                      onChange={(e) => setStoreForm((p) => ({ ...p, jam_tutup: e.target.value }))}
+                      style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
+                    />
+                  </div>
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "var(--maroon)", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={storeForm.auto_schedule}
+                    onChange={(e) => setStoreForm((p) => ({ ...p, auto_schedule: e.target.checked }))}
+                  />
+                  <span>
+                    {lang === "EN"
+                      ? "Automatically open/close based on schedule hours"
+                      : "Buka/tutup otomatis mengikuti jam operasional"}
+                  </span>
+                </label>
+              </div>
+
+              {/* Fixed Footer */}
+              <div
+                style={{
+                  flexShrink: 0,
+                  padding: "14px 26px",
+                  borderTop: "1px solid var(--border-light)",
+                  backgroundColor: "var(--bg-card)",
+                  display: "flex",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <button
+                  type="submit"
+                  className="btn-interactive btn-lift"
+                  style={{
+                    width: "100%",
+                    padding: "12px 24px",
+                    borderRadius: "var(--radius-pill)",
+                    border: "none",
+                    backgroundColor: "var(--orange)",
+                    color: "var(--on-orange-text)",
+                    fontSize: 14,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
+                  }}
+                >
+                  {lang === "EN" ? "Save" : "Simpan"}
+                </button>
+              </div>
             </form>
           </div>
         </div>
