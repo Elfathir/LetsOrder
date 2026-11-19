@@ -31,7 +31,7 @@ function roleLabel(peran, t) {
 
 export default function UsersPage() {
   const { t } = useI18n();
-  const [filters, setFilters] = useState({ peran: "All", search: "" });
+  const [filters, setFilters] = useState({ peran: "", search: "" });
   const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
   const [users, setUsers] = useState([]);
@@ -157,7 +157,7 @@ export default function UsersPage() {
           }}
           aria-label={t("Filter peran")}
         >
-          <option value="All">{t("Semua peran")}</option>
+          <option value="">{t("Semua peran")}</option>
           {ROLES.map((role) => (
             <option key={role} value={role}>
               {roleLabel(role, t)}
@@ -169,7 +169,7 @@ export default function UsersPage() {
           type="button"
           className="admin-ghost-btn btn-interactive"
           onClick={() => {
-            setFilters({ peran: "All", search: "" });
+            setFilters({ peran: "", search: "" });
             setSearchInput("");
             setPage(1);
           }}
