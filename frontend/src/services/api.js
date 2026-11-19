@@ -229,6 +229,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
   getPromos: (params) => request(`/promos${buildQuery(params)}`),
+  getBanners: () => request("/banners"),
 
   createPayment: (orderId, data) =>
     request(`/orders/${orderId}/payment`, {

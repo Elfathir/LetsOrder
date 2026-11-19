@@ -57,61 +57,6 @@ import {
 import TenantOnboardingWizard from "./components/TenantOnboardingWizard.jsx";
 import { applyDocumentTheme } from "./utils/theme.js";
 
-const HERO_SLIDES_BY_LANG = {
-  EN: [
-    {
-      tag: "ESTD 2026 · CAMPUS CANTEEN",
-      title: "Skip The Line. Pre-Order Your Campus Meal.",
-      desc: "Freshly prepared by your favorite campus canteen tenants. Grab it warm between lectures without waiting in queue.",
-      image: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1000&auto=format&fit=crop&q=80",
-      primaryCta: "Order now",
-      secondaryCta: "Explore tenants",
-    },
-    {
-      tag: "STUDENT SPECIAL PROMO",
-      title: "10% Off Every Meal With Code STUDENT10",
-      desc: "Enjoy 10% discount on all campus canteen menus for orders above Rp25.000. Apply coupon directly in your cart!",
-      image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1000&auto=format&fit=crop&q=80",
-      primaryCta: "Claim promo",
-      secondaryCta: "View popular menu",
-    },
-    {
-      tag: "SELF-PICKUP DIGITAL",
-      title: "Real-Time Cooking & Counter Pickup Tracker",
-      desc: "Get your digital queue number directly on your phone and arrive just when your warm food is ready at the counter.",
-      image: "https://images.unsplash.com/photo-1498654896293-37aacf113fd9?w=1000&auto=format&fit=crop&q=80",
-      primaryCta: "Track orders",
-      secondaryCta: "Explore menu",
-    },
-  ],
-  ID: [
-    {
-      tag: "ESTD 2026 · KANTIN KAMPUS",
-      title: "Tanpa Antre. Pesan Makanan Kantin Lebih Awal.",
-      desc: "Disiapkan langsung oleh tenant kantin favoritmu. Ambil hangat di sela jadwal kuliah tanpa perlu antre lama.",
-      image: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1000&auto=format&fit=crop&q=80",
-      primaryCta: "Pesan sekarang",
-      secondaryCta: "Lihat kantin",
-    },
-    {
-      tag: "PROMO SPESIAL MAHASISWA",
-      title: "Diskon 10% Setiap Pesanan Dengan Kode STUDENT10",
-      desc: "Nikmati potongan 10% untuk semua menu kantin dengan minimal belanja Rp25.000. Gunakan promo langsung di keranjang!",
-      image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1000&auto=format&fit=crop&q=80",
-      primaryCta: "Pakai promo",
-      secondaryCta: "Lihat menu populer",
-    },
-    {
-      tag: "AMBIL MANDIRI DIGITAL",
-      title: "Pantau Proses Masak & Antrean Secara Real-Time",
-      desc: "Dapatkan nomor antrean digital langsung dari HP dan datang ke konter saat makananmu sudah siap.",
-      image: "https://images.unsplash.com/photo-1498654896293-37aacf113fd9?w=1000&auto=format&fit=crop&q=80",
-      primaryCta: "Lacak pesanan",
-      secondaryCta: "Jelajahi menu",
-    },
-  ],
-};
-
 const TRANSLATIONS = {
   EN: {
     subtitleCustomer: "Campus canteen pre-order",
@@ -631,41 +576,6 @@ const LiveClockText = memo(function LiveClockText() {
   return <span className="tabular">{formatLiveClock(now)}</span>;
 });
 
-const PROMOS = [
-  {
-    code: "COMBO3K",
-    title: "Rp3.000 off meal + drink",
-    subtitle: "COMBO3K · Min. Rp20.000",
-    discount: 3000,
-    minSpend: 20000,
-    type: "fixed",
-  },
-  {
-    code: "STUDENT10",
-    title: "10% off for students",
-    subtitle: "STUDENT10 · Add Rp3.000 more to use",
-    discount: 0.1,
-    minSpend: 25000,
-    type: "percentage",
-  },
-  {
-    code: "HEMAT5K",
-    title: "Rp5.000 off your order",
-    subtitle: "HEMAT5K · Add Rp8.000 more to use",
-    discount: 5000,
-    minSpend: 30000,
-    type: "fixed",
-  },
-  {
-    code: "EARLYBIRD",
-    title: "15% off morning orders",
-    subtitle: "EARLYBIRD · Min. Rp15.000",
-    discount: 0.15,
-    minSpend: 15000,
-    type: "percentage",
-  },
-];
-
 const TENANTS = [];
 const MENUS = [];
 const INITIAL_CART = [];
@@ -871,7 +781,42 @@ export default function App() {
   const [lang, setLang] = useState(() => localStorage.getItem("letsorder_lang") || "ID");
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
   const t = TRANSLATIONS[lang] || TRANSLATIONS.ID;
-  const heroSlides = HERO_SLIDES_BY_LANG[lang] || HERO_SLIDES_BY_LANG.ID;
+  const [publicBanners, setPublicBanners] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getBanners()
+      .then((response) => {
+        if (!cancelled && Array.isArray(response?.data)) setPublicBanners(response.data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Banner beranda hanya berasal dari database (GET /banners). Tidak ada banner bawaan.
+  // Teks mengikuti bahasa aktif; kolom _en kosong berarti memakai teks Indonesia.
+  const heroSlides = useMemo(() => {
+    const isEnglish = lang === "EN";
+    const pick = (banner, field, fallback) => {
+      const translated = isEnglish ? banner[`${field}_en`] : "";
+      return translated || banner[field] || fallback;
+    };
+    return publicBanners.map((banner) => ({
+      tag: pick(banner, "tag", ""),
+      title: pick(banner, "judul", ""),
+      desc: pick(banner, "deskripsi", ""),
+      image: banner.gambar || "",
+      primaryCta: pick(banner, "cta_primary", isEnglish ? "Order now" : "Pesan sekarang"),
+      secondaryCta: pick(
+        banner,
+        "cta_secondary",
+        isEnglish ? "Browse canteens" : "Lihat kantin"
+      ),
+    }));
+  }, [publicBanners, lang]);
 
   const changeLanguage = (nextLang) => {
     setLang(nextLang);
@@ -2406,7 +2351,7 @@ export default function App() {
   }, [updatePill, activeNavKey, portalMode, currentUser, lang, cartItems]);
 
   useEffect(() => {
-    if (isHeroPaused) return;
+    if (isHeroPaused || heroSlides.length === 0) return;
     const timer = setInterval(() => {
       if (!isThemeAnimating()) {
         setHeroSlide((prev) => (prev + 1) % heroSlides.length);
@@ -2507,7 +2452,7 @@ export default function App() {
           isTenantPromo: Boolean(p.id_tenant),
         };
       });
-    return [...normalizedCustom, ...PROMOS];
+    return normalizedCustom;
   }, [publicPromos, cartTenantId, ordersHistory]);
 
   useEffect(() => {
@@ -5832,6 +5777,7 @@ export default function App() {
               <>
                 {navTab === "home" && !activeTenantView && (
                   <div className="container-app animate-fade home-page-container" style={{ paddingTop: 28 }}>
+                    {heroSlides.length > 0 && (
                     <div
                       className="hero-banner-card"
                       onMouseEnter={() => setIsHeroPaused(true)}
@@ -6078,6 +6024,7 @@ export default function App() {
                         })}
                       </div>
                     </div>
+                    )}
                     <div style={{ marginBottom: 40 }}>
                       <h2
                         style={{
