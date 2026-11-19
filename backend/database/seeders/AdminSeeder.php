@@ -10,9 +10,9 @@ class AdminSeeder extends Seeder
 {
     public function run(): void
     {
-        $username = trim((string) env('ADMIN_USERNAME'));
-        $email = strtolower(trim((string) env('ADMIN_EMAIL')));
-        $password = (string) env('ADMIN_PASSWORD');
+        $username = trim((string) config('services.admin.username'));
+        $email = strtolower(trim((string) config('services.admin.email')));
+        $password = (string) config('services.admin.password');
 
         if ($username === '' || $email === '' || $password === '') {
             throw new RuntimeException(
