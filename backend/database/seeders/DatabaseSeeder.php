@@ -14,6 +14,7 @@ class DatabaseSeeder extends Seeder
         // Only seed master categories so tenants & menus start empty until uploaded by real users.
         $this->call([
             CategorySeeder::class,
+            AdminSeeder::class,
         ]);
     }
 }
