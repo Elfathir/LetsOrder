@@ -3,6 +3,7 @@
 use App\Http\Middleware\ExtendTokenExpirationMiddleware;
 use App\Http\Middleware\RoleMiddleware;
 use App\Http\Middleware\SecurityHeadersMiddleware;
+use Illuminate\Http\Middleware\HandleCors;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -23,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->prepend(HandleCors::class);
         $middleware->append(SecurityHeadersMiddleware::class);
         $middleware->appendToGroup('api', ExtendTokenExpirationMiddleware::class);
 
