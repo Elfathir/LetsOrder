@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\Api\AdminController;
+use App\Http\Controllers\Api\AdminDashboardController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BannerController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\MediaController;
@@ -75,6 +77,7 @@ $registerApiRoutes = function () {
     Route::get('/menus', [MenuController::class, 'index']);
     Route::get('/menus/{id}', [MenuController::class, 'show'])->whereNumber('id');
     Route::get('/promos', [PromoController::class, 'index']);
+    Route::get('/banners', [BannerController::class, 'index']);
     Route::get('/reviews', [ReviewController::class, 'index']);
 
     // Protected Endpoints (Sanctum)
@@ -194,6 +197,23 @@ $registerApiRoutes = function () {
             Route::get('/users/{id}', [AdminController::class, 'showUser'])->whereNumber('id');
             Route::put('/users/{id}', [AdminController::class, 'updateUser'])->whereNumber('id');
             Route::patch('/users/{id}', [AdminController::class, 'updateUser'])->whereNumber('id');
+
+            Route::get('/orders', [AdminDashboardController::class, 'orders']);
+            Route::get('/orders/{id}', [AdminDashboardController::class, 'orderShow'])->whereNumber('id');
+            Route::get('/payments', [AdminDashboardController::class, 'payments']);
+            Route::get('/stats/overview', [AdminDashboardController::class, 'overview']);
+
+            Route::get('/promos', [PromoController::class, 'adminIndex']);
+            Route::post('/promos', [PromoController::class, 'adminStore']);
+            Route::put('/promos/{id}', [PromoController::class, 'adminUpdate'])->whereNumber('id');
+            Route::patch('/promos/{id}', [PromoController::class, 'adminUpdate'])->whereNumber('id');
+            Route::delete('/promos/{id}', [PromoController::class, 'adminDestroy'])->whereNumber('id');
+
+            Route::get('/banners', [BannerController::class, 'adminIndex']);
+            Route::post('/banners', [BannerController::class, 'store']);
+            Route::put('/banners/{id}', [BannerController::class, 'update'])->whereNumber('id');
+            Route::patch('/banners/{id}', [BannerController::class, 'update'])->whereNumber('id');
+            Route::delete('/banners/{id}', [BannerController::class, 'destroy'])->whereNumber('id');
 
             Route::get('/tenants', [AdminController::class, 'tenants']);
             Route::post('/tenants', [AdminController::class, 'storeTenant']);

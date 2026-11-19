@@ -249,4 +249,211 @@ class PromoController extends Controller
         $promo->delete();
         return response()->json(['success' => true, 'message' => 'Promo berhasil dihapus.'], 200);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Endpoint Administrator (semua tenant)
+    |--------------------------------------------------------------------------
+    */
+
+    private function adminPayload(Promo $promo): array
+    {
+        $tenant = $promo->id_tenant ? Tenant::find($promo->id_tenant) : null;
+
+        $usageCount = 0;
+        if (Schema::hasTable('orders') && Schema::hasColumn('orders', 'promo_code')) {
+            $usageCount = Order::whereRaw('UPPER(promo_code) = ?', [strtoupper(trim((string) $promo->kode_promo))])
+                ->where('status_pesanan', '!=', 'Dibatalkan')
+                ->count();
+        }
+
+        return array_merge($promo->toArray(), [
+            'batas_per_user' => (int) ($promo->batas_per_user ?? 1),
+            'tenant_name' => $tenant ? $tenant->nama_tenant : 'Semua tenant',
+            'usage_count' => $usageCount,
+        ]);
+    }
+
+    /**
+     * GET /api/admin/promos
+     */
+    public function adminIndex(Request $request)
+    {
+        $meta = ['total' => 0, 'page' => 1, 'pages' => 1];
+        if (!Schema::hasTable('promos')) {
+            return response()->json(['success' => true, 'data' => [], 'meta' => $meta], 200);
+        }
+
+        self::ensureSchema();
+
+        $query = Promo::query();
+
+        $status = (string) $request->query('status', '');
+        if ($status === 'aktif') {
+            $query->where('aktif', true);
+        } elseif ($status === 'nonaktif') {
+            $query->where('aktif', false);
+        }
+
+        $keyword = trim((string) ($request->query('q') ?? ''));
+        if ($keyword !== '') {
+            $tenantIds = Tenant::where('nama_tenant', 'like', '%' . $keyword . '%')->pluck('id_tenant')->all();
+            $query->where(function ($subQuery) use ($keyword, $tenantIds) {
+                $subQuery->where('kode_promo', 'like', '%' . $keyword . '%')
+                    ->orWhere('judul', 'like', '%' . $keyword . '%');
+                if (!empty($tenantIds)) {
+                    $subQuery->orWhereIn('id_tenant', $tenantIds);
+                }
+            });
+        }
+
+        $perPage = min(50, max(5, (int) $request->query('per_page', 10)));
+        $page = max(1, (int) $request->query('page', 1));
+        $total = (clone $query)->count();
+
+        $items = $query->orderByDesc('id_promo')
+            ->forPage($page, $perPage)
+            ->get()
+            ->map(fn (Promo $promo) => $this->adminPayload($promo))
+            ->all();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Daftar kupon berhasil diambil.',
+            'data' => $items,
+            'meta' => [
+                'total' => $total,
+                'page' => $page,
+                'pages' => max(1, (int) ceil($total / $perPage)),
+            ],
+        ], 200);
+    }
+
+    /**
+     * POST /api/admin/promos
+     */
+    public function adminStore(Request $request)
+    {
+        if (!Schema::hasTable('promos')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tabel promo belum tersedia. Jalankan php artisan migrate terlebih dahulu.',
+            ], 503);
+        }
+
+        self::ensureSchema();
+
+        $rawCode = strtoupper(preg_replace('/[^A-Za-z0-9_-]/', '', (string) $request->input('kode_promo', '')));
+        $request->merge(['kode_promo' => $rawCode]);
+
+        $validated = $request->validate([
+            'kode_promo' => ['required', 'string', 'min:3', 'max:32', Rule::unique('promos', 'kode_promo')],
+            'judul' => 'required|string|max:120',
+            'tipe' => ['required', 'string', Rule::in(['fixed', 'percentage'])],
+            'diskon' => 'required|integer|min:1',
+            'minimal_belanja' => 'nullable|integer|min:0',
+            'batas_per_user' => 'nullable|integer|min:0|max:1000',
+            'id_tenant' => 'nullable|integer|exists:tenants,id_tenant',
+            'aktif' => 'sometimes|boolean',
+        ]);
+
+        if (in_array($validated['kode_promo'], ['COMBO3K', 'STUDENT10', 'HEMAT5K', 'EARLYBIRD'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Kode promo '{$validated['kode_promo']}' sudah digunakan sebagai promo sistem.",
+            ], 422);
+        }
+
+        if ($validated['tipe'] === 'percentage' && $validated['diskon'] > 90) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Diskon persentase maksimal 90%.',
+            ], 422);
+        }
+
+        $createData = [
+            'id_tenant' => $validated['id_tenant'] ?? null,
+            'kode_promo' => $validated['kode_promo'],
+            'judul' => $validated['judul'],
+            'tipe' => $validated['tipe'],
+            'diskon' => (int) $validated['diskon'],
+            'minimal_belanja' => (int) ($validated['minimal_belanja'] ?? 0),
+            'aktif' => $validated['aktif'] ?? true,
+        ];
+        if (Schema::hasColumn('promos', 'batas_per_user')) {
+            $createData['batas_per_user'] = (int) ($validated['batas_per_user'] ?? 1);
+        }
+
+        $promo = Promo::create($createData);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Kupon berhasil dibuat.',
+            'data' => $this->adminPayload($promo),
+        ], 201);
+    }
+
+    /**
+     * PATCH /api/admin/promos/{id}
+     */
+    public function adminUpdate(Request $request, int $id)
+    {
+        if (!Schema::hasTable('promos')) {
+            return response()->json(['success' => false, 'message' => 'Tabel promo belum ada.'], 503);
+        }
+
+        self::ensureSchema();
+
+        $promo = Promo::find($id);
+        if (!$promo) {
+            return response()->json(['success' => false, 'message' => 'Kupon tidak ditemukan.'], 404);
+        }
+
+        if ($request->filled('kode_promo')) {
+            $rawCode = strtoupper(preg_replace('/[^A-Za-z0-9_-]/', '', (string) $request->input('kode_promo')));
+            $request->merge(['kode_promo' => $rawCode]);
+        }
+
+        $validated = $request->validate([
+            'kode_promo' => ['sometimes', 'required', 'string', 'min:3', 'max:32', Rule::unique('promos', 'kode_promo')->ignore($promo->id_promo, 'id_promo')],
+            'judul' => 'sometimes|required|string|max:120',
+            'tipe' => ['sometimes', 'required', 'string', Rule::in(['fixed', 'percentage'])],
+            'diskon' => 'sometimes|required|integer|min:1',
+            'minimal_belanja' => 'sometimes|nullable|integer|min:0',
+            'batas_per_user' => 'sometimes|nullable|integer|min:0|max:1000',
+            'id_tenant' => 'sometimes|nullable|integer|exists:tenants,id_tenant',
+            'aktif' => 'sometimes|boolean',
+        ]);
+
+        if (!Schema::hasColumn('promos', 'batas_per_user')) {
+            unset($validated['batas_per_user']);
+        }
+
+        $promo->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Kupon berhasil diperbarui.',
+            'data' => $this->adminPayload($promo->fresh() ?? $promo),
+        ], 200);
+    }
+
+    /**
+     * DELETE /api/admin/promos/{id}
+     */
+    public function adminDestroy(int $id)
+    {
+        if (!Schema::hasTable('promos')) {
+            return response()->json(['success' => false, 'message' => 'Tabel promo belum ada.'], 503);
+        }
+
+        $promo = Promo::find($id);
+        if (!$promo) {
+            return response()->json(['success' => false, 'message' => 'Kupon tidak ditemukan.'], 404);
+        }
+
+        $promo->delete();
+
+        return response()->json(['success' => true, 'message' => 'Kupon dihapus.'], 200);
+    }
 }
