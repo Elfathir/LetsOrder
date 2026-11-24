@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Menu;
 use App\Models\Tenant;
 use App\Support\ImageValidator;
+use App\Support\PhotoFocus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 
@@ -56,16 +57,19 @@ class TenantController extends Controller
                 'jam_buka',
                 'jam_tutup',
                 'auto_schedule',
+                'foto_x',
+                'foto_y',
+                'foto_zoom',
             ];
             $query->select($cols)->selectRaw(MediaController::previewSql('logo', 'logo', false));
             $query->with([
-                'user' => fn ($q) => $q->select('id_user')->selectRaw(MediaController::previewSql('avatar', 'avatar', false)),
-                'menus' => fn ($q) => $q->select('id_menu', 'id_tenant')->selectRaw(MediaController::previewSql('gambar', 'gambar', true)),
+                'user' => fn ($q) => $q->select('id_user', 'foto_x', 'foto_y', 'foto_zoom')->selectRaw(MediaController::previewSql('avatar', 'avatar', false)),
+                'menus' => fn ($q) => $q->select('id_menu', 'id_tenant', 'foto_x', 'foto_y', 'foto_zoom')->selectRaw(MediaController::previewSql('gambar', 'gambar', true)),
             ]);
         } else {
             $query->with([
-                'user:id_user,avatar',
-                'menus' => fn ($q) => $q->select('id_menu', 'id_tenant', 'gambar'),
+                'user' => fn ($q) => $q->select('id_user', 'avatar', 'foto_x', 'foto_y', 'foto_zoom'),
+                'menus' => fn ($q) => $q->select('id_menu', 'id_tenant', 'gambar', 'foto_x', 'foto_y', 'foto_zoom'),
             ]);
         }
 
@@ -200,14 +204,20 @@ class TenantController extends Controller
                 'jam_buka',
                 'jam_tutup',
                 'auto_schedule',
+                'foto_x',
+                'foto_y',
+                'foto_zoom',
             ];
             $query->select($cols)->selectRaw(MediaController::previewSql('logo', 'logo', false));
             $query->with([
-                'user' => fn ($q) => $q->select('id_user')->selectRaw(MediaController::previewSql('avatar', 'avatar', false)),
-                'menus' => fn ($q) => $q->select('id_menu', 'id_tenant')->selectRaw(MediaController::previewSql('gambar', 'gambar', true)),
+                'user' => fn ($q) => $q->select('id_user', 'foto_x', 'foto_y', 'foto_zoom')->selectRaw(MediaController::previewSql('avatar', 'avatar', false)),
+                'menus' => fn ($q) => $q->select('id_menu', 'id_tenant', 'foto_x', 'foto_y', 'foto_zoom')->selectRaw(MediaController::previewSql('gambar', 'gambar', true)),
             ]);
         } else {
-            $query->with(['user:id_user,avatar', 'menus.category']);
+            $query->with([
+                'user' => fn ($q) => $q->select('id_user', 'avatar', 'foto_x', 'foto_y', 'foto_zoom'),
+                'menus.category',
+            ]);
         }
 
         $tenant = $query->first();
@@ -282,6 +292,7 @@ class TenantController extends Controller
             'jam_buka' => 'nullable|string|max:10',
             'jam_tutup' => 'nullable|string|max:10',
             'auto_schedule' => 'sometimes|boolean',
+            ...PhotoFocus::rules(),
         ]);
 
         if (array_key_exists('deskripsi', $validated) && $validated['deskripsi'] === null) {
@@ -300,7 +311,7 @@ class TenantController extends Controller
             unset($validated['jam_buka'], $validated['jam_tutup'], $validated['auto_schedule']);
         }
 
-        $tenant->update($validated);
+        $tenant->update(PhotoFocus::merge($validated));
 
         return response()->json([
             'success' => true,

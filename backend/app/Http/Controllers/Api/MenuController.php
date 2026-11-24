@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Menu;
 use App\Models\Tenant;
 use App\Support\ImageValidator;
+use App\Support\PhotoFocus;
 use Illuminate\Http\Request;
 
 class MenuController extends Controller
@@ -74,6 +75,9 @@ class MenuController extends Controller
             'jam_buka',
             'jam_tutup',
             'auto_schedule',
+            'foto_x',
+            'foto_y',
+            'foto_zoom',
         ];
 
         return Menu::select([
@@ -85,6 +89,9 @@ class MenuController extends Controller
             'harga',
             'estimasi_menit',
             'status_tersedia',
+            'foto_x',
+            'foto_y',
+            'foto_zoom',
         ])
             ->selectRaw(MediaController::previewSql('gambar', 'gambar', true))
             ->with([
@@ -177,6 +184,7 @@ class MenuController extends Controller
             'harga' => 'required|integer|min:0|max:10000000',
             'estimasi_menit' => 'required|integer|min:1|max:180',
             'status_tersedia' => 'sometimes|boolean',
+            ...PhotoFocus::rules(),
         ]);
 
         $categoryId = null;
@@ -231,6 +239,8 @@ class MenuController extends Controller
             'harga' => $validated['harga'],
             'estimasi_menit' => $validated['estimasi_menit'],
             'status_tersedia' => $validated['status_tersedia'] ?? true,
+            ...PhotoFocus::defaultsForCreate(),
+            ...PhotoFocus::normalize($validated),
         ]);
 
         if (!empty($menu->gambar) && (!$tenant->logo || $tenant->logo === 'tenant/default.png')) {
@@ -323,6 +333,7 @@ class MenuController extends Controller
             'harga' => 'sometimes|required|integer|min:0|max:10000000',
             'estimasi_menit' => 'sometimes|required|integer|min:1|max:180',
             'status_tersedia' => 'sometimes|boolean',
+            ...PhotoFocus::rules(),
         ]);
 
         if (array_key_exists('deskripsi', $validated) && $validated['deskripsi'] === null) {
@@ -337,7 +348,7 @@ class MenuController extends Controller
             }
         }
 
-        $menu->update($validated);
+        $menu->update(PhotoFocus::merge($validated));
         $menu->load(['tenant', 'category']);
 
         return response()->json([

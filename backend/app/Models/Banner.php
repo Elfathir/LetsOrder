@@ -33,6 +33,9 @@ class Banner extends Model
         'cta_secondary_en',
         'urutan',
         'aktif',
+        'foto_x',
+        'foto_y',
+        'foto_zoom',
     ];
 
     protected function casts(): array
@@ -40,6 +43,9 @@ class Banner extends Model
         return [
             'urutan' => 'integer',
             'aktif' => 'boolean',
+            'foto_x' => 'float',
+            'foto_y' => 'float',
+            'foto_zoom' => 'float',
         ];
     }
 }

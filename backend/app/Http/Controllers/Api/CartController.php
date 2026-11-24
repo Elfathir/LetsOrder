@@ -240,10 +240,13 @@ class CartController extends Controller
                     'harga',
                     'estimasi_menit',
                     'status_tersedia',
+                    'foto_x',
+                    'foto_y',
+                    'foto_zoom',
                 ])->selectRaw(MediaController::previewSql('gambar', 'gambar', true))
                     ->with([
                         'category',
-                        'tenant' => fn ($tq) => $tq->select(['id_tenant', 'id_user', 'nama_tenant', 'status_buka'])
+                        'tenant' => fn ($tq) => $tq->select(['id_tenant', 'id_user', 'nama_tenant', 'status_buka', 'foto_x', 'foto_y', 'foto_zoom'])
                             ->selectRaw(MediaController::previewSql('logo', 'logo', false)),
                     ]),
             ]);

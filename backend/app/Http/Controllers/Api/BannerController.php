@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Banner;
+use App\Support\PhotoFocus;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -22,6 +23,7 @@ class BannerController extends Controller
     {
         if (Schema::hasTable('banners')) {
             self::ensureEnglishColumns();
+            self::ensurePhotoFocusColumns();
 
             return true;
         }
@@ -47,7 +49,36 @@ class BannerController extends Controller
             Log::warning('banners.ensure_schema_failed', ['error' => $e->getMessage()]);
         }
 
+        if (Schema::hasTable('banners')) {
+            self::ensureEnglishColumns();
+            self::ensurePhotoFocusColumns();
+        }
+
         return Schema::hasTable('banners');
+    }
+
+    /** Kolom posisi foto ditambahkan otomatis pada instalasi lama. */
+    private static function ensurePhotoFocusColumns(): void
+    {
+        $columns = [
+            'foto_x' => fn (Blueprint $table) => $table->decimal('foto_x', 5, 2)->default(50.00),
+            'foto_y' => fn (Blueprint $table) => $table->decimal('foto_y', 5, 2)->default(50.00),
+            'foto_zoom' => fn (Blueprint $table) => $table->decimal('foto_zoom', 4, 2)->default(1.00),
+        ];
+
+        foreach ($columns as $name => $definition) {
+            if (Schema::hasColumn('banners', $name)) {
+                continue;
+            }
+
+            try {
+                Schema::table('banners', function (Blueprint $table) use ($definition) {
+                    $definition($table);
+                });
+            } catch (\Throwable $e) {
+                Log::warning('banners.ensure_photo_column_failed', ['column' => $name, 'error' => $e->getMessage()]);
+            }
+        }
     }
 
     /**
@@ -157,6 +188,7 @@ class BannerController extends Controller
             'cta_secondary_en' => 'nullable|string|max:60',
             'urutan' => 'nullable|integer|min:0',
             'aktif' => 'sometimes|boolean',
+            ...PhotoFocus::rules(),
         ]);
 
         $banner = Banner::create([
@@ -173,6 +205,8 @@ class BannerController extends Controller
             'cta_secondary_en' => $validated['cta_secondary_en'] ?? '',
             'urutan' => (int) ($validated['urutan'] ?? 1),
             'aktif' => $validated['aktif'] ?? true,
+            ...PhotoFocus::defaultsForCreate(),
+            ...PhotoFocus::normalize($validated),
         ]);
 
         return response()->json([
@@ -210,9 +244,10 @@ class BannerController extends Controller
             'cta_secondary_en' => 'sometimes|nullable|string|max:60',
             'urutan' => 'sometimes|integer|min:0',
             'aktif' => 'sometimes|boolean',
+            ...PhotoFocus::rules(),
         ]);
 
-        $banner->update($validated);
+        $banner->update(PhotoFocus::merge($validated));
 
         return response()->json([
             'success' => true,

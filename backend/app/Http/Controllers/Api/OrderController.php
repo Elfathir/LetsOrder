@@ -60,10 +60,10 @@ class OrderController extends Controller
         }
         if ($compact) {
             $tenantCols = ['id_tenant', 'id_user', 'nama_tenant', 'deskripsi', 'status_buka'];
-            array_push($tenantCols, 'jam_buka', 'jam_tutup', 'auto_schedule');
+            array_push($tenantCols, 'jam_buka', 'jam_tutup', 'auto_schedule', 'foto_x', 'foto_y', 'foto_zoom');
             $relations['tenant'] = fn ($q) => $q->select($tenantCols)->selectRaw(MediaController::previewSql('logo', 'logo', false));
             $relations['orderDetails'] = fn ($q) => $q->with([
-                'menu' => fn ($mq) => $mq->select(['id_menu', 'id_tenant', 'id_kategori', 'nama_menu', 'harga', 'estimasi_menit', 'status_tersedia'])
+                'menu' => fn ($mq) => $mq->select(['id_menu', 'id_tenant', 'id_kategori', 'nama_menu', 'harga', 'estimasi_menit', 'status_tersedia', 'foto_x', 'foto_y', 'foto_zoom'])
                     ->selectRaw(MediaController::previewSql('gambar', 'gambar', true)),
             ]);
         } else {

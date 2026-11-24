@@ -30,6 +30,9 @@ class Menu extends Model
         'harga',
         'estimasi_menit',
         'status_tersedia',
+        'foto_x',
+        'foto_y',
+        'foto_zoom',
     ];
 
     protected function casts(): array
@@ -37,6 +40,9 @@ class Menu extends Model
         return [
             'harga' => 'integer',
             'estimasi_menit' => 'integer',
+            'foto_x' => 'float',
+            'foto_y' => 'float',
+            'foto_zoom' => 'float',
             'status_tersedia' => 'boolean',
         ];
     }

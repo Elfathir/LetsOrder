@@ -32,6 +32,9 @@ class User extends Authenticatable
         'jenis_kelamin',
         'tanggal_lahir',
         'avatar',
+        'foto_x',
+        'foto_y',
+        'foto_zoom',
     ];
 
     protected $hidden = [
@@ -42,6 +45,9 @@ class User extends Authenticatable
     {
         return [
             'password' => 'hashed',
+            'foto_x' => 'float',
+            'foto_y' => 'float',
+            'foto_zoom' => 'float',
         ];
     }
 

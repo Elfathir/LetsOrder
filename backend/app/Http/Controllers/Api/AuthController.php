@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\ImageValidator;
+use App\Support\PhotoFocus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
@@ -487,7 +488,10 @@ class AuthController extends Controller
             'tanggal_lahir' => 'nullable|string|max:20',
             'avatar' => ['nullable', 'string', ImageValidator::rule('foto profil')],
             'nama_tenant' => 'nullable|string|max:100',
+            ...PhotoFocus::rules(),
         ]);
+
+        $photoFocus = PhotoFocus::normalize($validated);
 
         if (isset($validated['email']) && strtolower(trim($validated['email'])) !== strtolower((string) $user->email)) {
             if (strlen(preg_replace('/\D/', '', (string) $nextPhone)) < 8) {
@@ -514,6 +518,9 @@ class AuthController extends Controller
         if (array_key_exists('avatar', $validated) && !MediaController::isMediaEndpointRef($validated['avatar'])) {
             $user->avatar = $validated['avatar'];
         }
+        foreach ($photoFocus as $key => $value) {
+            $user->{$key} = $value;
+        }
         $user->save();
 
         if ($user->peran === 'Vendor') {
@@ -530,6 +537,10 @@ class AuthController extends Controller
                     (!$tenant->logo || $tenant->logo === 'tenant/default.png')
                 ) {
                     $tenant->logo = $validated['avatar'];
+                    $changed = true;
+                }
+                foreach ($photoFocus as $key => $value) {
+                    $tenant->{$key} = $value;
                     $changed = true;
                 }
                 if ($changed) {

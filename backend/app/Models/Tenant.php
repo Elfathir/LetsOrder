@@ -30,6 +30,9 @@ class Tenant extends Model
         'jam_buka',
         'jam_tutup',
         'auto_schedule',
+        'foto_x',
+        'foto_y',
+        'foto_zoom',
     ];
 
     protected function casts(): array
@@ -37,6 +40,9 @@ class Tenant extends Model
         return [
             'status_buka' => 'boolean',
             'auto_schedule' => 'boolean',
+            'foto_x' => 'float',
+            'foto_y' => 'float',
+            'foto_zoom' => 'float',
         ];
     }
 
