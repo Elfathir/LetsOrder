@@ -1,7 +1,11 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App, { applyDocumentTheme } from "./App.jsx";
+import { installThemeTokens } from "./utils/theme.js";
 import "./index.css";
+
+// Token desain (theme.json) dipasang sebelum render supaya tidak ada kedip warna.
+installThemeTokens();
 
 try {
   const savedTheme = localStorage.getItem("letsorder_theme");

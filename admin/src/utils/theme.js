@@ -1,6 +1,8 @@
 import { flushSync } from "react-dom";
+import themeTokens from "../../../theme.json";
 
 const THEME_KEY = "letsorder_theme";
+const TOKEN_STYLE_ID = "letsorder-theme-tokens";
 
 export function applyDocumentTheme(nextTheme) {
   const resolved = nextTheme === "dark" ? "dark" : "light";
@@ -10,7 +12,7 @@ export function applyDocumentTheme(nextTheme) {
     }
     const meta = document.querySelector?.('meta[name="theme-color"]');
     if (meta) {
-      const nextColor = resolved === "dark" ? "#171211" : "#FFFFFF";
+      const nextColor = resolved === "dark" ? themeTokens.canvas.dark : themeTokens.canvas.light;
       if (meta.getAttribute("content") !== nextColor) {
         meta.setAttribute("content", nextColor);
       }
@@ -245,7 +247,12 @@ export function toggleAppTheme(event) {
   ].join(";");
 
   const hasHeader = Boolean(document.querySelector?.("header"));
-  const innerBg = nextTheme === "dark" ? "#171211" : hasHeader ? "#FFFFFF" : "#FAF6F2";
+  const innerBg =
+    nextTheme === "dark"
+      ? themeTokens.canvas.dark
+      : hasHeader
+        ? themeTokens.canvas.light
+        : themeTokens.canvas.lightAlt;
 
   inner.style.cssText = [
     "position:absolute",
@@ -334,4 +341,30 @@ export function toggleAppTheme(event) {
     }
   };
   rafId = raf(step);
+}
+
+const toCssVars = (tokens) =>
+  Object.entries(tokens)
+    .map(([name, value]) => `${name}: ${value};`)
+    .join(" ");
+
+// theme.json -> CSS variable di :root (dan di klon transisi tema).
+// Dipanggil sekali sebelum React render supaya tidak ada kedip warna.
+export function installThemeTokens() {
+  if (typeof document === "undefined" || document.getElementById(TOKEN_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = TOKEN_STYLE_ID;
+  style.textContent = [
+    `:root, [data-theme-scope="light"] { ${toCssVars({
+      ...themeTokens.fonts,
+      ...themeTokens.radius,
+      ...themeTokens.color.light,
+      ...themeTokens.shadow.light,
+    })} }`,
+    `:root[data-theme="dark"], [data-theme-scope="dark"] { ${toCssVars({
+      ...themeTokens.color.dark,
+      ...themeTokens.shadow.dark,
+    })} }`,
+  ].join("\n");
+  document.head.appendChild(style);
 }

@@ -1,115 +1,4 @@
-:root,
-[data-theme-scope="light"] {
-  --font-main: "Outfit", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
-
-  --bg-page: #ffffff;
-  --bg-card: #ffffff;
-  --bg-cream: #f9efe5;
-  --bg-warm-img: #fdf0e2;
-  --bg-banner: #f4ebe2;
-  --bg-banner-alt: #efe7de;
-  --bg-subtle: #faf6f1;
-  --bg-footer-drawer: #fbf4ee;
-  --bg-auth-page: #faf6f2;
-  --bg-surface-muted: #f3ece8;
-  --bg-inactive: #f9fafb;
-  --bg-header-glass: rgba(255, 255, 255, 0.96);
-  --bg-overlay-glass: rgba(255, 255, 255, 0.92);
-
-  --maroon: #522a28;
-  --maroon-dark: #3e1e1c;
-  --maroon-light: #6e4543;
-  --text-muted: #8a7875;
-  --text-light: #b2a4a2;
-
-  --btn-solid-bg: #522a28;
-  --btn-solid-text: #ffffff;
-  --on-orange-text: #522a28;
-  --brand-cocoa: #522a28;
-  --dot-inactive: #d9ceca;
-  --switch-track-off: #d8d2ce;
-
-  --alert-error-bg: #fef2f2;
-  --alert-error-border: #fecaca;
-  --alert-error-text: #991b1b;
-  --alert-success-bg: #ecfdf5;
-  --alert-success-border: #a7f3d0;
-  --alert-success-text: #065f46;
-  --backdrop: rgba(82, 42, 40, 0.38);
-
-  --orange: #f8a34b;
-  --orange-hover: #e79339;
-  --orange-active: #d37f25;
-  --orange-soft: #fdf1e4;
-  --orange-border: #fbdab7;
-  --orange-tag: #d49354;
-
-  --border-light: #ece5df;
-  --border-input: #e6e0e0;
-
-  --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
-  --radius-xl: 26px;
-  --radius-pill: 9999px;
-
-  --shadow-sm: 0 2px 8px rgba(82, 42, 40, 0.04);
-  --shadow-card: 0 6px 20px rgba(82, 42, 40, 0.06), 0 1px 3px rgba(82, 42, 40, 0.02);
-  --shadow-float: 0 16px 36px rgba(82, 42, 40, 0.1), 0 4px 12px rgba(82, 42, 40, 0.04);
-}
-
-:root[data-theme="dark"],
-[data-theme-scope="dark"] {
-  --bg-page: #171211;
-  --bg-card: #211a18;
-  --bg-cream: #2e231f;
-  --bg-warm-img: #2a201c;
-  --bg-banner: #271e1b;
-  --bg-banner-alt: #2f2420;
-  --bg-subtle: #1c1614;
-  --bg-footer-drawer: #1c1614;
-  --bg-auth-page: #171211;
-  --bg-surface-muted: #2c221f;
-  --bg-inactive: #241d1b;
-  --bg-header-glass: rgba(33, 26, 24, 0.96);
-  --bg-overlay-glass: rgba(33, 26, 24, 0.92);
-
-  --maroon: #f2e6df;
-  --maroon-dark: #fff7f2;
-  --maroon-light: #decbc2;
-  --text-muted: #b6a39d;
-  --text-light: #8b7670;
-
-  --orange: #faa652;
-  --orange-hover: #f59638;
-  --orange-active: #e8862b;
-  --orange-soft: rgba(250, 166, 82, 0.16);
-  --orange-border: rgba(250, 166, 82, 0.38);
-  --orange-tag: #f5b26b;
-
-  --btn-solid-bg: #faa652;
-  --btn-solid-text: #2b1615;
-  --on-orange-text: #2b1615;
-  --brand-cocoa: #3e1e1c;
-  --dot-inactive: #4b3c37;
-  --switch-track-off: #4b3c37;
-
-  --border-light: #382c28;
-  --border-input: #473833;
-
-  --alert-error-bg: rgba(220, 38, 38, 0.16);
-  --alert-error-border: rgba(248, 113, 113, 0.35);
-  --alert-error-text: #fca5a5;
-  --alert-success-bg: rgba(22, 163, 74, 0.16);
-  --alert-success-border: rgba(74, 222, 128, 0.35);
-  --alert-success-text: #86efac;
-  --backdrop: rgba(8, 5, 5, 0.68);
-
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.28);
-  --shadow-card: 0 6px 20px rgba(0, 0, 0, 0.38), 0 1px 3px rgba(0, 0, 0, 0.24);
-  --shadow-float: 0 16px 36px rgba(0, 0, 0, 0.48), 0 4px 12px rgba(0, 0, 0, 0.3);
-}
+/* Token warna/font/radius/shadow ada di /theme.json (dipasang oleh src/utils/theme.js). */
 
 * {
   box-sizing: border-box;
@@ -121,7 +10,24 @@
 html {
   -webkit-tap-highlight-color: transparent;
   overflow-y: scroll;
-  scrollbar-gutter: stable;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar {
+  display: none;
+}
+
+/* Scrollbar bawaan browser di shell admin disembunyikan; scroll tetap berfungsi. */
+.admin-main,
+.admin-sidebar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.admin-main::-webkit-scrollbar,
+.admin-sidebar::-webkit-scrollbar {
+  display: none;
 }
 
 body {

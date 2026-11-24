@@ -165,6 +165,11 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(data),
     }),
+  deleteAccount: (data) =>
+    request("/auth/account", {
+      method: "DELETE",
+      body: JSON.stringify(data),
+    }),
   me: () => request("/auth/me"),
   logout: () =>
     request("/auth/logout", {

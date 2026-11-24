@@ -1,5 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { flushSync } from "react-dom";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   ShoppingBag,
@@ -27,8 +26,6 @@ import {
   Eye,
   EyeOff,
   Globe,
-  Sun,
-  Moon,
   Store,
   Tag,
   Lock,
@@ -43,6 +40,7 @@ import {
   MessageCircle,
   Image as ImageIcon,
   Send,
+  CheckCheck,
   UtensilsCrossed,
   Upload,
 } from "lucide-react";
@@ -55,721 +53,24 @@ import {
   clearStoredSession,
 } from "./services/api";
 import TenantOnboardingWizard from "./components/TenantOnboardingWizard.jsx";
-import { applyDocumentTheme } from "./utils/theme.js";
-
-const TRANSLATIONS = {
-  EN: {
-    subtitleCustomer: "Campus canteen pre-order",
-    subtitleTenant: "Tenant portal",
-    navHome: "Home",
-    navTenant: "Tenant",
-    navOrders: "Orders",
-    navHistory: "History",
-    navDashboard: "Dashboard",
-    navMenu: "Menu",
-    categories: "Categories",
-    catRice: "Rice & Mains",
-    catSnacks: "Snacks",
-    catDrinks: "Drinks",
-    itemsUnit: "items",
-    popularMenu: "Popular menu",
-    viewAll: "View all",
-    emptyMenuTitle: "No menus uploaded yet",
-    emptyMenuDesc: "No campus canteen tenant has uploaded food or beverage menus yet.",
-    tenantTitle: "Tenant",
-    tenantSubtitle: "Order ahead and skip the line at the counter.",
-    searchFoodPlaceholder: "Search food or drinks…",
-    searchTenantPlaceholder: "Search canteen or tenant…",
-    emptyTenantTitle: "No tenants registered yet",
-    emptyTenantDesc: "Canteen tenants will appear here after signing up with a Tenant account.",
-    emptyTenantSearchTitle: "No matching tenant found",
-    emptyTenantSearchDesc: "Try searching with another canteen name or clear the search filter.",
-    backTenants: "Back to all tenants",
-    emptyCartTitle: "Your order cart is empty",
-    emptyCartDesc: "Browse foods or drinks from campus canteen tenants before picking a promo and checking out.",
-    browseMenuBtn: "Browse Menu",
-    yourOrder: "Your order",
-    reviewItems: "Review your items and apply a promo before paying.",
-    emptyCartShort: "No meals or drinks selected yet.",
-    stepCart: "Cart & promo",
-    stepPayment: "Payment",
-    stepPreparing: "Preparing",
-    stepPickup: "Pickup",
-    cartTitle: "Cart",
-    addMore: "+ Add more",
-    promosTitle: "Promos",
-    pickPromo: "Pick one promo for this order.",
-    subtotal: "Subtotal",
-    serviceFee: "Service fee",
-    free: "Free",
-    total: "Total",
-    continuePayment: "Continue to payment",
-    orderSummary: "Order summary",
-    cancelEdit: "Cancel & edit order",
-    scanToPay: "Scan to pay",
-    amountDue: "Amount due",
-    paymentTimer: "Payment timer",
-    completePaymentBtn: "I've completed payment",
-    historyTitle: "Order history",
-    historyDesc: "Track active orders and reorder your favorites.",
-    filterAll: "All",
-    filterInProgress: "In progress",
-    filterCompleted: "Completed",
-    filterCancelled: "Cancelled",
-    welcomeBack: "Welcome back",
-    storeOpen: "Open for orders",
-    storeClosed: "Closed for orders",
-    kpiOrders: "Orders today",
-    kpiRevenue: "Revenue today",
-    kpiQueue: "In queue now",
-    kpiPrep: "Avg. prep time",
-    incomingOrders: "Incoming orders",
-    incomingDesc: "Manage active orders from your canteen customers.",
-    noIncomingOrders: "No active incoming orders yet. New customer orders will appear here automatically.",
-    menuAvailability: "Menu availability",
-    itemsAvailable: "items available",
-    manageMenu: "Manage menu",
-    topSellers: "Top sellers today",
-    noMenuUploadedShort: "No menus uploaded yet.",
-    myMenuTitle: "My menu",
-    myMenuDesc: "Upload, edit dishes and control what customers can order.",
-    uploadMenuBtn: "Upload Menu",
-    drawerProfile: "My Profile",
-    drawerFavorites: "Favorites",
-    drawerNotifications: "Notifications",
-    drawerHelp: "Help Center",
-    logout: "Log out",
-    authWelcome: "Welcome back",
-    authCreate: "Create your account",
-    authForgot: "Reset password",
-    themeToDark: "Switch to dark mode",
-    themeToLight: "Switch to light mode",
-  },
-  ID: {
-    subtitleCustomer: "Pre-order kantin kampus",
-    subtitleTenant: "Portal tenant",
-    navHome: "Beranda",
-    navTenant: "Kantin",
-    navOrders: "Pesanan",
-    navHistory: "Riwayat",
-    navDashboard: "Dasbor",
-    navMenu: "Menu",
-    categories: "Kategori",
-    catRice: "Makanan Berat",
-    catSnacks: "Camilan",
-    catDrinks: "Minuman",
-    itemsUnit: "menu",
-    popularMenu: "Menu populer",
-    viewAll: "Lihat semua",
-    emptyMenuTitle: "Belum ada menu yang diupload",
-    emptyMenuDesc: "Saat ini belum ada tenant kantin yang mengupload menu makanan atau minuman.",
-    tenantTitle: "Daftar Kantin",
-    tenantSubtitle: "Pesan lebih awal tanpa antre panjang di kasir.",
-    searchFoodPlaceholder: "Cari makanan atau minuman…",
-    searchTenantPlaceholder: "Cari nama kantin atau tenant…",
-    emptyTenantTitle: "Belum ada tenant yang terdaftar",
-    emptyTenantDesc: "Tenant kantin akan muncul di sini setelah mendaftar akun Tenant.",
-    emptyTenantSearchTitle: "Tenant tidak ditemukan",
-    emptyTenantSearchDesc: "Coba gunakan kata kunci nama kantin lain atau hapus pencarian.",
-    backTenants: "Kembali ke daftar kantin",
-    emptyCartTitle: "Keranjang pesanan Anda masih kosong",
-    emptyCartDesc: "Pilih makanan atau minuman dari menu kantin terlebih dahulu sebelum memilih promo dan membayar.",
-    browseMenuBtn: "Pilih Menu Makanan",
-    yourOrder: "Pesanan Anda",
-    reviewItems: "Periksa pesanan Anda dan pilih promo sebelum membayar.",
-    emptyCartShort: "Belum ada makanan atau minuman yang Anda pilih.",
-    stepCart: "Keranjang",
-    stepPayment: "Pembayaran",
-    stepPreparing: "Disiapkan",
-    stepPickup: "Ambil",
-    cartTitle: "Keranjang",
-    addMore: "+ Tambah menu",
-    promosTitle: "Promo",
-    pickPromo: "Pilih satu promo untuk pesanan ini.",
-    subtotal: "Subtotal",
-    serviceFee: "Biaya layanan",
-    free: "Gratis",
-    total: "Total",
-    continuePayment: "Lanjut ke pembayaran",
-    orderSummary: "Ringkasan pesanan",
-    cancelEdit: "Batal & ubah pesanan",
-    scanToPay: "Scan untuk membayar",
-    amountDue: "Total tagihan",
-    paymentTimer: "Batas waktu bayar",
-    completePaymentBtn: "Saya sudah membayar",
-    historyTitle: "Riwayat pesanan",
-    historyDesc: "Pantau pesanan aktif dan pesan ulang menu favoritmu.",
-    filterAll: "Semua",
-    filterInProgress: "Diproses",
-    filterCompleted: "Selesai",
-    filterCancelled: "Dibatalkan",
-    welcomeBack: "Selamat datang kembali",
-    storeOpen: "Buka menerima pesanan",
-    storeClosed: "Sedang tutup",
-    kpiOrders: "Pesanan hari ini",
-    kpiRevenue: "Pendapatan hari ini",
-    kpiQueue: "Sedang antre",
-    kpiPrep: "Rata-rata masak",
-    incomingOrders: "Pesanan masuk",
-    incomingDesc: "Kelola antrean pesanan aktif yang masuk ke kantin Anda.",
-    noIncomingOrders: "Belum ada pesanan masuk saat ini. Pesanan pelanggan akan muncul otomatis di sini.",
-    menuAvailability: "Ketersediaan menu",
-    itemsAvailable: "menu tersedia",
-    manageMenu: "Kelola menu",
-    topSellers: "Terlaris hari ini",
-    noMenuUploadedShort: "Belum ada menu yang diupload.",
-    myMenuTitle: "Menu saya",
-    myMenuDesc: "Upload, ubah menu dan atur ketersediaan untuk pelanggan.",
-    uploadMenuBtn: "Tambah Menu",
-    drawerProfile: "Profil Saya",
-    drawerFavorites: "Favorit",
-    drawerNotifications: "Notifikasi",
-    drawerHelp: "Pusat Bantuan",
-    logout: "Keluar",
-    authWelcome: "Selamat datang",
-    authCreate: "Buat akun baru",
-    authForgot: "Reset kata sandi",
-    themeToDark: "Aktifkan mode gelap",
-    themeToLight: "Aktifkan mode terang",
-  },
-};
-
-function readStoredTheme() {
-  try {
-    return typeof localStorage !== "undefined" && localStorage.getItem("letsorder_theme") === "dark"
-      ? "dark"
-      : "light";
-  } catch {
-    return "light";
-  }
-}
-
-let currentThemeState = readStoredTheme();
-const themeListeners = new Set();
-let cancelActiveThemeWave = null;
-let themeAnimatingUntil = 0;
-let isThemeTransitionLocked = false;
-let themeUnlockTimer = 0;
-
-function isThemeAnimating() {
-  return (
-    isThemeTransitionLocked ||
-    cancelActiveThemeWave !== null ||
-    (typeof performance !== "undefined" && performance.now() < themeAnimatingUntil)
-  );
-}
-
-async function waitForThemeTransitionIdle() {
-  if (!isThemeAnimating()) return;
-  await new Promise((resolve) => {
-    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const waitMs = Math.min(540, Math.max(16, Math.ceil(themeAnimatingUntil - now) + 80));
-    setTimeout(resolve, waitMs);
-  });
-}
-
-function getThemeSnapshot() {
-  return currentThemeState;
-}
-
-function getThemeBusySnapshot() {
-  return isThemeTransitionLocked;
-}
-
-function subscribeTheme(listener) {
-  themeListeners.add(listener);
-  return () => themeListeners.delete(listener);
-}
-
-function persistThemePreference(resolved) {
-  try {
-    localStorage.setItem("letsorder_theme", resolved);
-  } catch {
-    // ignore storage restrictions
-  }
-}
-
-function commitAppTheme(nextTheme, deferStorage = false) {
-  const resolved = applyDocumentTheme(nextTheme);
-  currentThemeState = resolved;
-  if (deferStorage) {
-    setTimeout(() => persistThemePreference(resolved), 0);
-  } else {
-    persistThemePreference(resolved);
-  }
-  themeListeners.forEach((listener) => listener());
-}
-
-function toggleAppTheme(event) {
-  // Block repeated clicks until the full circular transition finishes and settles
-  if (isThemeAnimating()) {
-    return;
-  }
-
-  const prevTheme = currentThemeState === "dark" ? "dark" : "light";
-  const nextTheme = prevTheme === "dark" ? "light" : "dark";
-  const rect = event?.currentTarget?.getBoundingClientRect?.();
-  const vw = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0, 1);
-  const vh = Math.max(window.innerHeight || 0, document.documentElement?.clientHeight || 0, 1);
-  const x = Math.round(rect ? rect.left + rect.width / 2 : vw / 2);
-  const y = Math.round(rect ? rect.top + rect.height / 2 : vh / 2);
-  const startRadius = Math.max(14, rect && rect.width > 0 ? Math.round(rect.width / 2) : 18);
-  const endRadius = Math.max(
-    startRadius + 10,
-    Math.ceil(Math.hypot(Math.max(x, vw - x), Math.max(y, vh - y)))
-  );
-
-  const prefersReduced =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  const rootEl = typeof document !== "undefined" ? document.getElementById("root") : null;
-
-  if (
-    prefersReduced ||
-    typeof document === "undefined" ||
-    !document.body ||
-    !rootEl ||
-    typeof document.createElement("div").animate !== "function"
-  ) {
-    commitAppTheme(nextTheme);
-    return;
-  }
-
-  const WAVE_DURATION = 420;
-
-  if (themeUnlockTimer) {
-    clearTimeout(themeUnlockTimer);
-    themeUnlockTimer = 0;
-  }
-  isThemeTransitionLocked = true;
-
-  document.documentElement.classList.add("theme-wave-active");
-  rootEl.setAttribute("data-theme-scope", prevTheme);
-
-  flushSync(() => {
-    commitAppTheme(nextTheme, true);
-  });
-
-  // Use the real layout box of #root (excludes scrollbar) so the clone lines up pixel-perfectly
-  const rootRect = rootEl.getBoundingClientRect();
-  const viewW = document.documentElement.clientWidth || vw;
-  const viewH = document.documentElement.clientHeight || vh;
-
-  const clone = rootEl.cloneNode(true);
-  clone.removeAttribute("id");
-  clone.setAttribute("data-theme-scope", nextTheme);
-  clone.setAttribute("aria-hidden", "true");
-  clone.style.cssText += `;position:absolute;left:${rootRect.left}px;top:${rootRect.top}px;width:${rootRect.width}px;min-height:${Math.max(rootRect.height, viewH)}px;pointer-events:none;margin:0;`;
-
-  // Note: sticky header needs no special handling — it sticks to the top of the (non-scrolled) inner container natively.
-
-  const origFields = rootEl.querySelectorAll("input, textarea, select");
-  const cloneFields = clone.querySelectorAll("input, textarea, select");
-  for (let i = 0; i < origFields.length && i < cloneFields.length; i += 1) {
-    cloneFields[i].value = origFields[i].value;
-  }
-  const cloneImgs = clone.querySelectorAll("img");
-  for (let i = 0; i < cloneImgs.length; i += 1) {
-    cloneImgs[i].setAttribute("decoding", "sync");
-    cloneImgs[i].setAttribute("loading", "eager");
-  }
-  // Preserve scroll positions of inner scrollable areas (e.g. horizontal lists)
-  const origAll = rootEl.querySelectorAll("*");
-  const cloneAll = clone.querySelectorAll("*");
-  const scrollFix = [];
-  for (let i = 0; i < origAll.length && i < cloneAll.length; i += 1) {
-    if (origAll[i].scrollTop || origAll[i].scrollLeft) {
-      scrollFix.push([cloneAll[i], origAll[i].scrollLeft, origAll[i].scrollTop]);
-    }
-  }
-
-  const host = document.createElement("div");
-  host.setAttribute("data-theme-wave-host", "true");
-  host.style.cssText = [
-    "position:fixed",
-    "inset:0",
-    "z-index:99999",
-    "pointer-events:none",
-    "overflow:hidden",
-  ].join(";");
-
-  // Circle grows by real size (width/height/border-radius), NOT by scale().
-  // The cloned UI inside is only translated by whole pixels, so it is never resampled -> stays 100% crisp, zero wobble.
-  const finalRadius = endRadius + 2;
-  const circle = document.createElement("div");
-  circle.setAttribute("data-theme-wave-circle", "true");
-  const inner = document.createElement("div");
-  inner.setAttribute("data-theme-wave-inner", "true");
-
-  const applyRadius = (r) => {
-    const left = x - r;
-    const top = y - r;
-    const d = r * 2;
-    circle.style.width = `${d}px`;
-    circle.style.height = `${d}px`;
-    circle.style.transform = `translate3d(${left}px, ${top}px, 0)`;
-    inner.style.transform = `translate3d(${-left}px, ${-top}px, 0)`;
-  };
-
-  circle.style.cssText = [
-    "position:fixed",
-    "left:0",
-    "top:0",
-    "border-radius:50%",
-    "overflow:hidden",
-    "box-shadow:none",
-    "border:none",
-    "outline:none",
-    "pointer-events:none",
-    "contain:layout paint",
-  ].join(";");
-
-  const hasHeader = Boolean(document.querySelector?.("header"));
-  const innerBg = nextTheme === "dark" ? "#171211" : hasHeader ? "#FFFFFF" : "#FAF6F2";
-
-  inner.style.cssText = [
-    "position:absolute",
-    "left:0",
-    "top:0",
-    `width:${viewW}px`,
-    `height:${viewH}px`,
-    `background-color:${innerBg}`,
-    "overflow:hidden",
-    "pointer-events:none",
-    "will-change:transform",
-  ].join(";");
-
-  applyRadius(startRadius);
-  inner.appendChild(clone);
-  circle.appendChild(inner);
-  host.appendChild(circle);
-  document.body.appendChild(host);
-  for (let i = 0; i < scrollFix.length; i += 1) {
-    const [el, sl, st] = scrollFix[i];
-    el.scrollLeft = sl;
-    el.scrollTop = st;
-  }
-
-  const raf =
-    typeof window.requestAnimationFrame === "function"
-      ? window.requestAnimationFrame.bind(window)
-      : (cb) => setTimeout(() => cb(typeof performance !== "undefined" ? performance.now() : Date.now()), 16);
-  const caf =
-    typeof window.cancelAnimationFrame === "function"
-      ? window.cancelAnimationFrame.bind(window)
-      : (id) => clearTimeout(id);
-
-  let aborted = false;
-  let rafId = 0;
-  let startTs = 0;
-
-  themeAnimatingUntil =
-    (typeof performance !== "undefined" ? performance.now() : Date.now()) + WAVE_DURATION + 60;
-
-  const cleanup = () => {
-    const isCurrent = cancelActiveThemeWave === abortCurrent;
-    // 1. Switch the real UI to the new theme while transitions are still disabled,
-    //    and force a style flush so buttons with CSS transitions do NOT animate from old colors (white flash).
-    rootEl.removeAttribute("data-theme-scope");
-    void rootEl.offsetWidth;
-    if (typeof window.getComputedStyle === "function") {
-      window.getComputedStyle(rootEl).color;
-    }
-    if (host.parentNode) host.parentNode.removeChild(host);
-    if (isCurrent) {
-      cancelActiveThemeWave = null;
-      themeAnimatingUntil = 0;
-      // 2. Re-enable transitions only after the new colors are committed.
-      document.documentElement.classList.remove("theme-wave-active");
-      themeUnlockTimer = setTimeout(() => {
-        themeUnlockTimer = 0;
-        isThemeTransitionLocked = false;
-        themeListeners.forEach((listener) => listener());
-      }, 60);
-    }
-  };
-
-  const abortCurrent = () => {
-    aborted = true;
-    if (rafId) caf(rafId);
-    rafId = 0;
-    cleanup();
-  };
-
-  cancelActiveThemeWave = abortCurrent;
-
-  const step = (ts) => {
-    if (aborted) return;
-    if (!startTs) startTs = ts;
-    const t = Math.min(1, (ts - startTs) / WAVE_DURATION);
-    // Linear: one start point (button size) -> one end point (full screen), no intermediate stop
-    applyRadius(Math.round(startRadius + (finalRadius - startRadius) * t));
-    if (t < 1) {
-      rafId = raf(step);
-    } else {
-      rafId = 0;
-      cleanup();
-    }
-  };
-  rafId = raf(step);
-}
-
-const ThemeToggleButton = memo(function ThemeToggleButton({ darkTitle, lightTitle, size = 36 }) {
-  const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot);
-  const isBusy = useSyncExternalStore(subscribeTheme, getThemeBusySnapshot);
-  const isDark = theme === "dark";
-  const title = isDark ? lightTitle : darkTitle;
-
-  useLayoutEffect(() => {
-    if (typeof document === "undefined" || document.documentElement.getAttribute("data-theme") !== theme) {
-      applyDocumentTheme(theme);
-    }
-  }, [theme]);
-
-  return (
-    <button
-      type="button"
-      onClick={toggleAppTheme}
-      disabled={isBusy}
-      aria-busy={isBusy}
-      title={title}
-      aria-label={title}
-      aria-pressed={isDark}
-      data-testid="theme-toggle-btn"
-      className="theme-toggle-btn"
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        border: "1px solid var(--border-light)",
-        backgroundColor: "var(--bg-card)",
-        color: isDark ? "var(--orange)" : "var(--maroon)",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: isBusy ? "wait" : "pointer",
-        flexShrink: 0,
-        boxShadow: "none",
-      }}
-    >
-      {isDark ? (
-        <Sun size={size > 34 ? 16 : 15} strokeWidth={2.2} />
-      ) : (
-        <Moon size={size > 34 ? 16 : 15} strokeWidth={2.2} />
-      )}
-    </button>
-  );
-});
-
-const LiveClockText = memo(function LiveClockText() {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (!isThemeAnimating()) {
-        setNow(new Date());
-      }
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-  return <span className="tabular">{formatLiveClock(now)}</span>;
-});
-
-const TENANTS = [];
-const MENUS = [];
-const INITIAL_CART = [];
-const INITIAL_ORDERS = [];
-const INITIAL_TENANT_MENUS = [];
-const INITIAL_INCOMING_ORDERS = [];
-
-const CATEGORY_ID_MAP = {
-  "Rice & Mains": 1,
-  Snacks: 2,
-  Drinks: 3,
-};
-
-function readAndCompressImageFile(file, maxDim = 900, quality = 0.82) {
-  return new Promise((resolve, reject) => {
-    if (!file) return reject(new Error("File tidak ditemukan."));
-    if (file.type === "image/svg+xml" || !file.type.startsWith("image/")) {
-      return reject(new Error("Format gambar harus JPG, PNG, WEBP, atau GIF."));
-    }
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Gagal membaca file gambar."));
-    reader.onload = () => {
-      const dataUrl = typeof reader.result === "string" ? reader.result : "";
-      if (!dataUrl) return reject(new Error("File gambar kosong."));
-      if (file.size <= 250 * 1024 && !file.type.includes("bmp")) {
-        return resolve(dataUrl);
-      }
-      const img = new Image();
-      img.onerror = () => resolve(dataUrl);
-      img.onload = () => {
-        try {
-          let { width, height } = img;
-          if (width > maxDim || height > maxDim) {
-            if (width >= height) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            } else {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
-          }
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.max(1, width);
-          canvas.height = Math.max(1, height);
-          const ctx = canvas.getContext("2d");
-          if (!ctx) return resolve(dataUrl);
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL("image/jpeg", quality));
-        } catch {
-          resolve(dataUrl);
-        }
-      };
-      img.src = dataUrl;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-function isOrderChatEligible(ord) {
-  if (!ord) return false;
-  if (ord.is_paid) return true;
-  if (ord.payment?.status_verifikasi === "Terverifikasi") return true;
-  const raw = ord.status_pesanan || ord.raw_status || "";
-  if (["Sedang Diproses", "Diproses", "Siap Diambil", "Selesai"].includes(raw)) return true;
-  const uiStatus = ord.status || "";
-  return ["Preparing", "Ready for pickup", "Ready", "Completed"].includes(uiStatus);
-}
-
-function normalizeCategoryName(rawName) {
-  const name = String(rawName || "").trim();
-  if (!name || name === "Makanan") return "Rice & Mains";
-  if (name === "Camilan") return "Snacks";
-  if (name === "Minuman") return "Drinks";
-  return name;
-}
-
-function normalizeMenuRecord(m) {
-  const revCount = Number(m.reviews_count ?? (Array.isArray(m.reviews) ? m.reviews.length : m.reviews) ?? 0);
-  return {
-    ...m,
-    available: Boolean(m.status_tersedia ?? m.available ?? true),
-    kategori_nama: normalizeCategoryName(m.kategori_nama || m.category?.nama_kategori),
-    tenant_name: m.tenant_name || m.tenant?.nama_tenant || "Kantin",
-    sold_today: Number(m.sold_today || 0),
-    rating: revCount > 0 && m.rating ? String(m.rating) : null,
-    reviews: revCount,
-    reviews_count: revCount,
-  };
-}
-
-function getLocalDateKey(date = new Date()) {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function formatLiveClock(date = new Date()) {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-}
-
-function isTenantOpenAt(tenant, nowDate = new Date()) {
-  if (!tenant) return false;
-  if (!tenant.auto_schedule) return Boolean(tenant.status_buka ?? true);
-  if (tenant.status_buka === false) return false;
-  const openStr = String(tenant.jam_buka || "07:00").slice(0, 5);
-  const closeStr = String(tenant.jam_tutup || "21:00").slice(0, 5);
-  const pad = (n) => String(n).padStart(2, "0");
-  const cur = `${pad(nowDate.getHours())}:${pad(nowDate.getMinutes())}`;
-  return openStr <= closeStr ? cur >= openStr && cur < closeStr : cur >= openStr || cur < closeStr;
-}
-
-function formatPercentDelta(todayVal, yesterdayVal) {
-  if (yesterdayVal > 0) {
-    const pct = Math.round(((todayVal - yesterdayVal) / yesterdayVal) * 100);
-    return `${pct >= 0 ? "+" : ""}${pct}%`;
-  }
-  return todayVal > 0 ? "+100%" : "0%";
-}
-
-function formatRupiah(num) {
-  return "Rp" + Number(num || 0).toLocaleString("id-ID");
-}
-
-function getInitials(name) {
-  const clean = String(name || "").trim();
-  if (!clean) return "LO";
-  const parts = clean.split(/\s+/);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return clean.slice(0, 2).toUpperCase();
-}
-
-function isSafeImageSrc(value) {
-  if (typeof value !== "string") return false;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed === "menu/default.png" || trimmed === "tenant/default.png") {
-    return false;
-  }
-  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=\r\n]+$/i.test(trimmed)) {
-    return true;
-  }
-  if (trimmed.toLowerCase().startsWith("data:")) return false;
-  if (trimmed.startsWith("/")) return !trimmed.startsWith("//");
-  if (!trimmed.includes(":")) return !/[\r\n<>"']/.test(trimmed);
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
-  } catch {
-    return false;
-  }
-}
-
-const SafeImage = memo(function SafeImage({ src, alt, className = "", style = {}, fallbackType = "food", iconSize = 28 }) {
-  const [failed, setFailed] = useState(false);
-  const rawSrc = resolveMediaUrl(typeof src === "string" ? src : "");
-  const cleanSrc = isSafeImageSrc(rawSrc) ? rawSrc : "";
-
-  useEffect(() => {
-    setFailed(false);
-  }, [cleanSrc]);
-
-  if (!cleanSrc || failed) {
-    return (
-      <div
-        aria-label={alt}
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: "var(--bg-warm-img)",
-          color: "var(--maroon)",
-          opacity: 0.45,
-          ...style,
-        }}
-      >
-        {fallbackType === "store" ? <Store size={iconSize} /> : <ShoppingBag size={iconSize} />}
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={cleanSrc}
-      alt={alt}
-      className={className}
-      decoding="async"
-      style={{ width: "100%", height: "100%", objectFit: "cover", ...style }}
-      onError={() => setFailed(true)}
-    />
-  );
-});
+import { TRANSLATIONS } from "./i18n.js";
+import { isThemeAnimating, waitForThemeTransitionIdle } from "./utils/theme.js";
+import ThemeToggleButton from "./components/ThemeToggleButton.jsx";
+import LiveClockText from "./components/LiveClockText.jsx";
+import {
+  formatPercentDelta,
+  formatRupiah,
+  getInitials,
+  getLocalDateKey,
+} from "./utils/format.js";
+import {
+  CATEGORY_ID_MAP,
+  isOrderChatEligible,
+  isTenantOpenAt,
+  normalizeMenuRecord,
+} from "./utils/catalog.js";
+import { SafeImage, readAndCompressImageFile } from "./utils/media.jsx";
+import { LAYOUT } from "./utils/layout.js";
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => getStoredUser());
@@ -1038,6 +339,10 @@ export default function App() {
   const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [isEditingPhone, setIsEditingPhone] = useState(false);
   const [profileAlert, setProfileAlert] = useState({ type: "", text: "" });
+  const [deleteAccountMode, setDeleteAccountMode] = useState(false);
+  const [deleteAccountForm, setDeleteAccountForm] = useState({ password: "", confirm: "" });
+  const [deleteAccountError, setDeleteAccountError] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const maskEmail = (rawEmail) => {
     const str = String(rawEmail || "").trim();
@@ -1065,6 +370,9 @@ export default function App() {
         setIsEditingEmail(false);
         setIsEditingPhone(false);
         setProfileAlert({ type: "", text: "" });
+        setDeleteAccountMode(false);
+        setDeleteAccountForm({ password: "", confirm: "" });
+        setDeleteAccountError("");
       }
       setActiveDrawerModal(modalId);
     },
@@ -1369,7 +677,17 @@ export default function App() {
         setChatMessages((prev) => {
           const prevLast = prev[prev.length - 1]?.id_pesan || 0;
           const nextLast = msgs[msgs.length - 1]?.id_pesan || 0;
-          if (prev.length === msgs.length && prevLast === nextLast) return prev;
+          const readSig = (list) =>
+            list
+              .map((m) => `${m.id_pesan}:${Array.isArray(m.dibaca_oleh) ? m.dibaca_oleh.length : 0}`)
+              .join("|");
+          if (
+            prev.length === msgs.length &&
+            prevLast === nextLast &&
+            readSig(prev) === readSig(msgs)
+          ) {
+            return prev;
+          }
           return msgs;
         });
         markOrderChatSeen(oid, msgs.length);
@@ -2304,6 +1622,26 @@ export default function App() {
     closeDrawer();
   };
 
+  const handleDeleteAccount = async () => {
+    if (deletingAccount) return;
+    setDeleteAccountError("");
+    setDeletingAccount(true);
+    try {
+      const res = await api.deleteAccount({
+        password: deleteAccountForm.password,
+        confirm: deleteAccountForm.confirm,
+      });
+      setActiveDrawerModal(null);
+      setDeleteAccountMode(false);
+      await handleLogout();
+      notify(res?.message || "Akun Anda berhasil dihapus.", "success");
+    } catch (err) {
+      setDeleteAccountError(err.message || "Gagal menghapus akun. Silakan coba lagi.");
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   const navContainerRef = useRef(null);
   const tabRefs = useRef({});
   const [pillStyle, setPillStyle] = useState({ left: 0, top: 4, width: 0, height: 0, ready: false });
@@ -2971,8 +2309,7 @@ export default function App() {
           fontSize: 12,
           fontWeight: 700,
           cursor: "pointer",
-          display: "inline-flex",
-          alignItems: "center",
+          ...LAYOUT.inlineRow,
           gap: 5,
           whiteSpace: "nowrap",
         }}
@@ -2990,8 +2327,7 @@ export default function App() {
               color: "#FFFFFF",
               fontSize: 10,
               fontWeight: 800,
-              display: "inline-flex",
-              alignItems: "center",
+              ...LAYOUT.inlineRow,
               justifyContent: "center",
             }}
           >
@@ -3060,7 +2396,7 @@ export default function App() {
       closeFoodDetail();
       setTenantMenuQuery("");
       setActiveTenantView(matchedTenant);
-      setNavTab("tenant");
+      setNavTab("home");
       if (typeof window !== "undefined" && window.scrollTo) {
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
@@ -3495,8 +2831,7 @@ export default function App() {
                     cursor: "pointer",
                     padding: 6,
                     color: "var(--maroon)",
-                    display: "flex",
-                    alignItems: "center",
+                    ...LAYOUT.row,
                     borderRadius: "8px",
                     flexShrink: 0,
                   }}
@@ -3516,8 +2851,7 @@ export default function App() {
                     }
                   }}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
+                    ...LAYOUT.row,
                     gap: 10,
                     cursor: "pointer",
                     userSelect: "none",
@@ -3610,7 +2944,6 @@ export default function App() {
                   ]
                   : [
                     { id: "home", tab: "home", label: t.navHome },
-                    { id: "tenant", tab: "tenant", label: t.navTenant },
                     {
                       id: "orders",
                       tab: "orders",
@@ -3674,9 +3007,7 @@ export default function App() {
                     aria-haspopup="listbox"
                     aria-expanded={isLangMenuOpen}
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
+                      ...LAYOUT.between,
                       gap: 6,
                       minWidth: 74,
                       padding: "7px 12px",
@@ -3728,9 +3059,7 @@ export default function App() {
                             type="button"
                             onClick={() => changeLanguage(item.code)}
                             style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
+                              ...LAYOUT.between,
                               width: "100%",
                               padding: "8px 12px",
                               borderRadius: 10,
@@ -3762,8 +3091,7 @@ export default function App() {
                   onClick={() => openDrawerModal("profile")}
                   className="btn-interactive btn-lift header-profile-btn"
                   style={{
-                    display: "flex",
-                    alignItems: "center",
+                    ...LAYOUT.row,
                     gap: 8,
                     padding: "6px 12px 6px 8px",
                     borderRadius: "var(--radius-pill)",
@@ -3780,9 +3108,7 @@ export default function App() {
                       height: 28,
                       borderRadius: "50%",
                       backgroundColor: portalMode === "tenant" ? "var(--bg-banner-alt)" : "var(--bg-cream)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      ...LAYOUT.center,
                       fontSize: 11,
                       fontWeight: 800,
                       color: "var(--maroon)",
@@ -3824,7 +3150,6 @@ export default function App() {
               ]
               : [
                 { id: "home", tab: "home", label: t.navHome, icon: Store },
-                { id: "tenant", tab: "tenant", label: t.navTenant, icon: MapPin },
                 {
                   id: "orders",
                   tab: "orders",
@@ -3903,9 +3228,7 @@ export default function App() {
                   <div className="container-app animate-fade" style={{ paddingTop: 32 }}>
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
+                        ...LAYOUT.between,
                         marginBottom: 24,
                         flexWrap: "wrap",
                         gap: 16,
@@ -3951,8 +3274,7 @@ export default function App() {
                                       : "Klik untuk membuka kantin"
                                 }
                                 style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
+                                  ...LAYOUT.inlineRow,
                                   gap: 9,
                                   padding: "7px 15px 7px 9px",
                                   borderRadius: "var(--radius-pill)",
@@ -3971,8 +3293,7 @@ export default function App() {
                                     borderRadius: 999,
                                     backgroundColor: storeEffectiveOpen ? "var(--orange)" : "var(--dot-inactive)",
                                     padding: 2,
-                                    display: "inline-flex",
-                                    alignItems: "center",
+                                    ...LAYOUT.inlineRow,
                                     transition: "background-color 0.2s ease",
                                     flexShrink: 0,
                                   }}
@@ -3996,8 +3317,7 @@ export default function App() {
 
                               <div
                                 style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
+                                  ...LAYOUT.inlineRow,
                                   gap: 6,
                                   padding: "9px 14px",
                                   borderRadius: "var(--radius-pill)",
@@ -4021,8 +3341,7 @@ export default function App() {
 
                         <div
                           style={{
-                            display: "inline-flex",
-                            alignItems: "center",
+                            ...LAYOUT.inlineRow,
                             gap: 6,
                             padding: "9px 14px",
                             borderRadius: "var(--radius-pill)",
@@ -4058,8 +3377,7 @@ export default function App() {
                           onClick={openStoreSettingsModal}
                           className="btn-interactive"
                           style={{
-                            display: "inline-flex",
-                            alignItems: "center",
+                            ...LAYOUT.inlineRow,
                             gap: 6,
                             padding: "9px 16px",
                             borderRadius: "var(--radius-pill)",
@@ -4132,9 +3450,7 @@ export default function App() {
                           >
                             <div
                               style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
+                                ...LAYOUT.between,
                                 marginBottom: 16,
                               }}
                             >
@@ -4144,9 +3460,7 @@ export default function App() {
                                   height: 36,
                                   borderRadius: 10,
                                   backgroundColor: "var(--bg-cream)",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
+                                  ...LAYOUT.center,
                                   color: "var(--maroon)",
                                 }}
                               >
@@ -4155,8 +3469,7 @@ export default function App() {
 
                               <span
                                 style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
+                                  ...LAYOUT.inlineRow,
                                   gap: 4,
                                   padding: "3px 10px",
                                   borderRadius: "var(--radius-pill)",
@@ -4212,9 +3525,7 @@ export default function App() {
                       >
                         <div
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
+                            ...LAYOUT.between,
                             marginBottom: 18,
                           }}
                         >
@@ -4243,8 +3554,7 @@ export default function App() {
                               fontSize: 13,
                               fontWeight: 700,
                               cursor: "pointer",
-                              display: "inline-flex",
-                              alignItems: "center",
+                              ...LAYOUT.inlineRow,
                               gap: 4,
                             }}
                           >
@@ -4268,9 +3578,7 @@ export default function App() {
                                   border: "1px solid var(--border-light)",
                                   padding: "14px 16px",
                                   backgroundColor: "var(--bg-card)",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "space-between",
+                                  ...LAYOUT.between,
                                   gap: 14,
                                 }}
                               >
@@ -4284,9 +3592,7 @@ export default function App() {
                                       color: "var(--btn-solid-text)",
                                       fontSize: 12,
                                       fontWeight: 800,
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
+                                      ...LAYOUT.center,
                                       flexShrink: 0,
                                     }}
                                   >
@@ -4296,8 +3602,7 @@ export default function App() {
                                   <div>
                                     <div
                                       style={{
-                                        display: "inline-flex",
-                                        alignItems: "center",
+                                        ...LAYOUT.inlineRow,
                                         gap: 5,
                                         marginBottom: 4,
                                         fontSize: 10.5,
@@ -4553,9 +3858,7 @@ export default function App() {
                                   fontSize: 13,
                                   fontWeight: 700,
                                   cursor: "pointer",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
+                                  ...LAYOUT.center,
                                   gap: 6,
                                 }}
                               >
@@ -4590,9 +3893,7 @@ export default function App() {
                               <div
                                 key={topItem.id_menu}
                                 style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "space-between",
+                                  ...LAYOUT.between,
                                   paddingBottom: idx < Math.min(3, topSellersToday.length) - 1 ? 12 : 0,
                                   borderBottom:
                                     idx < Math.min(3, topSellersToday.length) - 1
@@ -4667,9 +3968,7 @@ export default function App() {
                         >
                           <div
                             style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
+                              ...LAYOUT.between,
                               marginBottom: 12,
                             }}
                           >
@@ -4710,9 +4009,7 @@ export default function App() {
                                 <div
                                   key={vp.id_promo}
                                   style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
+                                    ...LAYOUT.between,
                                     padding: "10px 12px",
                                     borderRadius: 10,
                                     border: "1px solid var(--border-light)",
@@ -4789,9 +4086,7 @@ export default function App() {
                         >
                           <div
                             style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
+                              ...LAYOUT.between,
                               marginBottom: 12,
                               gap: 8,
                             }}
@@ -4801,8 +4096,7 @@ export default function App() {
                             </h3>
                             <span
                               style={{
-                                display: "inline-flex",
-                                alignItems: "center",
+                                ...LAYOUT.inlineRow,
                                 gap: 4,
                                 padding: "4px 10px",
                                 borderRadius: "var(--radius-pill)",
@@ -4863,9 +4157,7 @@ export default function App() {
                                 >
                                   <div
                                     style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "space-between",
+                                      ...LAYOUT.between,
                                       gap: 8,
                                       marginBottom: 3,
                                     }}
@@ -4875,8 +4167,7 @@ export default function App() {
                                     </span>
                                     <span
                                       style={{
-                                        display: "inline-flex",
-                                        alignItems: "center",
+                                        ...LAYOUT.inlineRow,
                                         gap: 3,
                                         fontSize: 12,
                                         fontWeight: 800,
@@ -4910,9 +4201,7 @@ export default function App() {
                   <div className="container-app animate-fade" style={{ paddingTop: 32 }}>
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
+                        ...LAYOUT.between,
                         marginBottom: 22,
                         flexWrap: "wrap",
                         gap: 16,
@@ -4938,8 +4227,7 @@ export default function App() {
                         <div
                           className="search-pill-box"
                           style={{
-                            display: "flex",
-                            alignItems: "center",
+                            ...LAYOUT.row,
                             backgroundColor: "var(--bg-card)",
                             borderRadius: "var(--radius-pill)",
                             padding: "5px 6px 5px 18px",
@@ -4970,9 +4258,7 @@ export default function App() {
                               border: "none",
                               backgroundColor: "var(--btn-solid-bg)",
                               color: "var(--btn-solid-text)",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
+                              ...LAYOUT.center,
                               cursor: "pointer",
                               flexShrink: 0,
                             }}
@@ -4986,8 +4272,7 @@ export default function App() {
                           onClick={openAddMenuModal}
                           className="btn-interactive btn-lift"
                           style={{
-                            display: "inline-flex",
-                            alignItems: "center",
+                            ...LAYOUT.inlineRow,
                             gap: 8,
                             padding: "11px 22px",
                             borderRadius: "var(--radius-pill)",
@@ -5027,9 +4312,7 @@ export default function App() {
                         <>
                           <div
                             style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
+                              ...LAYOUT.between,
                               marginBottom: 24,
                               flexWrap: "wrap",
                               gap: 12,
@@ -5098,9 +4381,7 @@ export default function App() {
                                       style={{
                                         position: "absolute",
                                         inset: 0,
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
+                                        ...LAYOUT.center,
                                         backgroundColor: "rgba(253, 240, 226, 0.45)",
                                       }}
                                     >
@@ -5145,8 +4426,7 @@ export default function App() {
                                     </div>
                                     <div
                                       style={{
-                                        display: "inline-flex",
-                                        alignItems: "center",
+                                        ...LAYOUT.inlineRow,
                                         gap: 4,
                                         marginTop: 4,
                                         fontSize: 12,
@@ -5183,9 +4463,7 @@ export default function App() {
                                       border: "1px solid var(--border-light)",
                                       backgroundColor: "var(--bg-card)",
                                       color: "var(--maroon)",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
+                                      ...LAYOUT.center,
                                       cursor: "pointer",
                                       flexShrink: 0,
                                     }}
@@ -5196,9 +4474,7 @@ export default function App() {
                                 </div>
                                 <div
                                   style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
+                                    ...LAYOUT.between,
                                   }}
                                 >
                                   <span
@@ -5234,8 +4510,7 @@ export default function App() {
                                         .catch(() => { });
                                     }}
                                     style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
+                                      ...LAYOUT.inlineRow,
                                       gap: 8,
                                       cursor: "pointer",
                                       userSelect: "none",
@@ -5306,8 +4581,7 @@ export default function App() {
                                 onClick={openAddMenuModal}
                                 className="btn-interactive btn-lift"
                                 style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
+                                  ...LAYOUT.inlineRow,
                                   gap: 8,
                                   padding: "12px 24px",
                                   borderRadius: "var(--radius-pill)",
@@ -5367,9 +4641,7 @@ export default function App() {
                             borderRadius: "50%",
                             backgroundColor: "var(--bg-cream)",
                             color: "var(--maroon)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
+                            ...LAYOUT.center,
                             margin: "0 auto 14px",
                           }}
                         >
@@ -5408,9 +4680,7 @@ export default function App() {
                                 border: "1px solid var(--border-light)",
                                 padding: "16px 18px",
                                 backgroundColor: "var(--bg-card)",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
+                                ...LAYOUT.between,
                                 gap: 14,
                               }}
                             >
@@ -5424,9 +4694,7 @@ export default function App() {
                                     color: "var(--btn-solid-text)",
                                     fontSize: 12,
                                     fontWeight: 800,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
+                                    ...LAYOUT.center,
                                     flexShrink: 0,
                                   }}
                                 >
@@ -5435,8 +4703,7 @@ export default function App() {
                                 <div>
                                   <div
                                     style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
+                                      ...LAYOUT.inlineRow,
                                       gap: 5,
                                       marginBottom: 4,
                                       fontSize: 10.5,
@@ -5667,9 +4934,7 @@ export default function App() {
                                 border: "1px solid var(--border-light)",
                                 padding: "16px 20px",
                                 backgroundColor: "var(--bg-card)",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
+                                ...LAYOUT.between,
                                 gap: 12,
                               }}
                             >
@@ -5683,9 +4948,7 @@ export default function App() {
                                     color: isCancelled ? "var(--text-muted)" : "var(--btn-solid-text)",
                                     fontSize: 12,
                                     fontWeight: 900,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
+                                    ...LAYOUT.center,
                                     flexShrink: 0,
                                   }}
                                 >
@@ -5716,8 +4979,7 @@ export default function App() {
                                   {Array.isArray(order.reviews) && order.reviews.length > 0 && (
                                     <div
                                       style={{
-                                        display: "inline-flex",
-                                        alignItems: "center",
+                                        ...LAYOUT.inlineRow,
                                         gap: 5,
                                         marginTop: 4,
                                         fontSize: 11,
@@ -5741,8 +5003,7 @@ export default function App() {
                               <div className="order-row-actions" style={{ display: "flex", alignItems: "center", gap: 12 }}>
                                 <span
                                   style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
+                                    ...LAYOUT.inlineRow,
                                     gap: 6,
                                     padding: "5px 12px",
                                     borderRadius: "var(--radius-pill)",
@@ -5811,8 +5072,7 @@ export default function App() {
                               flexShrink: 0,
                               position: "relative",
                               minHeight: 310,
-                              display: "flex",
-                              alignItems: "center",
+                              ...LAYOUT.row,
                             }}
                           >
                             <div
@@ -5837,8 +5097,7 @@ export default function App() {
                               <div
                                 className="hero-slide-tag"
                                 style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
+                                  ...LAYOUT.inlineRow,
                                   gap: 6,
                                   padding: "4px 12px",
                                   borderRadius: "var(--radius-pill)",
@@ -5901,8 +5160,7 @@ export default function App() {
                                     fontSize: 14,
                                     fontWeight: 700,
                                     cursor: "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
+                                    ...LAYOUT.row,
                                     gap: 8,
                                     boxShadow: "0 4px 14px rgba(248, 163, 75, 0.4)",
                                     transition: "transform 0.15s ease",
@@ -5914,7 +5172,10 @@ export default function App() {
 
                                 <button
                                   className="hero-cta-btn"
-                                  onClick={() => setNavTab("tenant")}
+                                  onClick={() => {
+                                    const el = document.getElementById("tenant-directory");
+                                    el?.scrollIntoView({ behavior: "smooth" });
+                                  }}
                                   style={{
                                     padding: "12px 22px",
                                     borderRadius: "var(--radius-pill)",
@@ -5949,9 +5210,7 @@ export default function App() {
                           border: "1px solid rgba(82, 42, 40, 0.12)",
                           backgroundColor: "var(--bg-overlay-glass)",
                           color: "var(--maroon)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
+                          ...LAYOUT.center,
                           cursor: "pointer",
                           boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
                           transition: "background-color 0.2s ease, transform 0.2s ease",
@@ -5975,9 +5234,7 @@ export default function App() {
                           border: "1px solid rgba(82, 42, 40, 0.12)",
                           backgroundColor: "var(--bg-overlay-glass)",
                           color: "var(--maroon)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
+                          ...LAYOUT.center,
                           cursor: "pointer",
                           boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
                           transition: "background-color 0.2s ease, transform 0.2s ease",
@@ -5996,8 +5253,7 @@ export default function App() {
                           padding: "5px 14px",
                           borderRadius: "var(--radius-pill)",
                           backgroundColor: "var(--bg-overlay-glass)",
-                          display: "flex",
-                          alignItems: "center",
+                          ...LAYOUT.row,
                           gap: 8,
                           boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
                         }}
@@ -6105,9 +5361,7 @@ export default function App() {
                               }
                               className="card-hover"
                               style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
+                                ...LAYOUT.between,
                                 padding: "16px 20px",
                                 borderRadius: "var(--radius-md)",
                                 backgroundColor: isSelected ? "var(--orange-soft)" : "var(--bg-auth-page)",
@@ -6123,9 +5377,7 @@ export default function App() {
                                     borderRadius: 12,
                                     backgroundColor: "var(--bg-card)",
                                     border: "1px solid var(--border-light)",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
+                                    ...LAYOUT.center,
                                   }}
                                 >
                                   {cat.iconSvg}
@@ -6153,9 +5405,7 @@ export default function App() {
                                   borderRadius: "50%",
                                   backgroundColor: "var(--bg-card)",
                                   border: "1px solid var(--border-light)",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
+                                  ...LAYOUT.center,
                                 }}
                               >
                                 <ChevronRight size={16} color="var(--maroon)" />
@@ -6168,9 +5418,7 @@ export default function App() {
                     <div id="popular-menu-section" style={{ marginBottom: 40 }}>
                       <div
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
+                          ...LAYOUT.between,
                           marginBottom: 18,
                         }}
                       >
@@ -6195,8 +5443,7 @@ export default function App() {
                             fontSize: 14,
                             fontWeight: 700,
                             cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
+                            ...LAYOUT.row,
                             gap: 4,
                           }}
                         >
@@ -6259,8 +5506,7 @@ export default function App() {
                                     color: "#FFFFFF",
                                     fontSize: 11,
                                     fontWeight: 800,
-                                    display: "inline-flex",
-                                    alignItems: "center",
+                                    ...LAYOUT.inlineRow,
                                     gap: 5,
                                     boxShadow: "0 2px 8px rgba(220, 38, 38, 0.35)",
                                   }}
@@ -6289,9 +5535,7 @@ export default function App() {
                                   borderRadius: "50%",
                                   border: "none",
                                   backgroundColor: "var(--bg-overlay-glass)",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
+                                  ...LAYOUT.center,
                                   cursor: "pointer",
                                   boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
                                 }}
@@ -6310,8 +5554,7 @@ export default function App() {
                                   padding: "4px 8px",
                                   borderRadius: "var(--radius-pill)",
                                   backgroundColor: "var(--bg-card)",
-                                  display: "flex",
-                                  alignItems: "center",
+                                  ...LAYOUT.row,
                                   gap: 4,
                                   fontSize: 12,
                                   fontWeight: 700,
@@ -6347,8 +5590,7 @@ export default function App() {
                                 </h3>
                                 <div
                                   style={{
-                                    display: "flex",
-                                    alignItems: "center",
+                                    ...LAYOUT.row,
                                     gap: 6,
                                     fontSize: 12,
                                     color: "var(--text-muted)",
@@ -6371,8 +5613,7 @@ export default function App() {
                                       fontWeight: 700,
                                       color: "var(--maroon)",
                                       cursor: "pointer",
-                                      display: "inline-flex",
-                                      alignItems: "center",
+                                      ...LAYOUT.inlineRow,
                                       gap: 4,
                                       textDecoration: "underline",
                                       textUnderlineOffset: 2,
@@ -6405,9 +5646,7 @@ export default function App() {
                               </div>
                               <div
                                 style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "space-between",
+                                  ...LAYOUT.between,
                                   paddingTop: 10,
                                   borderTop: "1px solid var(--border-light)",
                                 }}
@@ -6432,9 +5671,7 @@ export default function App() {
                                     border: "none",
                                     backgroundColor: itemTenantOpen ? "var(--orange)" : "#9CA3AF",
                                     color: "#FFFFFF",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
+                                    ...LAYOUT.center,
                                     cursor: "pointer",
                                     boxShadow: itemTenantOpen ? "0 3px 8px rgba(248, 163, 75, 0.4)" : "none",
                                   }}
@@ -6470,13 +5707,11 @@ export default function App() {
                     </div>
                   </div>
                 )}
-                {navTab === "tenant" && !activeTenantView && (
-                  <div className="container-app animate-fade" style={{ paddingTop: 32 }}>
+                {navTab === "home" && !activeTenantView && (
+                  <div id="tenant-directory" className="container-app animate-fade" style={{ paddingTop: 32 }}>
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
+                        ...LAYOUT.between,
                         marginBottom: 28,
                         flexWrap: "wrap",
                         gap: 14,
@@ -6501,8 +5736,7 @@ export default function App() {
                       <div
                         className="search-pill-box"
                         style={{
-                          display: "flex",
-                          alignItems: "center",
+                          ...LAYOUT.row,
                           backgroundColor: "var(--bg-card)",
                           borderRadius: "var(--radius-pill)",
                           padding: "5px 6px 5px 18px",
@@ -6533,9 +5767,7 @@ export default function App() {
                             border: "none",
                             backgroundColor: "var(--btn-solid-bg)",
                             color: "var(--btn-solid-text)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
+                            ...LAYOUT.center,
                             cursor: "pointer",
                           }}
                         >
@@ -6568,9 +5800,7 @@ export default function App() {
                               backgroundColor: "var(--bg-warm-img)",
                               overflow: "hidden",
                               position: "relative",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
+                              ...LAYOUT.center,
                             }}
                           >
                             <SafeImage
@@ -6589,9 +5819,7 @@ export default function App() {
                                   position: "absolute",
                                   inset: 0,
                                   backgroundColor: "rgba(25, 14, 13, 0.32)",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
+                                  ...LAYOUT.center,
                                   pointerEvents: "none",
                                 }}
                               >
@@ -6626,8 +5854,7 @@ export default function App() {
                                 color: tenantOpen ? "var(--maroon)" : "#FFFFFF",
                                 fontSize: 11,
                                 fontWeight: 800,
-                                display: "inline-flex",
-                                alignItems: "center",
+                                ...LAYOUT.inlineRow,
                                 gap: 5,
                                 boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
                               }}
@@ -6657,9 +5884,7 @@ export default function App() {
                           >
                             <div
                               style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
+                                ...LAYOUT.between,
                                 gap: 10,
                               }}
                             >
@@ -6695,8 +5920,7 @@ export default function App() {
                               </div>
                               <span
                                 style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
+                                  ...LAYOUT.inlineRow,
                                   gap: 4,
                                   fontSize: 13.5,
                                   fontWeight: 700,
@@ -6766,13 +5990,12 @@ export default function App() {
                     )}
                   </div>
                 )}
-                {navTab === "tenant" && activeTenantView && (
+                {navTab === "home" && activeTenantView && (
                   <div className="container-app animate-fade" style={{ paddingTop: 32 }}>
                     <button
                       onClick={() => setActiveTenantView(null)}
                       style={{
-                        display: "inline-flex",
-                        alignItems: "center",
+                        ...LAYOUT.inlineRow,
                         gap: 6,
                         padding: "8px 16px",
                         borderRadius: "var(--radius-pill)",
@@ -6791,9 +6014,7 @@ export default function App() {
 
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
+                        ...LAYOUT.between,
                         marginBottom: 24,
                         flexWrap: "wrap",
                         gap: 18,
@@ -6814,9 +6035,7 @@ export default function App() {
                             backgroundColor: "var(--bg-warm-img)",
                             border: "1px solid var(--border-light)",
                             flexShrink: 0,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
+                            ...LAYOUT.center,
                           }}
                         >
                           <SafeImage
@@ -6830,8 +6049,7 @@ export default function App() {
                           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
                             <span
                               style={{
-                                display: "inline-flex",
-                                alignItems: "center",
+                                ...LAYOUT.inlineRow,
                                 gap: 5,
                                 padding: "3px 10px",
                                 borderRadius: "var(--radius-pill)",
@@ -6848,8 +6066,7 @@ export default function App() {
                             </span>
                             <span
                               style={{
-                                display: "inline-flex",
-                                alignItems: "center",
+                                ...LAYOUT.inlineRow,
                                 gap: 5,
                                 padding: "3px 10px",
                                 borderRadius: "var(--radius-pill)",
@@ -6882,8 +6099,7 @@ export default function App() {
                             </span>
                             <span
                               style={{
-                                display: "inline-flex",
-                                alignItems: "center",
+                                ...LAYOUT.inlineRow,
                                 gap: 4,
                                 fontSize: 12.5,
                                 fontWeight: 800,
@@ -6915,8 +6131,7 @@ export default function App() {
                       <div
                         className="search-pill-box"
                         style={{
-                          display: "flex",
-                          alignItems: "center",
+                          ...LAYOUT.row,
                           backgroundColor: "var(--bg-card)",
                           borderRadius: "var(--radius-pill)",
                           padding: "5px 6px 5px 18px",
@@ -6945,9 +6160,7 @@ export default function App() {
                             border: "none",
                             backgroundColor: "var(--btn-solid-bg)",
                             color: "var(--btn-solid-text)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
+                            ...LAYOUT.center,
                           }}
                         >
                           <Search size={15} />
@@ -6964,8 +6177,7 @@ export default function App() {
                           backgroundColor: "#FEF2F2",
                           border: "1.5px solid #FCA5A5",
                           color: "#991B1B",
-                          display: "flex",
-                          alignItems: "center",
+                          ...LAYOUT.row,
                           gap: 12,
                         }}
                       >
@@ -6976,9 +6188,7 @@ export default function App() {
                             borderRadius: 10,
                             backgroundColor: "#FEE2E2",
                             color: "#DC2626",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
+                            ...LAYOUT.center,
                             flexShrink: 0,
                           }}
                         >
@@ -7010,9 +6220,7 @@ export default function App() {
                             borderRadius: "var(--radius-xl)",
                             border: activeTenantOpen ? "none" : "1px solid #FCA5A5",
                             padding: "18px 24px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
+                            ...LAYOUT.between,
                           }}
                         >
                           <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
@@ -7053,9 +6261,7 @@ export default function App() {
                                   borderRadius: "50%",
                                   border: "none",
                                   backgroundColor: "var(--bg-overlay-glass)",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
+                                  ...LAYOUT.center,
                                   cursor: "pointer",
                                   boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
                                 }}
@@ -7077,8 +6283,7 @@ export default function App() {
                                   fontSize: 12,
                                   fontWeight: 700,
                                   color: "var(--maroon)",
-                                  display: "flex",
-                                  alignItems: "center",
+                                  ...LAYOUT.row,
                                   gap: 4,
                                 }}
                               >
@@ -7102,8 +6307,7 @@ export default function App() {
                               </h3>
                               <div
                                 style={{
-                                  display: "flex",
-                                  alignItems: "center",
+                                  ...LAYOUT.row,
                                   gap: 6,
                                   fontSize: 14,
                                   color: "var(--text-muted)",
@@ -7155,9 +6359,7 @@ export default function App() {
                               border: "none",
                               backgroundColor: activeTenantOpen ? "var(--orange)" : "#9CA3AF",
                               color: "#FFFFFF",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
+                              ...LAYOUT.center,
                               cursor: "pointer",
                               boxShadow: activeTenantOpen ? "0 4px 12px rgba(248, 163, 75, 0.4)" : "none",
                             }}
@@ -7249,9 +6451,7 @@ export default function App() {
                             borderRadius: "50%",
                             backgroundColor: "var(--bg-cream)",
                             color: "var(--maroon)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
+                            ...LAYOUT.center,
                             margin: "0 auto 16px",
                           }}
                         >
@@ -7282,8 +6482,7 @@ export default function App() {
                           onClick={() => setNavTab("home")}
                           className="btn-interactive btn-lift"
                           style={{
-                            display: "inline-flex",
-                            alignItems: "center",
+                            ...LAYOUT.inlineRow,
                             gap: 8,
                             padding: "13px 28px",
                             borderRadius: "var(--radius-pill)",
@@ -7314,9 +6513,7 @@ export default function App() {
                         >
                           <div
                             style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
+                              ...LAYOUT.between,
                               position: "relative",
                             }}
                           >
@@ -7362,8 +6559,7 @@ export default function App() {
                                 <div
                                   key={s.step}
                                   style={{
-                                    display: "flex",
-                                    alignItems: "center",
+                                    ...LAYOUT.row,
                                     gap: 10,
                                     zIndex: 2,
                                     backgroundColor: "var(--bg-card)",
@@ -7384,9 +6580,7 @@ export default function App() {
                                           ? "var(--orange)"
                                           : "var(--bg-surface-muted)",
                                       color: isDone ? "var(--btn-solid-text)" : isActive ? "#FFFFFF" : "var(--text-muted)",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
+                                      ...LAYOUT.center,
                                       cursor: s.step < checkoutStep ? "pointer" : "default",
                                       transition: "all 0.2s ease",
                                     }}
@@ -7420,9 +6614,7 @@ export default function App() {
                             >
                               <div
                                 style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "space-between",
+                                  ...LAYOUT.between,
                                   marginBottom: 20,
                                 }}
                               >
@@ -7472,9 +6664,7 @@ export default function App() {
                                     <div
                                       key={item.id_menu}
                                       style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "space-between",
+                                        ...LAYOUT.between,
                                         paddingBottom: 16,
                                         borderBottom: "1px solid var(--border-light)",
                                       }}
@@ -7525,8 +6715,7 @@ export default function App() {
                                       <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
                                         <div
                                           style={{
-                                            display: "flex",
-                                            alignItems: "center",
+                                            ...LAYOUT.row,
                                             padding: "4px 10px",
                                             borderRadius: "var(--radius-pill)",
                                             border: "1px solid var(--border-input)",
@@ -7639,9 +6828,7 @@ export default function App() {
                                     backgroundColor: !selectedPromo ? "var(--bg-cream)" : "var(--bg-card)",
                                     border: !selectedPromo ? "1.5px solid var(--maroon)" : "1px solid var(--border-input)",
                                     cursor: "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
+                                    ...LAYOUT.between,
                                     fontSize: 13,
                                     fontWeight: 700,
                                     color: "var(--maroon)",
@@ -7663,9 +6850,7 @@ export default function App() {
                                         backgroundColor: isSelected ? "var(--orange-soft)" : "var(--bg-card)",
                                         border: isSelected ? "1.5px solid var(--orange)" : "1px solid var(--border-input)",
                                         cursor: "pointer",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "space-between",
+                                        ...LAYOUT.between,
                                       }}
                                     >
                                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -7675,9 +6860,7 @@ export default function App() {
                                             height: 32,
                                             borderRadius: 8,
                                             backgroundColor: isSelected ? "var(--orange)" : "var(--bg-cream)",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
+                                            ...LAYOUT.center,
                                             color: isSelected ? "#FFFFFF" : "var(--maroon)",
                                           }}
                                         >
@@ -7705,9 +6888,7 @@ export default function App() {
                                             height: 22,
                                             borderRadius: "50%",
                                             backgroundColor: "var(--btn-solid-bg)",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
+                                            ...LAYOUT.center,
                                           }}
                                         >
                                           <Check size={13} color="var(--btn-solid-text)" strokeWidth={3} />
@@ -7719,9 +6900,7 @@ export default function App() {
                                             height: 22,
                                             borderRadius: "50%",
                                             border: "1px solid var(--border-input)",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
+                                            ...LAYOUT.center,
                                           }}
                                         >
                                           <Plus size={13} color="var(--text-muted)" />
@@ -7800,9 +6979,7 @@ export default function App() {
                                   fontSize: 15,
                                   fontWeight: 800,
                                   cursor: "pointer",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
+                                  ...LAYOUT.center,
                                   gap: 8,
                                   boxShadow: "0 4px 14px rgba(248, 163, 75, 0.4)",
                                 }}
@@ -7839,9 +7016,7 @@ export default function App() {
                                     <div
                                       key={item.id_menu || item.id_detail}
                                       style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "space-between",
+                                        ...LAYOUT.between,
                                       }}
                                     >
                                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -8074,8 +7249,7 @@ export default function App() {
                                 <div
                                   role="alert"
                                   style={{
-                                    display: "flex",
-                                    alignItems: "center",
+                                    ...LAYOUT.row,
                                     gap: 8,
                                     textAlign: "left",
                                     padding: "11px 14px",
@@ -8107,9 +7281,7 @@ export default function App() {
                                   fontSize: 15,
                                   fontWeight: 800,
                                   cursor: "pointer",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
+                                  ...LAYOUT.center,
                                   gap: 8,
                                   boxShadow: "0 4px 14px rgba(248, 163, 75, 0.4)",
                                 }}
@@ -8160,8 +7332,7 @@ export default function App() {
                             >
                               <div
                                 style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
+                                  ...LAYOUT.inlineRow,
                                   gap: 6,
                                   padding: "4px 14px",
                                   borderRadius: "var(--radius-pill)",
@@ -8222,8 +7393,7 @@ export default function App() {
                               </div>
                               <div
                                 style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
+                                  ...LAYOUT.inlineRow,
                                   gap: 6,
                                   padding: "8px 18px",
                                   borderRadius: "var(--radius-pill)",
@@ -8285,9 +7455,7 @@ export default function App() {
                                 fontSize: 15,
                                 fontWeight: 800,
                                 cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
+                                ...LAYOUT.center,
                                 gap: 8,
                                 boxShadow: "var(--shadow-sm)",
                               }}
@@ -8312,9 +7480,7 @@ export default function App() {
                                   fontSize: 14,
                                   fontWeight: 800,
                                   cursor: "pointer",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
+                                  ...LAYOUT.center,
                                   gap: 8,
                                 }}
                               >
@@ -8333,8 +7499,7 @@ export default function App() {
                                       color: "#FFFFFF",
                                       fontSize: 11,
                                       fontWeight: 800,
-                                      display: "inline-flex",
-                                      alignItems: "center",
+                                      ...LAYOUT.inlineRow,
                                       justifyContent: "center",
                                     }}
                                   >
@@ -8446,9 +7611,7 @@ export default function App() {
                                 fontSize: 16,
                                 fontWeight: 800,
                                 cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
+                                ...LAYOUT.center,
                                 gap: 8,
                                 boxShadow: "0 4px 16px rgba(248, 163, 75, 0.4)",
                               }}
@@ -8472,9 +7635,7 @@ export default function App() {
                                   fontSize: 14,
                                   fontWeight: 700,
                                   cursor: "pointer",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
+                                  ...LAYOUT.center,
                                   gap: 8,
                                 }}
                               >
@@ -8620,9 +7781,7 @@ export default function App() {
                               className="order-row-card"
                               style={{
                                 padding: "18px 24px",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
+                                ...LAYOUT.between,
                                 gap: 14,
                                 borderBottom: idx !== arr.length - 1 ? "1px solid var(--border-light)" : "none",
                                 cursor: isInProgress ? "pointer" : "default",
@@ -8686,8 +7845,7 @@ export default function App() {
                               >
                                 <span
                                   style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
+                                    ...LAYOUT.inlineRow,
                                     gap: 6,
                                     padding: "5px 14px",
                                     borderRadius: "var(--radius-pill)",
@@ -8734,8 +7892,7 @@ export default function App() {
                                         fontSize: 12,
                                         fontWeight: 700,
                                         cursor: "pointer",
-                                        display: "inline-flex",
-                                        alignItems: "center",
+                                        ...LAYOUT.inlineRow,
                                         gap: 4,
                                       }}
                                     >
@@ -8782,8 +7939,7 @@ export default function App() {
                                           fontSize: 12,
                                           fontWeight: 800,
                                           cursor: "pointer",
-                                          display: "inline-flex",
-                                          alignItems: "center",
+                                          ...LAYOUT.inlineRow,
                                           gap: 4,
                                         }}
                                       >
@@ -8794,8 +7950,7 @@ export default function App() {
                                     {order.status === "Completed" && order.has_reviewed && (
                                       <span
                                         style={{
-                                          display: "inline-flex",
-                                          alignItems: "center",
+                                          ...LAYOUT.inlineRow,
                                           gap: 4,
                                           fontSize: 12,
                                           fontWeight: 700,
@@ -8822,8 +7977,7 @@ export default function App() {
                                         cursor: "pointer",
                                         color: "var(--text-muted)",
                                         padding: 4,
-                                        display: "inline-flex",
-                                        alignItems: "center",
+                                        ...LAYOUT.inlineRow,
                                         gap: 4,
                                         fontSize: 12,
                                         fontWeight: 700,
@@ -8853,9 +8007,7 @@ export default function App() {
                 zIndex: 1250,
                 backgroundColor: "var(--backdrop)",
                 backdropFilter: "blur(5px)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                ...LAYOUT.center,
                 padding: 20,
               }}
               className="animate-fade"
@@ -8907,9 +8059,7 @@ export default function App() {
                       border: "1px solid var(--border-light)",
                       backgroundColor: "var(--bg-card)",
                       color: "var(--maroon)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      ...LAYOUT.center,
                       cursor: "pointer",
                     }}
                     aria-label="Close edit modal"
@@ -8922,8 +8072,7 @@ export default function App() {
                     backgroundColor: "var(--bg-subtle)",
                     borderRadius: 16,
                     padding: "12px 14px",
-                    display: "flex",
-                    alignItems: "center",
+                    ...LAYOUT.row,
                     gap: 14,
                     marginBottom: 18,
                   }}
@@ -9098,9 +8247,7 @@ export default function App() {
                       borderRadius: 16,
                       border: "1px solid var(--border-light)",
                       padding: "14px 16px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
+                      ...LAYOUT.between,
                       gap: 12,
                     }}
                   >
@@ -9136,8 +8283,7 @@ export default function App() {
                         }))
                       }
                       style={{
-                        display: "inline-flex",
-                        alignItems: "center",
+                        ...LAYOUT.inlineRow,
                         gap: 8,
                         cursor: "pointer",
                         userSelect: "none",
@@ -9243,8 +8389,7 @@ export default function App() {
                       fontSize: 12,
                       fontWeight: 700,
                       cursor: "pointer",
-                      display: "inline-flex",
-                      alignItems: "center",
+                      ...LAYOUT.inlineRow,
                       justifyContent: "center",
                       gap: 6,
                       paddingTop: 4,
@@ -9266,9 +8411,7 @@ export default function App() {
                 zIndex: 1150,
                 backgroundColor: "rgba(42, 24, 18, 0.45)",
                 backdropFilter: "blur(5px)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                ...LAYOUT.center,
                 padding: 20,
               }}
               onClick={() => setIsAddMenuOpen(false)}
@@ -9317,9 +8460,7 @@ export default function App() {
                       border: "none",
                       backgroundColor: "var(--bg-cream)",
                       color: "var(--maroon)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      ...LAYOUT.center,
                       cursor: "pointer",
                     }}
                   >
@@ -9386,8 +8527,7 @@ export default function App() {
                         color: "var(--alert-error-text)",
                         fontSize: 12,
                         fontWeight: 600,
-                        display: "flex",
-                        alignItems: "center",
+                        ...LAYOUT.row,
                         gap: 8,
                       }}
                     >
@@ -9677,9 +8817,7 @@ export default function App() {
                         borderRadius: "50%",
                         cursor: "pointer",
                         color: "var(--maroon)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        ...LAYOUT.center,
                       }}
                       aria-label="Close menu"
                     >
@@ -9703,9 +8841,7 @@ export default function App() {
                         color: "var(--maroon)",
                         fontSize: 24,
                         fontWeight: 900,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        ...LAYOUT.center,
                         margin: "0 auto 10px",
                         overflow: "hidden",
                         boxShadow: "0 4px 14px rgba(82, 42, 40, 0.1)",
@@ -9770,9 +8906,7 @@ export default function App() {
                             border: "none",
                             borderBottom: idx !== arr.length - 1 ? "1px solid var(--border-light)" : "none",
                             backgroundColor: "var(--bg-card)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
+                            ...LAYOUT.between,
                             cursor: "pointer",
                           }}
                         >
@@ -9783,9 +8917,7 @@ export default function App() {
                                 height: 34,
                                 borderRadius: 10,
                                 backgroundColor: "var(--bg-cream)",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
+                                ...LAYOUT.center,
                                 color: "var(--maroon)",
                                 transition: "transform 0.2s ease",
                               }}
@@ -9823,9 +8955,7 @@ export default function App() {
                       fontSize: 14,
                       fontWeight: 700,
                       cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      ...LAYOUT.center,
                       gap: 8,
                       boxShadow: "0 4px 12px rgba(82, 42, 40, 0.25)",
                     }}
@@ -9846,9 +8976,7 @@ export default function App() {
                 zIndex: 1150,
                 backgroundColor: "rgba(42, 24, 18, 0.45)",
                 backdropFilter: "blur(5px)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                ...LAYOUT.center,
                 padding: 20,
               }}
               onClick={() => setActiveDrawerModal(null)}
@@ -9907,9 +9035,7 @@ export default function App() {
                       border: "none",
                       backgroundColor: "var(--bg-cream)",
                       color: "var(--maroon)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      ...LAYOUT.center,
                       cursor: "pointer",
                       flexShrink: 0,
                     }}
@@ -9929,6 +9055,10 @@ export default function App() {
                     }}
                     onSubmit={async (e) => {
                       e.preventDefault();
+                      if (deleteAccountMode) {
+                        await handleDeleteAccount();
+                        return;
+                      }
                       setProfileAlert({ type: "", text: "" });
                       const emailChanged =
                         String(profileForm.email || "").trim().toLowerCase() !==
@@ -9994,8 +9124,7 @@ export default function App() {
                             fontSize: 12,
                             fontWeight: 600,
                             marginBottom: 18,
-                            display: "flex",
-                            alignItems: "center",
+                            ...LAYOUT.row,
                             gap: 8,
                           }}
                         >
@@ -10232,8 +9361,7 @@ export default function App() {
                                 <label
                                   key={g.val}
                                   style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
+                                    ...LAYOUT.inlineRow,
                                     gap: 7,
                                     fontSize: 13,
                                     color: "var(--maroon)",
@@ -10294,9 +9422,7 @@ export default function App() {
                               backgroundColor: "var(--bg-cream)",
                               border: "3px solid #EDD1B4",
                               overflow: "hidden",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
+                              ...LAYOUT.center,
                               fontSize: 32,
                               fontWeight: 900,
                               color: "var(--maroon)",
@@ -10360,6 +9486,152 @@ export default function App() {
                         </div>
                       )}
                       </div>
+
+                      <div
+                        style={{
+                          marginTop: 22,
+                          padding: "16px 18px",
+                          borderRadius: 14,
+                          border: "1px solid var(--alert-error-border)",
+                          backgroundColor: "var(--alert-error-bg)",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                          <Trash2 size={16} color="var(--alert-error-text)" />
+                          <span style={{ fontSize: 14, fontWeight: 800, color: "var(--alert-error-text)" }}>
+                            {lang === "EN" ? "Delete Account" : "Hapus Akun"}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: 12, lineHeight: 1.6, color: "var(--alert-error-text)", margin: 0 }}>
+                          {lang === "EN"
+                            ? "Deleting your account is permanent. Your profile, orders, reviews, and chat history will be removed and cannot be restored."
+                            : "Menghapus akun bersifat permanen. Profil, pesanan, ulasan, dan riwayat chat Anda akan dihapus dan tidak dapat dikembalikan."}
+                        </p>
+
+                        {deleteAccountMode ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
+                            {!currentUser?.google_linked && (
+                              <input
+                                type="password"
+                                value={deleteAccountForm.password}
+                                onChange={(e) =>
+                                  setDeleteAccountForm((p) => ({ ...p, password: e.target.value }))
+                                }
+                                placeholder={lang === "EN" ? "Your account password" : "Password akun Anda"}
+                                autoComplete="current-password"
+                                style={{
+                                  width: "100%",
+                                  padding: "10px 14px",
+                                  borderRadius: 10,
+                                  border: "1px solid var(--alert-error-border)",
+                                  backgroundColor: "var(--bg-card)",
+                                  fontSize: 13,
+                                  color: "var(--maroon)",
+                                  outline: "none",
+                                }}
+                              />
+                            )}
+                            <input
+                              type="text"
+                              value={deleteAccountForm.confirm}
+                              onChange={(e) =>
+                                setDeleteAccountForm((p) => ({ ...p, confirm: e.target.value }))
+                              }
+                              placeholder={
+                                lang === "EN" ? 'Type "DELETE ACCOUNT"' : 'Ketik "HAPUS AKUN"'
+                              }
+                              style={{
+                                width: "100%",
+                                padding: "10px 14px",
+                                borderRadius: 10,
+                                border: "1px solid var(--alert-error-border)",
+                                backgroundColor: "var(--bg-card)",
+                                fontSize: 13,
+                                color: "var(--maroon)",
+                                outline: "none",
+                              }}
+                            />
+                            {deleteAccountError && (
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--alert-error-text)" }}>
+                                {deleteAccountError}
+                              </div>
+                            )}
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeleteAccountMode(false);
+                                  setDeleteAccountForm({ password: "", confirm: "" });
+                                  setDeleteAccountError("");
+                                }}
+                                className="btn-interactive"
+                                style={{
+                                  padding: "9px 18px",
+                                  borderRadius: "var(--radius-pill)",
+                                  border: "1px solid var(--alert-error-border)",
+                                  backgroundColor: "var(--bg-card)",
+                                  color: "var(--alert-error-text)",
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {lang === "EN" ? "Cancel" : "Batal"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleDeleteAccount}
+                                disabled={
+                                  deletingAccount ||
+                                  !["HAPUS AKUN", "DELETE ACCOUNT"].includes(
+                                    deleteAccountForm.confirm.trim().toUpperCase().replace(/\s+/g, " ")
+                                  ) ||
+                                  (!currentUser?.google_linked && !deleteAccountForm.password)
+                                }
+                                className="btn-interactive"
+                                style={{
+                                  padding: "9px 18px",
+                                  borderRadius: "var(--radius-pill)",
+                                  border: "none",
+                                  backgroundColor: "#C84336",
+                                  color: "#FFFFFF",
+                                  fontSize: 13,
+                                  fontWeight: 800,
+                                  cursor: deletingAccount ? "wait" : "pointer",
+                                  opacity: deletingAccount ? 0.7 : 1,
+                                }}
+                              >
+                                {deletingAccount
+                                  ? lang === "EN"
+                                    ? "Deleting..."
+                                    : "Menghapus..."
+                                  : lang === "EN"
+                                    ? "Delete permanently"
+                                    : "Hapus permanen"}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDeleteAccountMode(true)}
+                            className="btn-interactive"
+                            style={{
+                              marginTop: 12,
+                              padding: "9px 18px",
+                              borderRadius: "var(--radius-pill)",
+                              border: "1px solid var(--alert-error-border)",
+                              backgroundColor: "var(--bg-card)",
+                              color: "var(--alert-error-text)",
+                              fontSize: 13,
+                              fontWeight: 800,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {lang === "EN" ? "Delete my account" : "Hapus akun saya"}
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div
@@ -10368,8 +9640,8 @@ export default function App() {
                         padding: "14px 28px",
                         borderTop: "1px solid var(--border-light)",
                         backgroundColor: "var(--bg-card)",
-                        display: "flex",
-                        alignItems: "center",
+                        ...LAYOUT.row,
+                        display: deleteAccountMode ? "none" : "flex",
                         justifyContent: "flex-end",
                       }}
                     >
@@ -10414,9 +9686,7 @@ export default function App() {
                                 setActiveDrawerModal(null);
                               }}
                               style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
+                                ...LAYOUT.between,
                                 padding: "10px 12px",
                                 borderRadius: 12,
                                 border: "1px solid var(--border-light)",
@@ -10620,9 +9890,7 @@ export default function App() {
                     backgroundColor: "var(--bg-cream)",
                     cursor: "pointer",
                     color: "var(--maroon)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
+                    ...LAYOUT.center,
                   }}
                   aria-label="Close"
                 >
@@ -10666,9 +9934,7 @@ export default function App() {
                         borderRadius: "50%",
                         border: "none",
                         backgroundColor: "var(--bg-overlay-glass)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        ...LAYOUT.center,
                         cursor: "pointer",
                         boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
                       }}
@@ -10687,8 +9953,7 @@ export default function App() {
                         padding: "4px 10px",
                         borderRadius: "var(--radius-pill)",
                         backgroundColor: "var(--bg-card)",
-                        display: "flex",
-                        alignItems: "center",
+                        ...LAYOUT.row,
                         gap: 4,
                         fontSize: 12,
                         fontWeight: 700,
@@ -10712,8 +9977,7 @@ export default function App() {
                     <div>
                       <div
                         style={{
-                          display: "flex",
-                          alignItems: "center",
+                          ...LAYOUT.row,
                           gap: 8,
                           fontSize: 13,
                           color: "var(--text-muted)",
@@ -10727,8 +9991,7 @@ export default function App() {
                           className="btn-interactive"
                           title={lang === "EN" ? `View ${activeMenuDetail.tenant_name} menu` : `Lihat menu ${activeMenuDetail.tenant_name}`}
                           style={{
-                            display: "inline-flex",
-                            alignItems: "center",
+                            ...LAYOUT.inlineRow,
                             gap: 5,
                             padding: "4px 10px",
                             borderRadius: "var(--radius-pill)",
@@ -10806,9 +10069,7 @@ export default function App() {
                           borderTop: "1px solid var(--border-light)",
                           paddingTop: 14,
                           marginBottom: 16,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
+                          ...LAYOUT.between,
                         }}
                       >
                         <div>
@@ -10827,8 +10088,7 @@ export default function App() {
 
                         <div
                           style={{
-                            display: "flex",
-                            alignItems: "center",
+                            ...LAYOUT.row,
                             padding: "5px 12px",
                             borderRadius: "var(--radius-pill)",
                             border: "1px solid var(--border-input)",
@@ -10843,9 +10103,7 @@ export default function App() {
                               background: "transparent",
                               cursor: "pointer",
                               padding: 4,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
+                              ...LAYOUT.center,
                             }}
                           >
                             <Minus size={15} color="var(--maroon)" />
@@ -10869,9 +10127,7 @@ export default function App() {
                               background: "transparent",
                               cursor: "pointer",
                               padding: 4,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
+                              ...LAYOUT.center,
                             }}
                           >
                             <Plus size={15} color="var(--maroon)" />
@@ -10915,9 +10171,7 @@ export default function App() {
                           fontSize: 15,
                           fontWeight: 800,
                           cursor: isItemTenantOpen(activeMenuDetail) ? "pointer" : "not-allowed",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
+                          ...LAYOUT.center,
                           gap: 10,
                           boxShadow: isItemTenantOpen(activeMenuDetail) ? "0 4px 14px rgba(248, 163, 75, 0.4)" : "none",
                         }}
@@ -10989,9 +10243,7 @@ export default function App() {
                 <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 18 }}>
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
+                      ...LAYOUT.between,
                       marginBottom: 12,
                     }}
                   >
@@ -11088,8 +10340,7 @@ export default function App() {
               className="header-lang-btn"
               onClick={() => changeLanguage(lang === "ID" ? "EN" : "ID")}
               style={{
-                display: "flex",
-                alignItems: "center",
+                ...LAYOUT.row,
                 gap: 6,
                 minWidth: 74,
                 justifyContent: "center",
@@ -11199,9 +10450,7 @@ export default function App() {
                   borderRadius: "50%",
                   cursor: "pointer",
                   color: "var(--text-muted)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  ...LAYOUT.center,
                 }}
               >
                 <X size={16} />
@@ -11323,8 +10572,7 @@ export default function App() {
                   fontSize: 12,
                   fontWeight: 600,
                   marginBottom: 12,
-                  display: "flex",
-                  alignItems: "center",
+                  ...LAYOUT.row,
                   gap: 8,
                   flexShrink: 0,
                 }}
@@ -11345,8 +10593,7 @@ export default function App() {
                   fontSize: 12,
                   fontWeight: 600,
                   marginBottom: 12,
-                  display: "flex",
-                  alignItems: "center",
+                  ...LAYOUT.row,
                   gap: 8,
                   flexShrink: 0,
                 }}
@@ -11378,8 +10625,7 @@ export default function App() {
                 </label>
                 <div
                   style={{
-                    display: "flex",
-                    alignItems: "center",
+                    ...LAYOUT.row,
                     gap: 10,
                     padding: "10px 14px",
                     borderRadius: "var(--radius-md)",
@@ -11428,8 +10674,7 @@ export default function App() {
                     </label>
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
+                        ...LAYOUT.row,
                         gap: 10,
                         padding: "10px 14px",
                         borderRadius: "var(--radius-md)",
@@ -11476,8 +10721,7 @@ export default function App() {
                     </label>
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
+                        ...LAYOUT.row,
                         gap: 10,
                         padding: "10px 14px",
                         borderRadius: "var(--radius-md)",
@@ -11529,8 +10773,7 @@ export default function App() {
                       </label>
                       <div
                         style={{
-                          display: "flex",
-                          alignItems: "center",
+                          ...LAYOUT.row,
                           gap: 10,
                           padding: "10px 14px",
                           borderRadius: "var(--radius-md)",
@@ -11563,8 +10806,7 @@ export default function App() {
                       </label>
                       <div
                         style={{
-                          display: "flex",
-                          alignItems: "center",
+                          ...LAYOUT.row,
                           gap: 10,
                           padding: "10px 14px",
                           borderRadius: "var(--radius-md)",
@@ -11597,9 +10839,7 @@ export default function App() {
                             background: "transparent",
                             cursor: "pointer",
                             color: "var(--text-muted)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
+                            ...LAYOUT.center,
                             padding: 0,
                             flexShrink: 0,
                           }}
@@ -11617,8 +10857,7 @@ export default function App() {
                   </label>
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "center",
+                      ...LAYOUT.row,
                       gap: 10,
                       padding: "10px 14px",
                       borderRadius: "var(--radius-md)",
@@ -11651,9 +10890,7 @@ export default function App() {
                         background: "transparent",
                         cursor: "pointer",
                         color: "var(--text-muted)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        ...LAYOUT.center,
                         padding: 0,
                         flexShrink: 0,
                       }}
@@ -11731,9 +10968,7 @@ export default function App() {
                         fontSize: 13,
                         fontWeight: 800,
                         cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        ...LAYOUT.center,
                         gap: 10,
                       }}
                     >
@@ -11992,9 +11227,7 @@ export default function App() {
             zIndex: 1300,
             backgroundColor: "var(--backdrop)",
             backdropFilter: "blur(5px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            ...LAYOUT.center,
             padding: 20,
           }}
           onClick={() => setIsStoreSettingsOpen(false)}
@@ -12048,9 +11281,7 @@ export default function App() {
                   width: 34,
                   height: 34,
                   cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  ...LAYOUT.center,
                   flexShrink: 0,
                 }}
               >
@@ -12097,8 +11328,7 @@ export default function App() {
                 {/* Tenant Profile Picture (PP) moved from My Profile */}
                 <div
                   style={{
-                    display: "flex",
-                    alignItems: "center",
+                    ...LAYOUT.row,
                     gap: 18,
                     padding: "14px 16px",
                     borderRadius: 16,
@@ -12114,9 +11344,7 @@ export default function App() {
                       backgroundColor: "var(--bg-cream)",
                       border: "3px solid #EDD1B4",
                       overflow: "hidden",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      ...LAYOUT.center,
                       fontSize: 24,
                       fontWeight: 900,
                       color: "var(--maroon)",
@@ -12142,8 +11370,7 @@ export default function App() {
                     <label
                       className="btn-interactive"
                       style={{
-                        display: "inline-flex",
-                        alignItems: "center",
+                        ...LAYOUT.inlineRow,
                         gap: 6,
                         padding: "8px 16px",
                         borderRadius: "var(--radius-pill)",
@@ -12299,9 +11526,7 @@ export default function App() {
             zIndex: 1300,
             backgroundColor: "var(--backdrop)",
             backdropFilter: "blur(5px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            ...LAYOUT.center,
             padding: 20,
           }}
           onClick={() => setIsPromoModalOpen(false)}
@@ -12448,9 +11673,7 @@ export default function App() {
             zIndex: 1350,
             backgroundColor: "var(--backdrop)",
             backdropFilter: "blur(5px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            ...LAYOUT.center,
             padding: 20,
           }}
           onClick={() => setCancelTarget(null)}
@@ -12511,9 +11734,7 @@ export default function App() {
             zIndex: 1350,
             backgroundColor: "var(--backdrop)",
             backdropFilter: "blur(5px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            ...LAYOUT.center,
             padding: 20,
           }}
           onClick={() => setReviewTarget(null)}
@@ -12600,9 +11821,7 @@ export default function App() {
             zIndex: 1400,
             backgroundColor: "var(--backdrop)",
             backdropFilter: "blur(5px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            ...LAYOUT.center,
             padding: 16,
           }}
           onClick={() => {
@@ -12631,9 +11850,7 @@ export default function App() {
               style={{
                 padding: "16px 20px",
                 borderBottom: "1px solid var(--border-light)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
+                ...LAYOUT.between,
                 gap: 12,
                 flexShrink: 0,
               }}
@@ -12698,9 +11915,7 @@ export default function App() {
                   width: 32,
                   height: 32,
                   cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  ...LAYOUT.center,
                   flexShrink: 0,
                 }}
               >
@@ -12748,6 +11963,15 @@ export default function App() {
                 chatMessages.map((msg) => {
                   const isMine = Number(msg.id_pengirim) === Number(currentUser?.id_user);
                   const timeShort = msg.waktu ? String(msg.waktu).slice(11, 16) : "";
+                  // Tanda dibaca dua arah: status dihitung dari lawan bicara
+                  // (customer melihat tenant, tenant melihat customer).
+                  const counterpartId =
+                    portalMode === "tenant" ? chatOrder?.customer_id : chatOrder?.tenant_user_id;
+                  const isReadByCounterpart =
+                    isMine &&
+                    Boolean(counterpartId) &&
+                    Array.isArray(msg.dibaca_oleh) &&
+                    msg.dibaca_oleh.some((id) => Number(id) === Number(counterpartId));
                   return (
                     <div
                       key={msg.id_pesan}
@@ -12805,8 +12029,39 @@ export default function App() {
                         )}
                       </div>
                       {timeShort && (
-                        <div className="tabular" style={{ fontSize: 10, color: "var(--text-light)", marginTop: 3, padding: "0 4px" }}>
-                          {timeShort}
+                        <div
+                          className="tabular"
+                          style={{
+                            fontSize: 10,
+                            color: "var(--text-light)",
+                            marginTop: 3,
+                            padding: "0 4px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          <span>{timeShort}</span>
+                          {isMine && (
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 2,
+                                fontWeight: 800,
+                                color: isReadByCounterpart ? "var(--orange)" : "var(--text-light)",
+                              }}
+                            >
+                              {isReadByCounterpart ? <CheckCheck size={11} /> : <Check size={11} />}
+                              {isReadByCounterpart
+                                ? lang === "EN"
+                                  ? "Read"
+                                  : "Dibaca"
+                                : lang === "EN"
+                                  ? "Sent"
+                                  : "Terkirim"}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -12837,8 +12092,7 @@ export default function App() {
                   padding: "10px 16px 0",
                   backgroundColor: "var(--bg-card)",
                   borderTop: "1px solid var(--border-light)",
-                  display: "flex",
-                  alignItems: "center",
+                  ...LAYOUT.row,
                   gap: 10,
                 }}
               >
@@ -12871,9 +12125,7 @@ export default function App() {
                       border: "none",
                       backgroundColor: "#C84336",
                       color: "#FFFFFF",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      ...LAYOUT.center,
                       cursor: "pointer",
                     }}
                   >
@@ -12892,8 +12144,7 @@ export default function App() {
                 padding: "12px 14px",
                 borderTop: chatImage ? "none" : "1px solid var(--border-light)",
                 backgroundColor: "var(--bg-card)",
-                display: "flex",
-                alignItems: "center",
+                ...LAYOUT.row,
                 gap: 8,
                 flexShrink: 0,
               }}
@@ -12922,8 +12173,7 @@ export default function App() {
                   border: "1px solid var(--border-input)",
                   backgroundColor: "var(--bg-subtle)",
                   color: "var(--maroon)",
-                  display: "inline-flex",
-                  alignItems: "center",
+                  ...LAYOUT.inlineRow,
                   justifyContent: "center",
                   cursor: "pointer",
                   flexShrink: 0,
@@ -12984,8 +12234,7 @@ export default function App() {
                       ? "var(--dot-inactive)"
                       : "var(--orange)",
                   color: "#FFFFFF",
-                  display: "inline-flex",
-                  alignItems: "center",
+                  ...LAYOUT.inlineRow,
                   justifyContent: "center",
                   cursor: chatSending || (!chatText.trim() && !chatImage) ? "not-allowed" : "pointer",
                   flexShrink: 0,
@@ -13005,9 +12254,7 @@ export default function App() {
             inset: 0,
             zIndex: 1500,
             backgroundColor: "rgba(0, 0, 0, 0.84)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            ...LAYOUT.center,
             padding: 20,
           }}
           onClick={() => setChatPreviewImage("")}
@@ -13026,9 +12273,7 @@ export default function App() {
               border: "none",
               backgroundColor: "rgba(255,255,255,0.2)",
               color: "#FFFFFF",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+              ...LAYOUT.center,
               cursor: "pointer",
             }}
           >
@@ -13090,9 +12335,7 @@ export default function App() {
                 borderRadius: "50%",
                 backgroundColor: "var(--orange)",
                 color: "#FFFFFF",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                ...LAYOUT.center,
                 flexShrink: 0,
               }}
             >
@@ -13113,8 +12356,7 @@ export default function App() {
                     color: "#FFFFFF",
                     fontSize: 10.5,
                     fontWeight: 900,
-                    display: "inline-flex",
-                    alignItems: "center",
+                    ...LAYOUT.inlineRow,
                     justifyContent: "center",
                     border: "2px solid #FFFFFF",
                   }}
@@ -13162,9 +12404,7 @@ export default function App() {
               borderRadius: 12,
               backgroundColor: "var(--orange-soft)",
               color: "var(--orange-dark)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+              ...LAYOUT.center,
               flexShrink: 0,
             }}
           >
@@ -13260,8 +12500,7 @@ export default function App() {
             fontSize: 13,
             fontWeight: 700,
             boxShadow: "0 10px 28px rgba(0, 0, 0, 0.22)",
-            display: "flex",
-            alignItems: "center",
+            ...LAYOUT.row,
             gap: 10,
           }}
         >

@@ -6,6 +6,8 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // theme.json berada di root repo (dipakai bersama admin).
+    fs: { allow: [".."] },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8000',

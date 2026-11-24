@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -7,8 +7,10 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { api } from "../services/api.js";
+import { readAndCompressImageFile } from "../utils/image.js";
 import Modal from "../components/Modal.jsx";
 import { useI18n } from "../i18n.jsx";
 
@@ -42,6 +44,8 @@ export default function BannersPage() {
   const [saving, setSaving] = useState(false);
   const [toggleId, setToggleId] = useState("");
   const [deleting, setDeleting] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const imageInputRef = useRef(null);
 
   const loadBanners = useCallback(async () => {
     setLoading(true);
@@ -94,13 +98,36 @@ export default function BannersPage() {
     setFormError("");
   };
 
+  const handleImageFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setFormError("");
+    setUploadingImage(true);
+    try {
+      const dataUrl = await readAndCompressImageFile(file, 1600, 0.82);
+      setForm((prev) => ({ ...prev, gambar: dataUrl }));
+    } catch (err) {
+      setFormError(err?.message || t("Gagal memproses gambar."));
+    } finally {
+      setUploadingImage(false);
+      event.target.value = "";
+    }
+  };
+
   const handleSave = async () => {
     if (form.judul.trim().length < 2) {
       setFormError(t("Judul banner minimal 2 karakter."));
       return;
     }
-    if (!/^(https?:\/\/|\/)/i.test(form.gambar.trim())) {
-      setFormError(t("URL gambar harus diawali http(s):// atau /."));
+    const imageValue = form.gambar.trim();
+    if (!imageValue) {
+      setFormError(t("Foto banner wajib diunggah atau diisi URL-nya."));
+      return;
+    }
+    if (!/^(https?:\/\/|\/|data:image\/(png|jpe?g|webp|gif);base64,)/i.test(imageValue)) {
+      setFormError(
+        t("Foto banner harus berupa file JPG/PNG/WEBP/GIF atau URL http(s):// yang valid.")
+      );
       return;
     }
 
@@ -108,7 +135,7 @@ export default function BannersPage() {
       tag: form.tag.trim(),
       judul: form.judul.trim(),
       deskripsi: form.deskripsi.trim(),
-      gambar: form.gambar.trim(),
+      gambar: imageValue,
       cta_primary: form.cta_primary.trim(),
       cta_secondary: form.cta_secondary.trim(),
       tag_en: form.tag_en.trim(),
@@ -331,19 +358,63 @@ export default function BannersPage() {
               className="admin-banner-preview"
               style={form.gambar ? { backgroundImage: `url('${form.gambar}')` } : undefined}
             >
-              {!form.gambar && <span>{t("Masukkan URL gambar untuk melihat pratinjau")}</span>}
+              {!form.gambar && <span>{t("Unggah foto atau tempel URL untuk melihat pratinjau")}</span>}
             </div>
           </label>
 
+          <div className="admin-field admin-field-full">
+            <span className="admin-label">{t("Foto banner")}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                data-testid="banner-image-input"
+                style={{ display: "none" }}
+                onChange={handleImageFile}
+              />
+              <button
+                type="button"
+                className="admin-secondary-btn btn-interactive"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={uploadingImage || saving}
+              >
+                <Upload size={14} strokeWidth={2.4} />
+                {uploadingImage ? t("Memproses foto…") : t("Unggah foto")}
+              </button>
+              {form.gambar ? (
+                <button
+                  type="button"
+                  className="admin-ghost-btn btn-interactive"
+                  onClick={() => setForm((prev) => ({ ...prev, gambar: "" }))}
+                  disabled={uploadingImage || saving}
+                >
+                  <Trash2 size={13} strokeWidth={2.4} />
+                  {t("Hapus foto")}
+                </button>
+              ) : null}
+            </div>
+            <p className="admin-empty-text" style={{ padding: 0, margin: 0 }}>
+              {t(
+                "Unggah file JPG, PNG, WEBP, atau GIF dari perangkat. Foto otomatis dikompres agar ringan."
+              )}
+            </p>
+          </div>
+
           <label className="admin-field admin-field-full">
-            <span className="admin-label">{t("URL gambar")}</span>
+            <span className="admin-label">{t("atau tempel URL gambar")}</span>
             <input
               className="admin-input"
-              type="url"
-              value={form.gambar}
+              type="text"
+              value={form.gambar.startsWith("data:image/") ? "" : form.gambar}
               placeholder="https://images.unsplash.com/..."
               onChange={(event) => setForm((prev) => ({ ...prev, gambar: event.target.value }))}
             />
+            {form.gambar.startsWith("data:image/") ? (
+              <p className="admin-empty-text" style={{ padding: 0, margin: 0 }}>
+                {t("Foto dari perangkat sudah terpasang. Isi kolom ini untuk menggantinya dengan URL.")}
+              </p>
+            ) : null}
           </label>
 
           <label className="admin-field">

@@ -331,6 +331,20 @@ export const EN = {
   "Banner tampil paling atas di beranda customer.": "The banner appears at the top of the customer home.",
   "Pratinjau gambar": "Image preview",
   "Masukkan URL gambar untuk melihat pratinjau": "Enter an image URL to see the preview",
+  "Unggah foto atau tempel URL untuk melihat pratinjau": "Upload a photo or paste a URL to see the preview",
+  "Foto banner": "Banner photo",
+  "Unggah foto": "Upload photo",
+  "Memproses foto…": "Processing photo…",
+  "Hapus foto": "Remove photo",
+  "Unggah file JPG, PNG, WEBP, atau GIF dari perangkat. Foto otomatis dikompres agar ringan.":
+    "Upload a JPG, PNG, WEBP, or GIF file from your device. The photo is compressed automatically to keep it light.",
+  "atau tempel URL gambar": "or paste an image URL",
+  "Foto dari perangkat sudah terpasang. Isi kolom ini untuk menggantinya dengan URL.":
+    "A photo from your device is attached. Fill this field to replace it with a URL.",
+  "Foto banner wajib diunggah atau diisi URL-nya.": "Upload a banner photo or fill in its URL.",
+  "Foto banner harus berupa file JPG/PNG/WEBP/GIF atau URL http(s):// yang valid.":
+    "The banner photo must be a JPG/PNG/WEBP/GIF file or a valid http(s):// URL.",
+  "Gagal memproses gambar.": "Failed to process the image.",
   "URL gambar": "Image URL",
   "Label kecil (opsional)": "Small label (optional)",
   "Urutan tampil": "Display order",
