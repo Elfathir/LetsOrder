@@ -95,12 +95,11 @@ Backend secara default dapat diakses melalui `http://127.0.0.1:8000` (mendukung 
 
 ### Akun Awal Seeder (`password123`)
 
-| Peran | Username | Email |
+| Peran | Username | Password |
 |---|---|---|
-| Administrator | `admin` | `admin@upnvj.ac.id` |
-| Vendor (Kantin Sejahtera) | `vendor01` | `sejahtera@upnvj.ac.id` |
-| Vendor (Warung Nusantara) | `vendor02` | `nusantara@upnvj.ac.id` |
-| Customer | `customer01` | `customer@upnvj.ac.id` |
+| Administrator | `admin` | `password123` |
+| Vendor (Kantin Baru) | `Testing` | `root123` |
+| Customer | `ini` | `root123` |
 
 ## Konfigurasi Frontend dan Backend
 
