@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { SERVER_PROMOS } from "../config.mjs";
 import { isSafeImageInput, parseBody, sendJson } from "../lib/http.mjs";
 import { db, saveDb } from "../lib/db.mjs";
-import { createEnrichContext, enrichMenu, enrichTenant, isMediaEndpointRef } from "../lib/enrich.mjs";
+import { createEnrichContext, enrichMenu, enrichTenant, isMediaEndpointRef, readPhotoFocus } from "../lib/enrich.mjs";
 import { ensureTenantForVendor, requireAuth, requireRole } from "../lib/auth.mjs";
 export async function handleVendorRoutes({ req, res, pathname, method, urlObj }) {
   if (pathname === "/vendor/tenant" && method === "GET") {
@@ -54,6 +54,7 @@ export async function handleVendorRoutes({ req, res, pathname, method, urlObj })
       tenant.auto_schedule = Boolean(body.auto_schedule);
     }
     if (body.status_buka !== undefined) tenant.status_buka = Boolean(body.status_buka);
+    Object.assign(tenant, readPhotoFocus(body));
     saveDb(db);
     return sendJson(req, res, 200, {
       success: true,
@@ -227,6 +228,7 @@ export async function handleVendorRoutes({ req, res, pathname, method, urlObj })
       estimasi_menit: estimasiMenit,
       status_tersedia: body.status_tersedia !== undefined ? Boolean(body.status_tersedia) : true,
       sold_today: 0,
+      ...readPhotoFocus(body),
     };
 
     if (!tenant.gambar && newMenu.gambar) {
@@ -280,6 +282,7 @@ export async function handleVendorRoutes({ req, res, pathname, method, urlObj })
     if (body.status_tersedia !== undefined) {
       menu.status_tersedia = Boolean(body.status_tersedia);
     }
+    Object.assign(menu, readPhotoFocus(body));
     saveDb(db);
     return sendJson(req, res, 200, {
       success: true,

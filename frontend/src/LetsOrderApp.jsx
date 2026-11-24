@@ -53,6 +53,7 @@ import {
   clearStoredSession,
 } from "./services/api";
 import TenantOnboardingWizard from "./components/TenantOnboardingWizard.jsx";
+import ImagePositionEditor from "./components/ImagePositionEditor.jsx";
 import { TRANSLATIONS } from "./i18n.js";
 import { isThemeAnimating, waitForThemeTransitionIdle } from "./utils/theme.js";
 import ThemeToggleButton from "./components/ThemeToggleButton.jsx";
@@ -110,6 +111,9 @@ export default function App() {
       title: pick(banner, "judul", ""),
       desc: pick(banner, "deskripsi", ""),
       image: banner.gambar || "",
+      focusX: Number(banner.foto_x ?? 50),
+      focusY: Number(banner.foto_y ?? 50),
+      zoom: Number(banner.foto_zoom ?? 1) || 1,
       primaryCta: pick(banner, "cta_primary", isEnglish ? "Order now" : "Pesan sekarang"),
       secondaryCta: pick(
         banner,
@@ -144,6 +148,9 @@ export default function App() {
     jam_tutup: "21:00",
     auto_schedule: false,
     status_buka: true,
+    foto_x: 50,
+    foto_y: 50,
+    foto_zoom: 1,
   });
   const [storeSettingsError, setStoreSettingsError] = useState("");
   const [ordersTodayCount, setOrdersTodayCount] = useState(0);
@@ -181,6 +188,7 @@ export default function App() {
   const [vendorReviews, setVendorReviews] = useState([]);
   const [editingDish, setEditingDish] = useState(null);
   const [editMenuError, setEditMenuError] = useState("");
+  const [confirmDeleteDish, setConfirmDeleteDish] = useState(false);
   const [editDishForm, setEditDishForm] = useState({
     nama_menu: "",
     harga: "",
@@ -189,10 +197,31 @@ export default function App() {
     gambar: "",
     estimasi_menit: "8",
     available: true,
+    foto_x: 50,
+    foto_y: 50,
+    foto_zoom: 1,
   });
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [addMenuError, setAddMenuError] = useState("");
   const [isUploadingMenu, setIsUploadingMenu] = useState(false);
+  const [photoEditor, setPhotoEditor] = useState(null);
+
+  const openPhotoEditor = useCallback((options) => {
+    if (!options?.src) return;
+    setPhotoEditor({
+      src: options.src,
+      aspect: options.aspect ?? 4 / 3,
+      value: options.value ?? null,
+      title: options.title,
+      hint: options.hint,
+      onSave: (focus) => {
+        options.onSave?.(focus);
+        setPhotoEditor(null);
+      },
+    });
+  }, []);
+
+  const closePhotoEditor = useCallback(() => setPhotoEditor(null), []);
   const [newDishForm, setNewDishForm] = useState({
     nama_menu: "",
     kategori_nama: "Rice & Mains",
@@ -201,6 +230,9 @@ export default function App() {
     deskripsi: "",
     gambar: "",
     available: true,
+    foto_x: 50,
+    foto_y: 50,
+    foto_zoom: 1,
   });
 
   const openAddMenuModal = () => {
@@ -213,6 +245,9 @@ export default function App() {
       deskripsi: "",
       gambar: "",
       available: true,
+      foto_x: 50,
+      foto_y: 50,
+      foto_zoom: 1,
     });
     setIsAddMenuOpen(true);
   };
@@ -335,6 +370,9 @@ export default function App() {
     jenis_kelamin: "",
     tanggal_lahir: "",
     avatar: "",
+    foto_x: 50,
+    foto_y: 50,
+    foto_zoom: 1,
   });
   const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [isEditingPhone, setIsEditingPhone] = useState(false);
@@ -366,6 +404,9 @@ export default function App() {
           jenis_kelamin: currentUser?.jenis_kelamin || "",
           tanggal_lahir: currentUser?.tanggal_lahir || "",
           avatar: currentUser?.avatar || "",
+          foto_x: Number(currentUser?.foto_x ?? 50),
+          foto_y: Number(currentUser?.foto_y ?? 50),
+          foto_zoom: Number(currentUser?.foto_zoom ?? 1) || 1,
         });
         setIsEditingEmail(false);
         setIsEditingPhone(false);
@@ -2514,6 +2555,9 @@ export default function App() {
         no_telp: cleanPhone,
         nama_tenant: cleanName,
         avatar: onboardingForm.logo,
+        foto_x: Number(onboardingForm.foto_x ?? 50),
+        foto_y: Number(onboardingForm.foto_y ?? 50),
+        foto_zoom: Number(onboardingForm.foto_zoom ?? 1) || 1,
       });
 
       const tenantRes = await api.updateVendorTenant({
@@ -2526,6 +2570,9 @@ export default function App() {
         jam_tutup: onboardingForm.jam_tutup || "21:00",
         auto_schedule: Boolean(onboardingForm.auto_schedule),
         status_buka: Boolean(onboardingForm.status_buka),
+        foto_x: Number(onboardingForm.foto_x ?? 50),
+        foto_y: Number(onboardingForm.foto_y ?? 50),
+        foto_zoom: Number(onboardingForm.foto_zoom ?? 1) || 1,
       });
 
       if (tenantRes?.data) {
@@ -2585,6 +2632,9 @@ export default function App() {
       jam_tutup: myTenantInfo?.jam_tutup || "21:00",
       auto_schedule: Boolean(myTenantInfo?.auto_schedule),
       status_buka: Boolean(myTenantInfo?.status_buka ?? isStoreOpen),
+      foto_x: Number(myTenantInfo?.foto_x ?? 50),
+      foto_y: Number(myTenantInfo?.foto_y ?? 50),
+      foto_zoom: Number(myTenantInfo?.foto_zoom ?? 1) || 1,
     });
     setIsStoreSettingsOpen(true);
   };
@@ -2605,6 +2655,9 @@ export default function App() {
         jam_tutup: storeForm.jam_tutup,
         auto_schedule: Boolean(storeForm.auto_schedule),
         status_buka: Boolean(storeForm.status_buka),
+        foto_x: Number(storeForm.foto_x ?? 50),
+        foto_y: Number(storeForm.foto_y ?? 50),
+        foto_zoom: Number(storeForm.foto_zoom ?? 1) || 1,
       });
       if (res?.data) {
         setMyTenantInfo(res.data);
@@ -3121,7 +3174,14 @@ export default function App() {
                       <img
                         src={resolveMediaUrl(currentUser.avatar)}
                         alt={displayName}
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          objectPosition: `${currentUser.foto_x ?? 50}% ${currentUser.foto_y ?? 50}%`,
+                          transform: `scale(${currentUser.foto_zoom ?? 1})`,
+                          transformOrigin: `${currentUser.foto_x ?? 50}% ${currentUser.foto_y ?? 50}%`,
+                        }}
                       />
                     ) : (
                       displayInitials
@@ -3918,6 +3978,9 @@ export default function App() {
                                       src={topItem.gambar}
                                       alt={topItem.nama_menu}
                                       iconSize={18}
+                                      focusX={topItem.foto_x}
+                                      focusY={topItem.foto_y}
+                                      zoom={topItem.foto_zoom}
                                     />
                                   </div>
 
@@ -4373,6 +4436,9 @@ export default function App() {
                                     src={dish.gambar}
                                     alt={dish.nama_menu}
                                     className="img-zoom-child"
+                                    focusX={dish.foto_x}
+                                    focusY={dish.foto_y}
+                                    zoom={dish.foto_zoom}
                                     style={{
                                       opacity: dish.available ? 1 : 0.35,
                                       transition: "opacity 0.25s ease, transform 0.45s ease",
@@ -4450,11 +4516,16 @@ export default function App() {
                                   <button
                                     onClick={() => {
                                       setEditMenuError("");
+                                      setConfirmDeleteDish(false);
                                       setEditingDish(dish);
                                       setEditDishForm({
                                         nama_menu: dish.nama_menu,
                                         harga: String(dish.harga),
                                         available: dish.available,
+                                        gambar: dish.gambar || "",
+                                        foto_x: Number(dish.foto_x ?? 50),
+                                        foto_y: Number(dish.foto_y ?? 50),
+                                        foto_zoom: Number(dish.foto_zoom ?? 1) || 1,
                                       });
                                     }}
                                     className="btn-interactive"
@@ -5084,7 +5155,12 @@ export default function App() {
                                 zIndex: 1,
                                 backgroundImage: `linear-gradient(90deg, var(--bg-hero-fade-start) 0%, var(--bg-hero-fade-mid) 48%, var(--bg-hero-fade-end) 100%), url('${slide.image}')`,
                                 backgroundSize: "cover",
-                                backgroundPosition: "center right",
+                                backgroundPosition:
+                                  slide.focusX === 50 && slide.focusY === 50
+                                    ? "center right"
+                                    : `${slide.focusX}% ${slide.focusY}%`,
+                                transform: slide.zoom !== 1 ? `scale(${slide.zoom})` : undefined,
+                                transformOrigin: `${slide.focusX}% ${slide.focusY}%`,
                               }}
                             />
                             <div
@@ -5494,6 +5570,9 @@ export default function App() {
                                 src={item.gambar}
                                 alt={item.nama_menu}
                                 className="img-zoom-child"
+                                focusX={item.foto_x}
+                                focusY={item.foto_y}
+                                zoom={item.foto_zoom}
                                 style={{
                                   filter: itemTenantOpen ? "none" : "grayscale(0.28) brightness(0.9)",
                                 }}
@@ -5812,6 +5891,9 @@ export default function App() {
                               src={tenant.gambar || tenant.logo}
                               alt={tenant.nama_tenant}
                               className="img-zoom-child"
+                              focusX={tenant.foto_x}
+                              focusY={tenant.foto_y}
+                              zoom={tenant.foto_zoom}
                               style={{
                                 filter: tenantOpen ? "none" : "grayscale(0.32) brightness(0.86)",
                               }}
@@ -6048,6 +6130,9 @@ export default function App() {
                             alt={activeTenantView.nama_tenant}
                             fallbackType="store"
                             iconSize={32}
+                            focusX={activeTenantView.foto_x}
+                            focusY={activeTenantView.foto_y}
+                            zoom={activeTenantView.foto_zoom}
                           />
                         </div>
                         <div style={{ minWidth: 0 }}>
@@ -6245,6 +6330,9 @@ export default function App() {
                                 src={item.gambar}
                                 alt={item.nama_menu}
                                 className="img-zoom-child"
+                                focusX={item.foto_x}
+                                focusY={item.foto_y}
+                                zoom={item.foto_zoom}
                                 style={{
                                   filter: activeTenantOpen ? "none" : "grayscale(0.28) brightness(0.9)",
                                 }}
@@ -6701,6 +6789,9 @@ export default function App() {
                                             src={item.gambar}
                                             alt={item.nama_menu}
                                             iconSize={20}
+                                            focusX={item.foto_x}
+                                            focusY={item.foto_y}
+                                            zoom={item.foto_zoom}
                                           />
                                         </div>
 
@@ -7038,6 +7129,9 @@ export default function App() {
                                             src={item.gambar || item.menu?.gambar}
                                             alt={item.nama_menu || item.menu?.nama_menu}
                                             iconSize={18}
+                                            focusX={item.foto_x ?? item.menu?.foto_x}
+                                            focusY={item.foto_y ?? item.menu?.foto_y}
+                                            zoom={item.foto_zoom ?? item.menu?.foto_zoom}
                                           />
                                         </div>
                                         <div>
@@ -8082,21 +8176,105 @@ export default function App() {
                     marginBottom: 18,
                   }}
                 >
-                  <div
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 12,
-                      backgroundColor: "var(--bg-warm-img)",
-                      overflow: "hidden",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <SafeImage
-                      src={editingDish.gambar}
-                      alt={editingDish.nama_menu}
-                      iconSize={18}
-                    />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+                    <label
+                      style={{
+                        position: "relative",
+                        width: 48,
+                        height: 48,
+                        borderRadius: 12,
+                        backgroundColor: "var(--bg-warm-img)",
+                        overflow: "hidden",
+                        cursor: "pointer",
+                        border: "1px solid var(--border-light)",
+                      }}
+                    >
+                      <SafeImage
+                        src={editDishForm.gambar || editingDish.gambar}
+                        alt={editingDish.nama_menu}
+                        iconSize={18}
+                        focusX={editDishForm.foto_x}
+                        focusY={editDishForm.foto_y}
+                        zoom={editDishForm.foto_zoom}
+                      />
+                      <span
+                        style={{
+                          position: "absolute",
+                          bottom: 0,
+                          right: 0,
+                          padding: 2,
+                          backgroundColor: "var(--maroon)",
+                          borderRadius: "8px 0 0 0",
+                          display: "flex",
+                        }}
+                      >
+                        <ImageIcon size={11} color="#fff" />
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: "none" }}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setEditMenuError("");
+                          try {
+                            const compressed = await readAndCompressImageFile(file, 900, 0.82);
+                            setEditDishForm((p) => ({
+                              ...p,
+                              gambar: compressed,
+                              foto_x: 50,
+                              foto_y: 50,
+                              foto_zoom: 1,
+                            }));
+                            openPhotoEditor({
+                              src: compressed,
+                              aspect: 4 / 3,
+                              value: { x: 50, y: 50, zoom: 1 },
+                              lang,
+                              title: lang === "EN" ? "Dish photo position" : "Posisi foto menu",
+                              onSave: ({ x, y, zoom }) => {
+                                setEditDishForm((p) => ({ ...p, foto_x: x, foto_y: y, foto_zoom: zoom }));
+                                setPhotoEditor(null);
+                              },
+                            });
+                          } catch (err) {
+                            setEditMenuError(err.message || "Gagal memproses foto menu.");
+                          }
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openPhotoEditor({
+                          src: editDishForm.gambar || editingDish.gambar,
+                          aspect: 4 / 3,
+                          value: {
+                            x: editDishForm.foto_x,
+                            y: editDishForm.foto_y,
+                            zoom: editDishForm.foto_zoom,
+                          },
+                          lang,
+                          title: lang === "EN" ? "Dish photo position" : "Posisi foto menu",
+                          onSave: ({ x, y, zoom }) => {
+                            setEditDishForm((p) => ({ ...p, foto_x: x, foto_y: y, foto_zoom: zoom }));
+                            setPhotoEditor(null);
+                          },
+                        })
+                      }
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        color: "var(--maroon)",
+                        fontSize: 10,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      {lang === "EN" ? "Adjust" : "Atur posisi"}
+                    </button>
                   </div>
 
                   <div>
@@ -8130,6 +8308,12 @@ export default function App() {
                         nama_menu: nextName,
                         harga: parsedPrice,
                         status_tersedia: editDishForm.available,
+                        ...(editDishForm.gambar && editDishForm.gambar !== editingDish.gambar
+                          ? { gambar: editDishForm.gambar }
+                          : {}),
+                        foto_x: Number(editDishForm.foto_x ?? 50),
+                        foto_y: Number(editDishForm.foto_y ?? 50),
+                        foto_zoom: Number(editDishForm.foto_zoom ?? 1) || 1,
                       });
                       setTenantMenus((prev) =>
                         prev.map((m) =>
@@ -8378,31 +8562,81 @@ export default function App() {
                       {lang === "EN" ? "Save changes" : "Simpan perubahan"}
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const idToDelete = editingDish.id_menu;
-                      setTenantMenus((prev) => prev.filter((m) => m.id_menu !== idToDelete));
-                      setMenusList((prev) => prev.filter((m) => m.id_menu !== idToDelete));
-                      setEditingDish(null);
-                      await api.deleteVendorMenu(idToDelete).catch(() => { });
-                    }}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      color: "#B91C1C",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      ...LAYOUT.inlineRow,
-                      justifyContent: "center",
-                      gap: 6,
-                      paddingTop: 4,
-                    }}
-                  >
-                    <Trash2 size={14} />
-                    <span>{lang === "EN" ? "Delete this dish" : "Hapus menu ini"}</span>
-                  </button>
+                  {confirmDeleteDish ? (
+                    <div
+                      style={{
+                        ...LAYOUT.inlineRow,
+                        justifyContent: "space-between",
+                        gap: 8,
+                        paddingTop: 4,
+                      }}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#B91C1C" }}>
+                        {lang === "EN" ? "Delete permanently?" : "Hapus permanen?"}
+                      </span>
+                      <div style={{ ...LAYOUT.inlineRow, gap: 8 }}>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteDish(false)}
+                          style={{
+                            border: "1px solid var(--border-input)",
+                            background: "transparent",
+                            color: "var(--maroon)",
+                            borderRadius: "var(--radius-pill)",
+                            padding: "5px 12px",
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {lang === "EN" ? "Cancel" : "Batal"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const idToDelete = editingDish.id_menu;
+                            setTenantMenus((prev) => prev.filter((m) => m.id_menu !== idToDelete));
+                            setMenusList((prev) => prev.filter((m) => m.id_menu !== idToDelete));
+                            setEditingDish(null);
+                            setConfirmDeleteDish(false);
+                            await api.deleteVendorMenu(idToDelete).catch(() => {});
+                          }}
+                          style={{
+                            border: "none",
+                            background: "#B91C1C",
+                            color: "#fff",
+                            borderRadius: "var(--radius-pill)",
+                            padding: "5px 12px",
+                            fontSize: 11.5,
+                            fontWeight: 800,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {lang === "EN" ? "Yes, delete" : "Ya, hapus"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteDish(true)}
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        color: "#B91C1C",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        ...LAYOUT.inlineRow,
+                        justifyContent: "center",
+                        gap: 6,
+                        paddingTop: 4,
+                      }}
+                    >
+                      <Trash2 size={14} />
+                      <span>{lang === "EN" ? "Delete this dish" : "Hapus menu ini"}</span>
+                    </button>
+                  )}
                 </form>
               </div>
             </div>
@@ -8491,6 +8725,9 @@ export default function App() {
                         newDishForm.gambar ||
                         "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=700&auto=format&fit=crop&q=80",
                       status_tersedia: true,
+                      foto_x: Number(newDishForm.foto_x ?? 50),
+                      foto_y: Number(newDishForm.foto_y ?? 50),
+                      foto_zoom: Number(newDishForm.foto_zoom ?? 1) || 1,
                     };
                     try {
                       const res = await api.createVendorMenu(payload);
@@ -8648,6 +8885,17 @@ export default function App() {
                           try {
                             const compressed = await readAndCompressImageFile(file, 900, 0.82);
                             setNewDishForm((p) => ({ ...p, gambar: compressed }));
+                            openPhotoEditor({
+                              src: compressed,
+                              aspect: 4 / 3,
+                              value: { x: 50, y: 50, zoom: 1 },
+                              lang,
+                              title: lang === "EN" ? "Dish photo position" : "Posisi foto menu",
+                              onSave: ({ x, y, zoom }) => {
+                                setNewDishForm((p) => ({ ...p, foto_x: x, foto_y: y, foto_zoom: zoom }));
+                                setPhotoEditor(null);
+                              },
+                            });
                           } catch (err) {
                             setAddMenuError(err.message || "Gagal memproses foto menu.");
                           }
@@ -8698,9 +8946,50 @@ export default function App() {
                       <img
                         src={newDishForm.gambar}
                         alt="Preview"
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          objectPosition: `${newDishForm.foto_x ?? 50}% ${newDishForm.foto_y ?? 50}%`,
+                          transform: `scale(${newDishForm.foto_zoom ?? 1})`,
+                          transformOrigin: `${newDishForm.foto_x ?? 50}% ${newDishForm.foto_y ?? 50}%`,
+                        }}
                       />
                     </div>
+                  )}
+                  {newDishForm.gambar && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openPhotoEditor({
+                          src: newDishForm.gambar,
+                          aspect: 4 / 3,
+                          value: {
+                            x: newDishForm.foto_x,
+                            y: newDishForm.foto_y,
+                            zoom: newDishForm.foto_zoom,
+                          },
+                          lang,
+                          title: lang === "EN" ? "Dish photo position" : "Posisi foto menu",
+                          onSave: ({ x, y, zoom }) => {
+                            setNewDishForm((p) => ({ ...p, foto_x: x, foto_y: y, foto_zoom: zoom }));
+                            setPhotoEditor(null);
+                          },
+                        })
+                      }
+                      style={{
+                        alignSelf: "flex-start",
+                        border: "none",
+                        background: "transparent",
+                        color: "var(--maroon)",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      {lang === "EN" ? "Adjust photo position" : "Atur posisi foto"}
+                    </button>
                   )}
 
                   <div>
@@ -8857,7 +9146,14 @@ export default function App() {
                         <img
                           src={resolveMediaUrl(currentUser.avatar)}
                           alt={displayName}
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            objectPosition: `${currentUser.foto_x ?? 50}% ${currentUser.foto_y ?? 50}%`,
+                            transform: `scale(${currentUser.foto_zoom ?? 1})`,
+                            transformOrigin: `${currentUser.foto_x ?? 50}% ${currentUser.foto_y ?? 50}%`,
+                          }}
                         />
                       ) : (
                         <span>{displayInitials}</span>
@@ -9084,6 +9380,9 @@ export default function App() {
                         no_telp: profileForm.no_telp,
                         jenis_kelamin: profileForm.jenis_kelamin,
                         tanggal_lahir: profileForm.tanggal_lahir,
+                        foto_x: Number(profileForm.foto_x ?? 50),
+                        foto_y: Number(profileForm.foto_y ?? 50),
+                        foto_zoom: Number(profileForm.foto_zoom ?? 1) || 1,
                         ...(portalMode === "tenant" ||
                         /^(?:https?:\/\/[^/]+)?\/api\/(?:v1\/)?media\//i.test(String(profileForm.avatar || "").trim())
                           ? {}
@@ -9439,12 +9738,53 @@ export default function App() {
                               <img
                                 src={resolveMediaUrl(profileForm.avatar)}
                                 alt="Profile Avatar"
-                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover",
+                                  objectPosition: `${profileForm.foto_x ?? 50}% ${profileForm.foto_y ?? 50}%`,
+                                  transform: `scale(${profileForm.foto_zoom ?? 1})`,
+                                  transformOrigin: `${profileForm.foto_x ?? 50}% ${profileForm.foto_y ?? 50}%`,
+                                }}
                               />
                             ) : (
                               <span>{displayInitials}</span>
                             )}
                           </div>
+                          {profileForm.avatar && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openPhotoEditor({
+                                  src: resolveMediaUrl(profileForm.avatar),
+                                  aspect: 1,
+                                  value: {
+                                    x: profileForm.foto_x,
+                                    y: profileForm.foto_y,
+                                    zoom: profileForm.foto_zoom,
+                                  },
+                                  lang,
+                                  title: lang === "EN" ? "Profile photo position" : "Posisi foto profil",
+                                  onSave: ({ x, y, zoom }) => {
+                                    setProfileForm((p) => ({ ...p, foto_x: x, foto_y: y, foto_zoom: zoom }));
+                                    setPhotoEditor(null);
+                                  },
+                                })
+                              }
+                              style={{
+                                border: "none",
+                                background: "transparent",
+                                color: "var(--maroon)",
+                                fontSize: 12,
+                                fontWeight: 800,
+                                cursor: "pointer",
+                                padding: 0,
+                                marginBottom: 12,
+                              }}
+                            >
+                              {lang === "EN" ? "Adjust photo position" : "Atur posisi foto"}
+                            </button>
+                          )}
 
                           <label
                             className="btn-interactive"
@@ -9472,8 +9812,19 @@ export default function App() {
                                 if (!file) return;
                                 try {
                                   const compressed = await readAndCompressImageFile(file, 512, 0.85);
-                                  setProfileForm((p) => ({ ...p, avatar: compressed }));
+                                  setProfileForm((p) => ({ ...p, avatar: compressed, foto_x: 50, foto_y: 50, foto_zoom: 1 }));
                                   setProfileAlert({ type: "", text: "" });
+                                  openPhotoEditor({
+                                    src: compressed,
+                                    aspect: 1,
+                                    value: { x: 50, y: 50, zoom: 1 },
+                                    lang,
+                                    title: lang === "EN" ? "Profile photo position" : "Posisi foto profil",
+                                    onSave: ({ x, y, zoom }) => {
+                                      setProfileForm((p) => ({ ...p, foto_x: x, foto_y: y, foto_zoom: zoom }));
+                                      setPhotoEditor(null);
+                                    },
+                                  });
                                 } catch (err) {
                                   setProfileAlert({
                                     type: "error",
@@ -9925,6 +10276,9 @@ export default function App() {
                       alt={activeMenuDetail.nama_menu}
                       className="img-zoom-child"
                       iconSize={48}
+                      focusX={activeMenuDetail.foto_x}
+                      focusY={activeMenuDetail.foto_y}
+                      zoom={activeMenuDetail.foto_zoom}
                     />
                     <button
                       type="button"
@@ -10303,6 +10657,9 @@ export default function App() {
                               alt={rec.nama_menu}
                               className="img-zoom-child"
                               iconSize={22}
+                              focusX={rec.foto_x}
+                              focusY={rec.foto_y}
+                              zoom={rec.foto_zoom}
                             />
                           </div>
                           <div
@@ -11176,6 +11533,7 @@ export default function App() {
           isOnboardingStep2Valid={isOnboardingStep2Valid}
           handleCompleteTenantOnboarding={handleCompleteTenantOnboarding}
           readAndCompressImageFile={readAndCompressImageFile}
+          openPhotoEditor={openPhotoEditor}
           currentUser={currentUser}
           onBackToRegister={() => {
             try {
@@ -11361,7 +11719,14 @@ export default function App() {
                       <img
                         src={resolveMediaUrl(storeForm.logo)}
                         alt="Tenant Profile"
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          objectPosition: `${storeForm.foto_x ?? 50}% ${storeForm.foto_y ?? 50}%`,
+                          transform: `scale(${storeForm.foto_zoom ?? 1})`,
+                          transformOrigin: `${storeForm.foto_x ?? 50}% ${storeForm.foto_y ?? 50}%`,
+                        }}
                       />
                     ) : (
                       <span>{displayInitials}</span>
@@ -11372,6 +11737,39 @@ export default function App() {
                     <div style={{ fontSize: 13, fontWeight: 800, color: "var(--maroon)" }}>
                       {lang === "EN" ? "Tenant Profile Picture" : "Foto Profil Tenant"}
                     </div>
+                    {storeForm.logo && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openPhotoEditor({
+                            src: resolveMediaUrl(storeForm.logo),
+                            aspect: 1,
+                            value: {
+                              x: storeForm.foto_x,
+                              y: storeForm.foto_y,
+                              zoom: storeForm.foto_zoom,
+                            },
+                            lang,
+                            title: lang === "EN" ? "Logo position" : "Posisi logo",
+                            onSave: ({ x, y, zoom }) => {
+                              setStoreForm((p) => ({ ...p, foto_x: x, foto_y: y, foto_zoom: zoom }));
+                              setPhotoEditor(null);
+                            },
+                          })
+                        }
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          color: "var(--maroon)",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
+                      >
+                        {lang === "EN" ? "Adjust photo position" : "Atur posisi foto"}
+                      </button>
+                    )}
                     <label
                       className="btn-interactive"
                       style={{
@@ -11399,8 +11797,19 @@ export default function App() {
                           if (!f) return;
                           try {
                             const dataUrl = await readAndCompressImageFile(f, 800, 0.85);
-                            setStoreForm((p) => ({ ...p, logo: dataUrl }));
+                            setStoreForm((p) => ({ ...p, logo: dataUrl, foto_x: 50, foto_y: 50, foto_zoom: 1 }));
                             setStoreSettingsError("");
+                            openPhotoEditor({
+                              src: dataUrl,
+                              aspect: 1,
+                              value: { x: 50, y: 50, zoom: 1 },
+                              lang,
+                              title: lang === "EN" ? "Logo position" : "Posisi logo",
+                              onSave: ({ x, y, zoom }) => {
+                                setStoreForm((p) => ({ ...p, foto_x: x, foto_y: y, foto_zoom: zoom }));
+                                setPhotoEditor(null);
+                              },
+                            });
                           } catch (err) {
                             setStoreSettingsError(err.message);
                           }
@@ -12526,6 +12935,17 @@ export default function App() {
           </button>
         </div>
       )}
+
+      <ImagePositionEditor
+        open={Boolean(photoEditor)}
+        src={photoEditor?.src}
+        aspect={photoEditor?.aspect}
+        value={photoEditor?.value}
+        onSave={photoEditor?.onSave}
+        onClose={closePhotoEditor}
+        lang={lang}
+        title={photoEditor?.title}
+      />
     </div>
   );
 }

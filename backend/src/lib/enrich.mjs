@@ -39,6 +39,25 @@ function compactMediaUrl(type, id, rawVal) {
   return trimmed;
 }
 
+// Posisi & zoom foto disimpan sebagai metadata supaya crop bisa diedit ulang
+// tanpa mengubah berkas aslinya. Nilai dipakai langsung oleh CSS object-position.
+const PHOTO_FOCUS_DEFAULTS = { foto_x: 50, foto_y: 50, foto_zoom: 1 };
+
+function clampPhotoValue(value, min, max, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, num));
+}
+
+// Mengambil hanya field posisi yang dikirim klien, sudah dinormalisasi.
+function readPhotoFocus(body = {}) {
+  const out = {};
+  if (body.foto_x !== undefined) out.foto_x = clampPhotoValue(body.foto_x, 0, 100, 50);
+  if (body.foto_y !== undefined) out.foto_y = clampPhotoValue(body.foto_y, 0, 100, 50);
+  if (body.foto_zoom !== undefined) out.foto_zoom = clampPhotoValue(body.foto_zoom, 1, 3, 1);
+  return out;
+}
+
 function createEnrichContext(compactMedia = false) {
   const userById = new Map();
   for (const u of db.users || []) userById.set(Number(u.id_user), u);
@@ -318,4 +337,4 @@ function enrichOrder(order, ctx = null) {
   };
 }
 
-export { compactMediaUrl, createEnrichContext, enrichMenu, enrichOrder, enrichTenant, formatDbTimestamp, isMediaEndpointRef, isOrderPaid, isTenantConfigured, isTenantOpenNow, pushNotification };
+export { PHOTO_FOCUS_DEFAULTS, compactMediaUrl, createEnrichContext, enrichMenu, enrichOrder, enrichTenant, formatDbTimestamp, isMediaEndpointRef, isOrderPaid, isTenantConfigured, isTenantOpenNow, pushNotification, readPhotoFocus };

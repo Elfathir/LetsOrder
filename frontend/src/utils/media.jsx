@@ -68,7 +68,17 @@ function isSafeImageSrc(value) {
   }
 }
 
-export const SafeImage = memo(function SafeImage({ src, alt, className = "", style = {}, fallbackType = "food", iconSize = 28 }) {
+export const SafeImage = memo(function SafeImage({
+  src,
+  alt,
+  className = "",
+  style = {},
+  fallbackType = "food",
+  iconSize = 28,
+  focusX = 50,
+  focusY = 50,
+  zoom = 1,
+}) {
   const [failed, setFailed] = useState(false);
   const rawSrc = resolveMediaUrl(typeof src === "string" ? src : "");
   const cleanSrc = isSafeImageSrc(rawSrc) ? rawSrc : "";
@@ -98,14 +108,36 @@ export const SafeImage = memo(function SafeImage({ src, alt, className = "", sty
     );
   }
 
-  return (
+  const fx = Math.min(100, Math.max(0, Number(focusX) || 50));
+  const fy = Math.min(100, Math.max(0, Number(focusY) || 50));
+  const scale = Math.min(3, Math.max(1, Number(zoom) || 1));
+  const objectPosition = `${fx}% ${fy}%`;
+
+  const img = (
     <img
       src={cleanSrc}
       alt={alt}
       className={className}
       decoding="async"
-      style={{ width: "100%", height: "100%", objectFit: "cover", ...style }}
+      style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition, ...style }}
       onError={() => setFailed(true)}
     />
+  );
+
+  // Zoom diterapkan pada pembungkus agar animasi hover (.img-zoom-child) tetap berjalan.
+  if (scale === 1) return img;
+  return (
+    <div style={{ width: "100%", height: "100%", overflow: "hidden" }}>
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          transform: `scale(${scale})`,
+          transformOrigin: objectPosition,
+        }}
+      >
+        {img}
+      </div>
+    </div>
   );
 });

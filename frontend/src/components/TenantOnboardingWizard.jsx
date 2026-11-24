@@ -45,6 +45,7 @@ export default function TenantOnboardingWizard({
   isOnboardingStep2Valid,
   handleCompleteTenantOnboarding,
   readAndCompressImageFile,
+  openPhotoEditor,
   currentUser,
   onBackToRegister,
 }) {
@@ -339,8 +340,29 @@ export default function TenantOnboardingWizard({
                       if (!file) return;
                       try {
                         const compressed = await readAndCompressImageFile(file, 720, 0.85);
-                        setOnboardingForm((p) => ({ ...p, logo: compressed }));
+                        setOnboardingForm((p) => ({
+                          ...p,
+                          logo: compressed,
+                          foto_x: 50,
+                          foto_y: 50,
+                          foto_zoom: 1,
+                        }));
                         setOnboardingError("");
+                        openPhotoEditor?.({
+                          src: compressed,
+                          aspect: 1,
+                          value: { x: 50, y: 50, zoom: 1 },
+                          lang,
+                          title: lang === "EN" ? "Logo position" : "Posisi logo",
+                          onSave: ({ x, y, zoom }) => {
+                            setOnboardingForm((p) => ({
+                              ...p,
+                              foto_x: x,
+                              foto_y: y,
+                              foto_zoom: zoom,
+                            }));
+                          },
+                        });
                       } catch (err) {
                         setOnboardingError(
                           err?.message ||

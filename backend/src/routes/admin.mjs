@@ -8,7 +8,7 @@ import { SERVER_PROMOS } from "../config.mjs";
 import { hashPassword } from "../lib/crypto.mjs";
 import { isSafeImageInput, isValidEmail, parseBody, sendJson } from "../lib/http.mjs";
 import { db, saveDb } from "../lib/db.mjs";
-import { formatDbTimestamp, isOrderPaid } from "../lib/enrich.mjs";
+import { formatDbTimestamp, isOrderPaid, readPhotoFocus } from "../lib/enrich.mjs";
 import { requireAuth, requireRole } from "../lib/auth.mjs";
 export async function handleAdminRoutes({ req, res, pathname, method, urlObj }) {
   if (pathname.startsWith("/admin/")) {
@@ -530,6 +530,7 @@ export async function handleAdminRoutes({ req, res, pathname, method, urlObj }) 
       // dan gambar menu), jadi tidak boleh dipotong seperti URL biasa.
       const rawImage = String(body.gambar ?? existing?.gambar ?? "").trim();
       const isUploadedImage = /^data:image\//i.test(rawImage);
+      const focus = readPhotoFocus(body);
       const source = {
         tag: body.tag ?? existing?.tag ?? "",
         judul: String(body.judul ?? existing?.judul ?? "").trim().slice(0, 140),
@@ -553,6 +554,9 @@ export async function handleAdminRoutes({ req, res, pathname, method, urlObj }) 
           0,
           Math.floor(Number(body.urutan ?? existing?.urutan ?? 0) || 0)
         ),
+        foto_x: focus.foto_x ?? existing?.foto_x ?? 50,
+        foto_y: focus.foto_y ?? existing?.foto_y ?? 50,
+        foto_zoom: focus.foto_zoom ?? existing?.foto_zoom ?? 1,
       };
       if (source.judul.length < 2) return { error: "Judul banner minimal 2 karakter." };
       if (!source.gambar) return { error: "Foto banner wajib diunggah atau diisi URL-nya." };

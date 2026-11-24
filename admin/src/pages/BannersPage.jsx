@@ -12,6 +12,7 @@ import {
 import { api } from "../services/api.js";
 import { readAndCompressImageFile } from "../utils/image.js";
 import Modal from "../components/Modal.jsx";
+import ImagePositionEditor from "../components/ImagePositionEditor.jsx";
 import { useI18n } from "../i18n.jsx";
 
 const emptyForm = {
@@ -28,10 +29,13 @@ const emptyForm = {
   cta_secondary_en: "",
   urutan: "1",
   aktif: true,
+  foto_x: 50,
+  foto_y: 50,
+  foto_zoom: 1,
 };
 
 export default function BannersPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [banners, setBanners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -46,6 +50,7 @@ export default function BannersPage() {
   const [deleting, setDeleting] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const imageInputRef = useRef(null);
+  const [photoEditor, setPhotoEditor] = useState(null);
 
   const loadBanners = useCallback(async () => {
     setLoading(true);
@@ -88,6 +93,9 @@ export default function BannersPage() {
       cta_secondary_en: banner.cta_secondary_en || "",
       urutan: String(banner.urutan ?? 1),
       aktif: banner.aktif !== false,
+      foto_x: Number(banner.foto_x ?? 50),
+      foto_y: Number(banner.foto_y ?? 50),
+      foto_zoom: Number(banner.foto_zoom ?? 1) || 1,
     });
     setFormError("");
   };
@@ -105,7 +113,18 @@ export default function BannersPage() {
     setUploadingImage(true);
     try {
       const dataUrl = await readAndCompressImageFile(file, 1600, 0.82);
-      setForm((prev) => ({ ...prev, gambar: dataUrl }));
+      setForm((prev) => ({ ...prev, gambar: dataUrl, foto_x: 50, foto_y: 50, foto_zoom: 1 }));
+      setPhotoEditor({
+        src: dataUrl,
+        aspect: 16 / 6,
+        value: { x: 50, y: 50, zoom: 1 },
+        lang,
+        title: t("Atur posisi foto banner"),
+        onSave: ({ x, y, zoom }) => {
+          setForm((prev) => ({ ...prev, foto_x: x, foto_y: y, foto_zoom: zoom }));
+          setPhotoEditor(null);
+        },
+      });
     } catch (err) {
       setFormError(err?.message || t("Gagal memproses gambar."));
     } finally {
@@ -145,6 +164,9 @@ export default function BannersPage() {
       cta_secondary_en: form.cta_secondary_en.trim(),
       urutan: Number(form.urutan || 1),
       aktif: form.aktif,
+      foto_x: Number(form.foto_x ?? 50),
+      foto_y: Number(form.foto_y ?? 50),
+      foto_zoom: Number(form.foto_zoom ?? 1) || 1,
     };
 
     setSaving(true);
@@ -356,10 +378,48 @@ export default function BannersPage() {
             <span className="admin-preview-label">{t("Pratinjau gambar")}</span>
             <div
               className="admin-banner-preview"
-              style={form.gambar ? { backgroundImage: `url('${form.gambar}')` } : undefined}
+              style={
+                form.gambar
+                  ? {
+                    backgroundImage: `url('${form.gambar}')`,
+                    backgroundPosition: `${form.foto_x ?? 50}% ${form.foto_y ?? 50}%`,
+                    backgroundSize:
+                      Number(form.foto_zoom ?? 1) > 1
+                        ? `${Number(form.foto_zoom) * 100}% auto`
+                        : "cover",
+                  }
+                  : undefined
+              }
             >
               {!form.gambar && <span>{t("Unggah foto atau tempel URL untuk melihat pratinjau")}</span>}
             </div>
+            {form.gambar ? (
+              <button
+                type="button"
+                className="admin-ghost-btn btn-interactive"
+                style={{ marginTop: 8 }}
+                onClick={() =>
+                  setPhotoEditor({
+                    src: form.gambar,
+                    aspect: 16 / 6,
+                    value: {
+                      x: form.foto_x,
+                      y: form.foto_y,
+                      zoom: form.foto_zoom,
+                    },
+                    lang,
+                    title: t("Atur posisi foto banner"),
+                    onSave: ({ x, y, zoom }) => {
+                      setForm((prev) => ({ ...prev, foto_x: x, foto_y: y, foto_zoom: zoom }));
+                      setPhotoEditor(null);
+                    },
+                  })
+                }
+              >
+                <ImageIcon size={13} strokeWidth={2.4} />
+                {t("Atur posisi foto")}
+              </button>
+            ) : null}
           </label>
 
           <div className="admin-field admin-field-full">
@@ -606,6 +666,17 @@ export default function BannersPage() {
           {t("Banner yang dihapus langsung hilang dari beranda customer. Slide lain tetap tampil.")}
         </p>
       </Modal>
+
+      <ImagePositionEditor
+        open={Boolean(photoEditor)}
+        src={photoEditor?.src}
+        aspect={photoEditor?.aspect}
+        value={photoEditor?.value}
+        onSave={photoEditor?.onSave}
+        onClose={() => setPhotoEditor(null)}
+        lang={lang}
+        title={photoEditor?.title}
+      />
     </div>
   );
 }

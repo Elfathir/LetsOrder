@@ -10,7 +10,7 @@ import { constantTimeEqualStr, hashPassword, hashToken, sha256Hex, signOAuthStat
 import { logSecurityEvent } from "../lib/security.mjs";
 import { checkRateLimit, getClientIp, isSafeImageInput, isValidEmail, parseBody, sendJson, validateFrontendOrigin } from "../lib/http.mjs";
 import { db, saveDb } from "../lib/db.mjs";
-import { enrichTenant, isMediaEndpointRef } from "../lib/enrich.mjs";
+import { enrichTenant, isMediaEndpointRef, readPhotoFocus } from "../lib/enrich.mjs";
 import { deleteUserAccount, ensureTenantForVendor, issueUserSession, requireAuth, revokeUserTokens, sanitizeUserResponse } from "../lib/auth.mjs";
 export async function handleAuthRoutes({ req, res, pathname, method, urlObj }) {
   if (pathname === "/auth/login" && method === "POST") {
@@ -680,6 +680,7 @@ export async function handleAuthRoutes({ req, res, pathname, method, urlObj }) {
     if (body.jenis_kelamin !== undefined) user.jenis_kelamin = String(body.jenis_kelamin).slice(0, 20);
     if (body.tanggal_lahir !== undefined) user.tanggal_lahir = String(body.tanggal_lahir).slice(0, 20);
     if (body.avatar !== undefined && !isMediaEndpointRef(body.avatar)) user.avatar = body.avatar;
+    Object.assign(user, readPhotoFocus(body));
 
     let tenant = null;
     if (user.peran === "Vendor") {
@@ -691,6 +692,7 @@ export async function handleAuthRoutes({ req, res, pathname, method, urlObj }) {
         tenant.logo = body.avatar;
         tenant.gambar = body.avatar;
       }
+      Object.assign(tenant, readPhotoFocus(body));
       tenant = enrichTenant(tenant);
     }
     saveDb(db);
