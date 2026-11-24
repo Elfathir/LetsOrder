@@ -6,7 +6,7 @@ import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { ALLOW_PAYMENT_SIMULATION, VALID_ORDER_STATUSES } from "../config.mjs";
 import { logSecurityEvent } from "../lib/security.mjs";
-import { getClientIp, isSafeImageInput, parseBody, sendJson } from "../lib/http.mjs";
+import { getClientIp, isSafeImageInput, parseBody, sendJson , readCompactMedia } from "../lib/http.mjs";
 import { db, saveDb } from "../lib/db.mjs";
 import { createEnrichContext, enrichOrder, formatDbTimestamp, isOrderPaid, isTenantOpenNow, pushNotification } from "../lib/enrich.mjs";
 import { requireAuth, requireRole } from "../lib/auth.mjs";
@@ -16,7 +16,7 @@ export async function handleOrdersRoutes({ req, res, pathname, method, urlObj })
     const user = requireAuth(req, res);
     if (!user || !requireRole(req, res, user, "Customer", "Administrator")) return;
     const isAdmin = String(user.peran).toLowerCase() === "administrator";
-    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const compactMedia = readCompactMedia(urlObj);
     const ctx = createEnrichContext(compactMedia);
     const list = db.orders
       .filter((o) => (isAdmin ? true : o.id_user === user.id_user))
@@ -47,7 +47,12 @@ export async function handleOrdersRoutes({ req, res, pathname, method, urlObj })
     if (!allowed) {
       return sendJson(req, res, 403, { success: false, message: "Akses ditolak." });
     }
-    return sendJson(req, res, 200, { success: true, data: enrichOrder(ord) });
+    // Detail tetap lengkap (status_history, payment, item), tapi gambarnya
+    // memakai URL ringkas seperti endpoint lain.
+    return sendJson(req, res, 200, {
+      success: true,
+      data: enrichOrder(ord, createEnrichContext(readCompactMedia(urlObj))),
+    });
   }
 
   const orderStatusReadMatch = pathname.match(/^\/orders\/(\d+)\/(status|status-history)$/);
@@ -254,12 +259,12 @@ export async function handleOrdersRoutes({ req, res, pathname, method, urlObj })
         data: [],
       });
     }
-    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const compactMedia = readCompactMedia(urlObj);
     const ctx = createEnrichContext(compactMedia);
     const list = db.orders
       .filter((o) => (isAdmin ? true : o.id_tenant === tenant.id_tenant))
       .sort((a, b) => b.id_pesanan - a.id_pesanan)
-      .map((o) => enrichOrder(o, ctx));
+      .map((o) => enrichOrder(o, ctx, { slim: true }));
     return sendJson(req, res, 200, {
       success: true,
       message: "Daftar pesanan tenant berhasil diambil.",
@@ -416,7 +421,7 @@ export async function handleOrdersRoutes({ req, res, pathname, method, urlObj })
     return sendJson(req, res, 201, {
       success: true,
       message: "Pesanan berhasil dibuat.",
-      data: enrichOrder(newOrder),
+      data: enrichOrder(newOrder, createEnrichContext(readCompactMedia(urlObj)), { slim: true }),
     });
   }
 
@@ -611,7 +616,7 @@ export async function handleOrdersRoutes({ req, res, pathname, method, urlObj })
     return sendJson(req, res, 200, {
       success: true,
       message: "Pembayaran berhasil diverifikasi.",
-      data: enrichOrder(ord),
+      data: enrichOrder(ord, createEnrichContext(readCompactMedia(urlObj)), { slim: true }),
     });
   }
 
@@ -671,7 +676,7 @@ export async function handleOrdersRoutes({ req, res, pathname, method, urlObj })
     return sendJson(req, res, 200, {
       success: true,
       message: "Status pesanan berhasil diperbarui.",
-      data: enrichOrder(ord),
+      data: enrichOrder(ord, createEnrichContext(readCompactMedia(urlObj)), { slim: true }),
     });
   }
 
@@ -745,7 +750,7 @@ export async function handleOrdersRoutes({ req, res, pathname, method, urlObj })
     return sendJson(req, res, 200, {
       success: true,
       message: "Pesanan berhasil dibatalkan.",
-      data: enrichOrder(ord),
+      data: enrichOrder(ord, createEnrichContext(readCompactMedia(urlObj)), { slim: true }),
     });
   }
 

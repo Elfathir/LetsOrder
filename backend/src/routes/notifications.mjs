@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { sendJson } from "../lib/http.mjs";
-import { db, saveDb } from "../lib/db.mjs";
+import { db, scheduleSaveDb } from "../lib/db.mjs";
 import { requireAuth } from "../lib/auth.mjs";
 export async function handleNotificationRoutes({ req, res, pathname, method, urlObj }) {
   if (pathname === "/notifications" && method === "GET") {
@@ -31,7 +31,7 @@ export async function handleNotificationRoutes({ req, res, pathname, method, url
       return sendJson(req, res, 403, { success: false, message: "Akses ditolak." });
     }
     notif.status_baca = true;
-    saveDb(db);
+    scheduleSaveDb(db);
     return sendJson(req, res, 200, { success: true, data: notif });
   }
 
@@ -41,7 +41,7 @@ export async function handleNotificationRoutes({ req, res, pathname, method, url
     db.notifications.forEach((n) => {
       if (n.id_user === user.id_user) n.status_baca = true;
     });
-    saveDb(db);
+    scheduleSaveDb(db);
     return sendJson(req, res, 200, { success: true });
   }
 }

@@ -83,6 +83,12 @@ function getCorsHeaders(req) {
   return headers;
 }
 
+// Gambar dikirim sebagai URL ringkas (/api/media/...) secara default.
+// ?compact_media=0 atau ?compact_media=false memaksa base64 penuh.
+function readCompactMedia(urlObj) {
+  const raw = urlObj?.searchParams?.get("compact_media");
+  return !(raw === "0" || raw === "false");
+}
 function sendJson(req, res, status, payload, extraHeaders = {}) {
   // Tandai respons sejak dipanggil: jalur gzip mengirim asinkron lewat callback zlib.
   res.__loResponded = true;
@@ -166,4 +172,4 @@ function checkRateLimit(req, res, bucket, maxAttempts = 15, windowMs = 60_000) {
   return true;
 }
 
-export { checkRateLimit, getClientIp, getCorsHeaders, isAllowedOrigin, isSafeImageInput, isValidEmail, parseBody, sendJson, validateFrontendOrigin };
+export { checkRateLimit, getClientIp, getCorsHeaders, isAllowedOrigin, isSafeImageInput, isValidEmail, parseBody, readCompactMedia, sendJson, validateFrontendOrigin };

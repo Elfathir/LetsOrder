@@ -4,15 +4,15 @@ import path from "node:path";
 import crypto from "node:crypto";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
-import { parseBody, sendJson } from "../lib/http.mjs";
-import { db, saveDb } from "../lib/db.mjs";
+import { parseBody, sendJson , readCompactMedia } from "../lib/http.mjs";
+import { db, scheduleSaveDb } from "../lib/db.mjs";
 import { createEnrichContext, enrichMenu, isTenantOpenNow } from "../lib/enrich.mjs";
 import { requireAuth, requireRole } from "../lib/auth.mjs";
 export async function handleCartRoutes({ req, res, pathname, method, urlObj }) {
   if (pathname === "/cart" && method === "GET") {
     const user = requireAuth(req, res);
     if (!user || !requireRole(req, res, user, "Customer")) return;
-    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const compactMedia = readCompactMedia(urlObj);
     const rawItems = db.carts[user.id_user] || [];
     const ctx = createEnrichContext(compactMedia);
     const items = rawItems
@@ -44,7 +44,7 @@ export async function handleCartRoutes({ req, res, pathname, method, urlObj }) {
     const user = requireAuth(req, res);
     if (!user || !requireRole(req, res, user, "Customer")) return;
     db.carts[user.id_user] = [];
-    saveDb(db);
+    scheduleSaveDb(db);
     return sendJson(req, res, 200, {
       success: true,
       message: "Keranjang berhasil dikosongkan.",
@@ -97,7 +97,7 @@ export async function handleCartRoutes({ req, res, pathname, method, urlObj }) {
         catatan: String(body.catatan || "").slice(0, 500),
       });
     }
-    saveDb(db);
+    scheduleSaveDb(db);
     return sendJson(req, res, 201, {
       success: true,
       message: "Item berhasil ditambahkan ke keranjang.",
@@ -118,7 +118,7 @@ export async function handleCartRoutes({ req, res, pathname, method, urlObj }) {
       return sendJson(req, res, 404, { success: false, message: "Item keranjang tidak ditemukan." });
     }
     item.jumlah = Math.max(1, Math.min(100, Number(body.jumlah || 1)));
-    saveDb(db);
+    scheduleSaveDb(db);
     return sendJson(req, res, 200, {
       success: true,
       message: "Item keranjang berhasil diperbarui.",
@@ -133,7 +133,7 @@ export async function handleCartRoutes({ req, res, pathname, method, urlObj }) {
       db.carts[user.id_user] = db.carts[user.id_user].filter(
         (i) => i.id_item_keranjang !== idTarget && i.id_menu !== idTarget
       );
-      saveDb(db);
+      scheduleSaveDb(db);
     }
     return sendJson(req, res, 200, {
       success: true,

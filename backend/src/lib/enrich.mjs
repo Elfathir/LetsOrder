@@ -276,7 +276,53 @@ function isOrderPaid(order, payment = null) {
   );
 }
 
-function enrichOrder(order, ctx = null) {
+// --- Objek ramping untuk daftar pesanan -------------------------------------
+// Payload daftar (/sync, /orders, /vendor/orders) dipanggil terus-menerus,
+// jadi hanya field yang benar-benar dipakai UI yang dikirim. Detail lengkap
+// (status_history, payment penuh, menu lengkap) tetap tersedia di /orders/{id}.
+
+function slimOrderTenant(tenant) {
+  if (!tenant) return null;
+  return {
+    id_tenant: tenant.id_tenant,
+    nama_tenant: tenant.nama_tenant,
+    booth: tenant.booth ?? null,
+    status_buka: tenant.status_buka ?? null,
+    jam_buka: tenant.jam_buka ?? null,
+    jam_tutup: tenant.jam_tutup ?? null,
+  };
+}
+
+function slimOrderPayment(payment) {
+  if (!payment) return null;
+  // UI memakai `is_paid`; detail pembayaran lengkap ada di /orders/{id}/payment.
+  return { status_verifikasi: payment.status_verifikasi };
+}
+
+function slimOrderDetail(detail) {
+  return {
+    id_menu: detail.id_menu,
+    nama_menu: detail.nama_menu,
+    jumlah: detail.jumlah,
+    harga: detail.harga,
+    subtotal: detail.subtotal,
+    gambar: detail.gambar,
+    estimasi_menit: detail.estimasi_menit,
+    catatan: detail.catatan || "",
+  };
+}
+
+function slimOrderReview(review) {
+  return {
+    id_review: review.id_review,
+    rating: review.rating,
+    komentar: review.komentar,
+    dibuat_pada: review.dibuat_pada,
+  };
+}
+
+function enrichOrder(order, ctx = null, options = {}) {
+  const slim = Boolean(options.slim);
   const oid = Number(order.id_pesanan);
   const rawTenant = ctx
     ? ctx.tenantById.get(Number(order.id_tenant)) || null
@@ -330,24 +376,28 @@ function enrichOrder(order, ctx = null) {
           waktu: lastChat.waktu,
         }
       : null,
-    tenant,
-    payment,
-    reviews: orderReviews,
+    tenant: slim ? slimOrderTenant(tenant) : tenant,
+    payment: slim ? slimOrderPayment(payment) : payment,
+    // UI hanya memakai ulasan pertama (rating + komentar) dan `has_reviewed`.
+    reviews: slim ? orderReviews.slice(0, 1).map(slimOrderReview) : orderReviews,
     has_reviewed: orderReviews.length > 0,
     user: user
-      ? {
-          id_user: user.id_user,
-          username: user.username,
-          nama: user.nama,
-          email: user.email,
-          peran: user.peran,
-        }
+      ? slim
+        ? { id_user: user.id_user, username: user.username, nama: user.nama }
+        : {
+            id_user: user.id_user,
+            username: user.username,
+            nama: user.nama,
+            email: user.email,
+            peran: user.peran,
+          }
       : null,
-    details,
-    order_details: details,
-    status_history: order.status_history || [
-      { status: order.status_pesanan, waktu: order.waktu_pesan },
-    ],
+    details: slim ? details.map(slimOrderDetail) : details,
+    // Duplikat persis dari `details`; tidak dikirim pada payload daftar.
+    order_details: slim ? undefined : details,
+    status_history: slim
+      ? undefined
+      : order.status_history || [{ status: order.status_pesanan, waktu: order.waktu_pesan }],
   };
 }
 

@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { SERVER_PROMOS } from "../config.mjs";
-import { isSafeImageInput, parseBody, sendJson } from "../lib/http.mjs";
+import { isSafeImageInput, parseBody, sendJson , readCompactMedia } from "../lib/http.mjs";
 import { db, saveDb } from "../lib/db.mjs";
 import { createEnrichContext, enrichMenu, enrichTenant, isMediaEndpointRef, readPhotoFocus } from "../lib/enrich.mjs";
 import { ensureTenantForVendor, requireAuth, requireRole } from "../lib/auth.mjs";
@@ -16,7 +16,7 @@ export async function handleVendorRoutes({ req, res, pathname, method, urlObj })
     const hadTenant = db.tenants.some((t) => t.id_user === user.id_user);
     const tenant = ensureTenantForVendor(user);
     if (!hadTenant && tenant) saveDb(db);
-    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const compactMedia = readCompactMedia(urlObj);
     const ctx = compactMedia ? createEnrichContext(true) : null;
     return sendJson(req, res, 200, {
       success: true,
@@ -182,7 +182,7 @@ export async function handleVendorRoutes({ req, res, pathname, method, urlObj })
     const hadTenant = !isAdmin && db.tenants.some((t) => t.id_user === user.id_user);
     const tenant = isAdmin ? null : ensureTenantForVendor(user);
     if (!hadTenant && tenant) saveDb(db);
-    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const compactMedia = readCompactMedia(urlObj);
     const ctx = createEnrichContext(compactMedia);
     const menus = db.menus
       .filter((m) => (isAdmin ? true : m.id_tenant === tenant.id_tenant))

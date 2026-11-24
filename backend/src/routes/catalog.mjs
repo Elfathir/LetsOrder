@@ -4,7 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
-import { sendJson } from "../lib/http.mjs";
+import { sendJson , readCompactMedia } from "../lib/http.mjs";
 import { db } from "../lib/db.mjs";
 import { compactMediaUrl, createEnrichContext, enrichMenu, enrichOrder, enrichTenant, isTenantConfigured } from "../lib/enrich.mjs";
 import { getAuthUser, sanitizeUserResponse } from "../lib/auth.mjs";
@@ -70,7 +70,7 @@ export async function handleCatalogRoutes({ req, res, pathname, method, urlObj }
       return sendJson(req, res, 401, { success: false, message: "Unauthenticated." });
     }
     const includeCatalog = urlObj.searchParams.get("catalog") !== "0";
-    const compactMedia = urlObj.searchParams.get("compact_media") !== "0";
+    const compactMedia = readCompactMedia(urlObj);
     const ctx = createEnrichContext(compactMedia);
     const isVendor = Boolean(user && String(user.peran).toLowerCase() === "vendor");
     const isCustomer = Boolean(user && String(user.peran).toLowerCase() === "customer");
@@ -163,13 +163,13 @@ export async function handleCatalogRoutes({ req, res, pathname, method, urlObj }
           ? db.orders
               .filter((o) => o.id_tenant === rawVendorTenant.id_tenant)
               .sort((a, b) => b.id_pesanan - a.id_pesanan)
-              .map((o) => enrichOrder(o, ctx))
+              .map((o) => enrichOrder(o, ctx, { slim: true }))
           : [];
       } else {
         orders = db.orders
           .filter((o) => o.id_user === user.id_user)
           .sort((a, b) => b.id_pesanan - a.id_pesanan)
-          .map((o) => enrichOrder(o, ctx));
+          .map((o) => enrichOrder(o, ctx, { slim: true }));
         if (isCustomer) {
           const rawItems = db.carts[user.id_user] || [];
           cart = {
@@ -241,7 +241,7 @@ export async function handleCatalogRoutes({ req, res, pathname, method, urlObj }
 
   if (pathname === "/tenants" && method === "GET") {
     const includeUnconfigured = urlObj.searchParams.get("include_unconfigured") === "true";
-    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const compactMedia = readCompactMedia(urlObj);
     const ctx = createEnrichContext(compactMedia);
     return sendJson(req, res, 200, {
       success: true,
@@ -340,7 +340,7 @@ export async function handleCatalogRoutes({ req, res, pathname, method, urlObj }
   if (tenantMenusMatch && method === "GET") {
     const idTenant = Number(tenantMenusMatch[1]);
     const includeUnavailable = urlObj.searchParams.get("include_unavailable") === "true";
-    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const compactMedia = readCompactMedia(urlObj);
     const ctx = createEnrichContext(compactMedia);
     const menus = db.menus
       .filter((m) => m.id_tenant === idTenant && (includeUnavailable || Boolean(m.status_tersedia)))
@@ -354,7 +354,7 @@ export async function handleCatalogRoutes({ req, res, pathname, method, urlObj }
 
   if (pathname === "/menus" && method === "GET") {
     const includeUnavailable = urlObj.searchParams.get("include_unavailable") === "true";
-    const compactMedia = urlObj.searchParams.get("compact_media") === "1" || urlObj.searchParams.get("compact_media") === "true";
+    const compactMedia = readCompactMedia(urlObj);
     const ctx = createEnrichContext(compactMedia);
     const list = db.menus
       .filter((m) => (includeUnavailable ? true : Boolean(m.status_tersedia)))
