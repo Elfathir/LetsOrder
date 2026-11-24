@@ -1416,6 +1416,9 @@ html[data-theme="dark"] .floating-cart-btn {
     line-height: 1.15;
     white-space: normal;
     text-align: center;
+    /* Semua kolom memesan tinggi 2 baris supaya label yang panjang
+       ("Cart & promo") tidak membuat satu langkah terlihat lebih tinggi. */
+    min-height: calc(2 * 1.15em);
   }
 }
 

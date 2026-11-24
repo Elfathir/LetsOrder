@@ -2223,6 +2223,7 @@ export default function App() {
         }}
         className="btn-interactive"
         style={{
+          position: "relative",
           padding: "7px 12px",
           borderRadius: "var(--radius-pill)",
           border: unread > 0 ? "1px solid var(--orange)" : "1px solid var(--border-input)",
@@ -2241,8 +2242,11 @@ export default function App() {
         {unread > 0 && (
           <span
             style={{
-              minWidth: 17,
-              height: 17,
+              position: "absolute",
+              top: -7,
+              right: -7,
+              minWidth: 18,
+              height: 18,
               padding: "0 5px",
               borderRadius: 999,
               backgroundColor: "var(--orange)",
@@ -2251,6 +2255,8 @@ export default function App() {
               fontWeight: 800,
               ...LAYOUT.inlineRow,
               justifyContent: "center",
+              boxShadow: "0 0 0 2px var(--bg-card)",
+              pointerEvents: "none",
             }}
           >
             {unread}

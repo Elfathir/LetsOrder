@@ -36,7 +36,14 @@ const PAID_RAW_STATUSES = [
 ];
 
 // Semua status yang masih berjalan (belum selesai/dibatalkan).
-const ACTIVE_RAW_STATUSES = [RAW_STATUS.AWAITING_PAYMENT, ...PAID_RAW_STATUSES];
+// Catatan: "Selesai" TIDAK termasuk — dulu sempat ikut karena disalin dari
+// daftar "sudah dibayar", akibatnya pesanan selesai tampil seolah masih aktif.
+const ACTIVE_RAW_STATUSES = [
+  RAW_STATUS.AWAITING_PAYMENT,
+  RAW_STATUS.PREPARING,
+  RAW_STATUS.PREPARING_ALT,
+  RAW_STATUS.READY,
+];
 
 const IN_PROGRESS_UI_STATUSES = [
   UI_STATUS.AWAITING_PAYMENT,
