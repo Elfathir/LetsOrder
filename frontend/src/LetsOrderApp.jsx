@@ -2396,7 +2396,7 @@ export default function App() {
       closeFoodDetail();
       setTenantMenuQuery("");
       setActiveTenantView(matchedTenant);
-      setNavTab("home");
+      setNavTab("tenant");
       if (typeof window !== "undefined" && window.scrollTo) {
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
@@ -2944,6 +2944,7 @@ export default function App() {
                   ]
                   : [
                     { id: "home", tab: "home", label: t.navHome },
+                    { id: "tenant", tab: "tenant", label: t.navTenant },
                     {
                       id: "orders",
                       tab: "orders",
@@ -3150,6 +3151,7 @@ export default function App() {
               ]
               : [
                 { id: "home", tab: "home", label: t.navHome, icon: Store },
+                { id: "tenant", tab: "tenant", label: t.navTenant, icon: MapPin },
                 {
                   id: "orders",
                   tab: "orders",
@@ -5173,8 +5175,11 @@ export default function App() {
                                 <button
                                   className="hero-cta-btn"
                                   onClick={() => {
-                                    const el = document.getElementById("tenant-directory");
-                                    el?.scrollIntoView({ behavior: "smooth" });
+                                    setNavTab("tenant");
+                                    setActiveTenantView(null);
+                                    if (typeof window !== "undefined" && window.scrollTo) {
+                                      window.scrollTo({ top: 0, behavior: "smooth" });
+                                    }
                                   }}
                                   style={{
                                     padding: "12px 22px",
@@ -5707,7 +5712,7 @@ export default function App() {
                     </div>
                   </div>
                 )}
-                {navTab === "home" && !activeTenantView && (
+                {navTab === "tenant" && !activeTenantView && (
                   <div id="tenant-directory" className="container-app animate-fade" style={{ paddingTop: 32 }}>
                     <div
                       style={{
@@ -5990,7 +5995,7 @@ export default function App() {
                     )}
                   </div>
                 )}
-                {navTab === "home" && activeTenantView && (
+                {navTab === "tenant" && activeTenantView && (
                   <div className="container-app animate-fade" style={{ paddingTop: 32 }}>
                     <button
                       onClick={() => setActiveTenantView(null)}
