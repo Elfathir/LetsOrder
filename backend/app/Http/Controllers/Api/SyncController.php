@@ -8,6 +8,7 @@ use App\Models\Promo;
 use App\Models\Review;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -86,8 +87,23 @@ class SyncController extends Controller
 
         $syncLastMark = microtime(true);
         if ($includeCatalog) {
-            $tenants = $tenantCtrl->indexData(new Request(), $compact);
-            $menus = $menuCtrl->indexData(new Request(['include_unavailable' => 'true']), $compact);
+            $cache = Cache::store('file');
+            $cacheVersion = $compact ? 'compact' : 'full';
+            
+            $tenants = $cache->remember(
+                "sync_catalog_tenants_{$cacheVersion}",
+                now()->addSeconds(15),
+                fn () => $tenantCtrl->indexData(new Request(), $compact)
+            );
+            
+            $menus = $cache->remember(
+                "sync_catalog_menus_{$cacheVersion}",
+                now()->addSeconds(15),
+                fn () => $menuCtrl->indexData(
+                    new Request(['include_unavailable' => 'true']),
+                    $compact
+                )
+            );
             if ($user) {
                 $request->setUserResolver(fn () => $user);
             }
