@@ -44,10 +44,6 @@ $registerApiRoutes = function () {
             Route::post('/check-availability', [AuthController::class, 'checkAvailability']);
             Route::post('/register', [AuthController::class, 'register']);
             Route::post('/login', [AuthController::class, 'login']);
-            Route::get('/google/redirect', [AuthController::class, 'googleRedirect']);
-            Route::get('/google/callback', [AuthController::class, 'googleCallback']);
-            Route::post('/google/exchange', [AuthController::class, 'exchangeGoogleCode']);
-            Route::post('/google', [AuthController::class, 'googleLogin']);
             Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
             Route::post('/reset-password', [AuthController::class, 'resetPassword']);
         });
@@ -57,6 +53,8 @@ $registerApiRoutes = function () {
             Route::put('/password', [AuthController::class, 'updatePassword']);
             Route::put('/profile', [AuthController::class, 'updateProfile']);
             Route::patch('/profile', [AuthController::class, 'updateProfile']);
+            Route::delete('/account', [AuthController::class, 'deleteAccount'])
+                ->middleware('throttle:5,1');
             Route::post('/logout', [AuthController::class, 'logout']);
         });
     });

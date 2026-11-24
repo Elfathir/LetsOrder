@@ -128,23 +128,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  googleLogin: (data) =>
-    request("/auth/google", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  exchangeGoogleCode: (code) =>
-    request("/auth/google/exchange", {
-      method: "POST",
-      body: JSON.stringify({ code }),
-    }),
-  getGoogleConfig: () => request("/auth/google/config"),
-  getGoogleRedirectUrl: (peran = "Customer", clientId = "") =>
-    `${API_BASE_URL}/auth/google/redirect${buildQuery({
-      peran,
-      origin: typeof window !== "undefined" ? window.location.origin : "http://localhost:5173",
-      client_id: clientId || import.meta.env.VITE_GOOGLE_CLIENT_ID || undefined,
-    })}`,
   forgotPassword: (data) =>
     request("/auth/forgot-password", {
       method: "POST",

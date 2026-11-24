@@ -4,7 +4,6 @@ import path from "node:path";
 import crypto from "node:crypto";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
-import { STATE_SECRET } from "../config.mjs";
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
   const derived = crypto.scryptSync(String(password), salt, 64).toString("hex");
@@ -56,30 +55,4 @@ function constantTimeEqualStr(a, b) {
 }
 
 
-function signOAuthState(payload) {
-  const data = {
-    ...payload,
-    nonce: crypto.randomBytes(12).toString("hex"),
-    exp: Date.now() + 10 * 60 * 1000,
-  };
-  const encoded = Buffer.from(JSON.stringify(data), "utf8").toString("base64url");
-  const sig = crypto.createHmac("sha256", STATE_SECRET).update(encoded).digest("base64url");
-  return `${encoded}.${sig}`;
-}
-
-function verifyOAuthState(token) {
-  if (!token || typeof token !== "string" || !token.includes(".")) return null;
-  const [encoded, sig] = token.split(".");
-  if (!encoded || !sig) return null;
-  const expectedSig = crypto.createHmac("sha256", STATE_SECRET).update(encoded).digest("base64url");
-  if (!constantTimeEqualStr(sig, expectedSig)) return null;
-  try {
-    const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
-    if (!parsed.exp || Date.now() > parsed.exp) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-export { constantTimeEqualStr, hashPassword, hashToken, parseTokenEntry, sha256Hex, signOAuthState, verifyOAuthState, verifyPassword };
+export { constantTimeEqualStr, hashPassword, hashToken, parseTokenEntry, sha256Hex, verifyPassword };

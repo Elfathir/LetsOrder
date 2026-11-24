@@ -114,6 +114,18 @@ function createEnrichContext(compactMedia = false) {
     messagesByOrder.get(oid).push(m);
   }
 
+  // Total unit terjual per menu (semua pesanan yang tidak dibatalkan).
+  // Dipakai untuk mengurutkan katalog "paling laris".
+  const soldByMenu = new Map();
+  for (const order of db.orders || []) {
+    if (String(order.status_pesanan || "") === "Dibatalkan") continue;
+    for (const item of order.details || []) {
+      const menuId = Number(item.id_menu);
+      if (!menuId) continue;
+      soldByMenu.set(menuId, (soldByMenu.get(menuId) || 0) + Number(item.jumlah || 0));
+    }
+  }
+
   return {
     compactMedia: Boolean(compactMedia),
     userById,
@@ -126,6 +138,7 @@ function createEnrichContext(compactMedia = false) {
     reviewsByOrder,
     latestPaymentByOrder,
     messagesByOrder,
+    soldByMenu,
     enrichedTenants: new Map(),
   };
 }
@@ -241,6 +254,7 @@ function enrichMenu(menu, ctx = null) {
     rating: avgRating,
     reviews: menuReviews.length,
     reviews_count: menuReviews.length,
+    sold_total: ctx ? ctx.soldByMenu.get(Number(menu.id_menu)) || 0 : Number(menu.sold_today || 0),
     tenant,
     category,
   };

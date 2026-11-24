@@ -23,13 +23,9 @@ import {
   Trash2,
   MapPin,
   Menu,
-  Eye,
-  EyeOff,
   Globe,
   Store,
   Tag,
-  Lock,
-  Mail,
   Receipt,
   RotateCcw,
   Pencil,
@@ -41,7 +37,6 @@ import {
   Image as ImageIcon,
   Send,
   CheckCheck,
-  UtensilsCrossed,
   Upload,
 } from "lucide-react";
 import {
@@ -54,6 +49,20 @@ import {
 } from "./services/api";
 import TenantOnboardingWizard from "./components/TenantOnboardingWizard.jsx";
 import ImagePositionEditor from "./components/ImagePositionEditor.jsx";
+import Modal from "./components/ui/Modal.jsx";
+import DialogCard from "./components/ui/DialogCard.jsx";
+import StoreSettingsModal from "./components/StoreSettingsModal.jsx";
+import BrandLogo from "./components/BrandLogo.jsx";
+import AuthPage from "./components/AuthPage.jsx";
+import OrderStatusBadge from "./components/OrderStatusBadge.jsx";
+import MenuCard from "./components/MenuCard.jsx";
+import {
+  BUTTON_PILL_OUTLINE,
+  BUTTON_PILL_PRIMARY,
+  CHIP_CREAM,
+  PAGE_TITLE,
+  SURFACE_CARD,
+} from "./styles/surfaces.js";
 import { TRANSLATIONS } from "./i18n.js";
 import { isThemeAnimating, waitForThemeTransitionIdle } from "./utils/theme.js";
 import ThemeToggleButton from "./components/ThemeToggleButton.jsx";
@@ -72,6 +81,20 @@ import {
 } from "./utils/catalog.js";
 import { SafeImage, readAndCompressImageFile } from "./utils/media.jsx";
 import { LAYOUT } from "./utils/layout.js";
+import {
+  HISTORY_FILTER_KEYS,
+  RAW_STATUS,
+  UI_STATUS,
+  isActiveStatus,
+  isCancelledOrder,
+  isCancelledStatus,
+  isCompletedStatus,
+  isInProgressStatus,
+  isPaidStatus,
+  isReadyStatus as isReadyUiStatus,
+  matchesHistoryFilter,
+  toUiStatus,
+} from "./utils/orderStatus.js";
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => getStoredUser());
@@ -128,7 +151,6 @@ export default function App() {
     localStorage.setItem("letsorder_lang", nextLang);
     setIsLangMenuOpen(false);
   };
-  const [searchQuery, setSearchQuery] = useState("");
   const [tenantSearchQuery, setTenantSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
 
@@ -252,11 +274,13 @@ export default function App() {
     setIsAddMenuOpen(true);
   };
 
-  const [tenantOrderStep, setTenantOrderStep] = useState(1);
   const [tenantHistoryFilter, setTenantHistoryFilter] = useState("All");
 
   const [heroSlide, setHeroSlide] = useState(0);
   const [activeTenantView, setActiveTenantView] = useState(null);
+  // Halaman "Semua menu": daftar lengkap diurutkan dari yang paling laris.
+  const [showAllMenus, setShowAllMenus] = useState(false);
+  const [allMenuCategory, setAllMenuCategory] = useState("All");
 
   const [activeMenuDetail, setActiveMenuDetail] = useState(null);
   const [detailMounted, setDetailMounted] = useState(false);
@@ -466,80 +490,6 @@ export default function App() {
     new_password: "",
     reset_token: "",
   });
-  const [googleClientId, setGoogleClientId] = useState(
-    () => (import.meta.env.VITE_GOOGLE_CLIENT_ID || "").trim()
-  );
-
-  useEffect(() => {
-    api
-      .getGoogleConfig()
-      .then((res) => {
-        if (res?.data?.client_id) {
-          setGoogleClientId(String(res.data.client_id).trim());
-        }
-      })
-      .catch(() => { });
-
-    const params = new URLSearchParams(window.location.search);
-    const codeParam = params.get("google_auth_code");
-    const errorParam = params.get("google_error");
-
-    if (codeParam) {
-      window.history.replaceState({}, "", window.location.pathname);
-      setAuthLoading(true);
-      api
-        .exchangeGoogleCode(codeParam)
-        .then((res) => {
-          const user = res?.data?.user;
-          const token = res?.data?.access_token || res?.data?.token;
-          setStoredSession(token, user);
-          setCurrentUser(user);
-          setIsAuthOpen(false);
-          if (user?.peran === "Vendor") {
-            setTenantNavTab("dashboard");
-          } else {
-            setNavTab("home");
-          }
-        })
-        .catch((err) => {
-          setAuthError(err.message || "Gagal login menggunakan Google.");
-        })
-        .finally(() => {
-          setAuthLoading(false);
-        });
-    } else if (errorParam) {
-      setAuthError(errorParam);
-      window.history.replaceState({}, "", window.location.pathname);
-    } else if (window.location.hash.includes("access_token=")) {
-      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-      const accessToken = hashParams.get("access_token");
-      const pendingRole = localStorage.getItem("letsorder_pending_role") || "Customer";
-      if (accessToken) {
-        window.history.replaceState({}, "", window.location.pathname);
-        setAuthLoading(true);
-        api
-          .googleLogin({ access_token: accessToken, peran: pendingRole })
-          .then((res) => {
-            const user = res?.data?.user;
-            const token = res?.data?.access_token || res?.data?.token;
-            setStoredSession(token, user);
-            setCurrentUser(user);
-            setIsAuthOpen(false);
-            if (user?.peran === "Vendor") {
-              setTenantNavTab("dashboard");
-            } else {
-              setNavTab("home");
-            }
-          })
-          .catch((err) => {
-            setAuthError(err.message || "Gagal login menggunakan Google.");
-          })
-          .finally(() => {
-            setAuthLoading(false);
-          });
-      }
-    }
-  }, []);
 
   const notify = useCallback((text, type = "info") => {
     if (!text) return;
@@ -1171,14 +1121,6 @@ export default function App() {
             }));
           }
         }
-        const statusMap = {
-          "Menunggu Pembayaran": "Awaiting payment",
-          "Sedang Diproses": "Preparing",
-          Diproses: "Preparing",
-          "Siap Diambil": "Ready for pickup",
-          Selesai: "Completed",
-          Dibatalkan: "Cancelled",
-        };
         const mappedHistory = ordersRes.data.map((o) => {
           const detailsList = o.details || o.order_details || [];
           const firstItem = detailsList[0]?.nama_menu || "Pesanan Kantin";
@@ -1204,10 +1146,10 @@ export default function App() {
             promo_code: o.promo_code || null,
             has_reviewed: Boolean(o.has_reviewed || (Array.isArray(o.reviews) && o.reviews.length > 0)),
             reviews: Array.isArray(o.reviews) ? o.reviews : [],
-            status: statusMap[o.status_pesanan] || "Preparing",
+            status: toUiStatus(o.status_pesanan),
             status_pesanan: o.status_pesanan,
             raw_status: o.status_pesanan,
-            is_paid: Boolean(o.is_paid || ["Sedang Diproses", "Diproses", "Siap Diambil", "Selesai"].includes(o.status_pesanan)),
+            is_paid: Boolean(o.is_paid || isPaidStatus(o.status_pesanan)),
             chat_count: Number(o.chat_count || 0),
             last_chat: o.last_chat || null,
             payment: o.payment || null,
@@ -1222,8 +1164,7 @@ export default function App() {
         const yesterdayKey = getLocalDateKey(yDate);
 
         const nonCancelled = (list) => list.filter((o) => o.status_pesanan !== "Dibatalkan");
-        const isRevOrder = (o) =>
-          ["Sedang Diproses", "Diproses", "Siap Diambil", "Selesai"].includes(o.status_pesanan);
+        const isRevOrder = (o) => isPaidStatus(o.status_pesanan);
 
         const ordersTodayList = nonCancelled(
           ordersRes.data.filter((o) => String(o.waktu_pesan || "").startsWith(todayKey))
@@ -1299,11 +1240,7 @@ export default function App() {
         );
 
         const activeQueue = ordersRes.data
-          .filter((o) =>
-            ["Menunggu Pembayaran", "Sedang Diproses", "Diproses", "Siap Diambil"].includes(
-              o.status_pesanan
-            )
-          )
+          .filter((o) => isActiveStatus(o.status_pesanan))
           .map((o) => {
             const dList = o.details || o.order_details || [];
             return {
@@ -1319,16 +1256,11 @@ export default function App() {
               catatan: o.catatan || "",
               promo_code: o.promo_code || null,
               status_pesanan: o.status_pesanan,
-              is_paid: Boolean(o.is_paid || ["Sedang Diproses", "Diproses", "Siap Diambil", "Selesai"].includes(o.status_pesanan)),
+              is_paid: Boolean(o.is_paid || isPaidStatus(o.status_pesanan)),
               chat_count: Number(o.chat_count || 0),
               last_chat: o.last_chat || null,
               payment: o.payment || null,
-              status:
-                o.status_pesanan === "Menunggu Pembayaran"
-                  ? "Awaiting payment"
-                  : o.status_pesanan === "Siap Diambil"
-                    ? "Ready for pickup"
-                    : "Preparing",
+              status: toUiStatus(o.status_pesanan),
             };
           });
         setIncomingOrders(activeQueue);
@@ -1579,58 +1511,6 @@ export default function App() {
     }
   };
 
-  const handleGoogleSignIn = () => {
-    setAuthError("");
-    setAuthSuccess("");
-    localStorage.setItem("letsorder_pending_role", loginRoleTab);
-    const activeClientId = (googleClientId || import.meta.env.VITE_GOOGLE_CLIENT_ID || "").trim();
-
-    if (!activeClientId || !activeClientId.includes(".apps.googleusercontent.com")) {
-      setAuthError(
-        "Google OAuth Client ID (VITE_GOOGLE_CLIENT_ID / GOOGLE_CLIENT_ID) belum diisi di file .env."
-      );
-      return;
-    }
-
-    if (window.google?.accounts?.oauth2) {
-      const tokenClient = window.google.accounts.oauth2.initTokenClient({
-        client_id: activeClientId,
-        scope: "openid email profile",
-        prompt: "select_account",
-        callback: async (tokenResponse) => {
-          if (tokenResponse?.error || !tokenResponse?.access_token) {
-            setAuthError(tokenResponse?.error_description || "Login Google dibatalkan.");
-            return;
-          }
-          setAuthLoading(true);
-          try {
-            const res = await api.googleLogin({
-              access_token: tokenResponse.access_token,
-              peran: loginRoleTab,
-            });
-            const user = res?.data?.user;
-            const token = res?.data?.access_token || res?.data?.token;
-            setStoredSession(token, user);
-            setCurrentUser(user);
-            setIsAuthOpen(false);
-            if (user?.peran === "Vendor") {
-              setTenantNavTab("dashboard");
-            } else {
-              setNavTab("home");
-            }
-          } catch (err) {
-            setAuthError(err.message || "Login dengan Google gagal.");
-          } finally {
-            setAuthLoading(false);
-          }
-        },
-      });
-      tokenClient.requestAccessToken();
-      return;
-    }
-
-    window.location.href = api.getGoogleRedirectUrl(loginRoleTab, activeClientId);
-  };
 
   const handleLogout = async () => {
     try {
@@ -1792,8 +1672,7 @@ export default function App() {
           const localUses = (ordersHistory || []).filter(
             (o) =>
               String(o.promo_code || "").trim().toUpperCase() === code &&
-              o.status_pesanan !== "Dibatalkan" &&
-              o.status !== "Cancelled"
+              !isCancelledOrder(o)
           ).length;
           const usedCount = Math.max(Number(p.used_by_user || 0), localUses);
           if (usedCount >= limit) return false;
@@ -1810,8 +1689,7 @@ export default function App() {
         const localUses = (ordersHistory || []).filter(
           (o) =>
             String(o.promo_code || "").trim().toUpperCase() === code &&
-            o.status_pesanan !== "Dibatalkan" &&
-            o.status !== "Cancelled"
+            !isCancelledOrder(o)
         ).length;
         const usedCount = Math.max(Number(p.used_by_user || 0), localUses);
         const remaining = limit > 0 ? Math.max(0, limit - usedCount) : null;
@@ -2197,7 +2075,9 @@ export default function App() {
       setActiveOrderId(oid);
       setActiveQueueCode(orderSummaryObj.nomor_antrean);
       setOrdersHistory((prev) => {
-        const nextStatus = awaitingTenantConfirm ? "Awaiting payment" : "Preparing";
+        const nextStatus = toUiStatus(
+          awaitingTenantConfirm ? RAW_STATUS.AWAITING_PAYMENT : RAW_STATUS.PREPARING
+        );
         const nextRaw = orderSummaryObj.status_pesanan;
         let found = false;
         const updated = prev.map((o) => {
@@ -2261,7 +2141,8 @@ export default function App() {
     setActiveQueueCode(order.nomor_antrean || `A-${order.id_pesanan}`);
     setCheckoutError("");
     setCheckoutStep(
-      order.status === "Awaiting payment" || order.raw_status === "Menunggu Pembayaran"
+      order.status === UI_STATUS.AWAITING_PAYMENT ||
+        order.raw_status === RAW_STATUS.AWAITING_PAYMENT
         ? 2
         : 3
     );
@@ -2395,19 +2276,6 @@ export default function App() {
     },
     [menusList]
   );
-
-  const isMyStoreConfigured = useMemo(() => {
-    if (!myTenantInfo) return false;
-    if (myTenantInfo.is_configured !== undefined) return Boolean(myTenantInfo.is_configured);
-    const defaultDescs = ["", "tenant kantin kampus upnvj", "tenant kantin kampus", "campus canteen tenant"];
-    const rawDesc = String(myTenantInfo.deskripsi || "").trim().toLowerCase();
-    const hasCustomDesc = !defaultDescs.includes(rawDesc);
-    const hasLogo = Boolean(
-      (myTenantInfo.logo && myTenantInfo.logo !== "tenant/default.png") ||
-        (myTenantInfo.gambar && myTenantInfo.gambar !== "tenant/default.png")
-    );
-    return hasCustomDesc || hasLogo || tenantMenus.length > 0;
-  }, [myTenantInfo, tenantMenus.length]);
 
   const openTenantMenuFromItem = useCallback(
     (item) => {
@@ -2827,15 +2695,44 @@ export default function App() {
   const filteredMenus = useMemo(() => {
     return menusList.filter((item) => {
       if (item.available === false) return false;
-      const matchSearch =
-        searchQuery === "" ||
-        item.nama_menu.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.tenant_name.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchCategory =
-        selectedCategory === "All" || item.kategori_nama === selectedCategory;
-      return matchSearch && matchCategory;
+      return selectedCategory === "All" || item.kategori_nama === selectedCategory;
     });
-  }, [menusList, searchQuery, selectedCategory]);
+  }, [menusList, selectedCategory]);
+
+  // Filter kategori untuk halaman "Semua menu": hanya kategori yang benar-benar
+  // ada di katalog, dengan urutan tetap Makanan → Camilan → Minuman.
+  const allMenuCategoryOptions = useMemo(() => {
+    const present = new Set((menusList || []).map((m) => m.kategori_nama).filter(Boolean));
+    const preferred = ["Rice & Mains", "Snacks", "Drinks"].filter((c) => present.has(c));
+    const others = Array.from(present)
+      .filter((c) => !preferred.includes(c))
+      .sort();
+    return ["All", ...preferred, ...others];
+  }, [menusList]);
+
+  const allMenusSorted = useMemo(() => {
+    const base = (menusList || []).filter((m) => m.available !== false);
+    const filtered =
+      allMenuCategory === "All"
+        ? base
+        : base.filter((m) => m.kategori_nama === allMenuCategory);
+    const soldOf = (m) => Number(m.sold_total ?? m.sold_today ?? 0);
+    const reviewedOf = (m) => Number(m.reviews_count ?? m.reviews ?? 0);
+    return [...filtered].sort(
+      (a, b) =>
+        soldOf(b) - soldOf(a) ||
+        reviewedOf(b) - reviewedOf(a) ||
+        String(a.nama_menu || "").localeCompare(String(b.nama_menu || ""))
+    );
+  }, [menusList, allMenuCategory]);
+
+  const menuCategoryLabel = (name) => {
+    if (name === "All") return lang === "EN" ? "All" : "Semua";
+    if (name === "Rice & Mains") return t.catRice;
+    if (name === "Snacks") return t.catSnacks;
+    if (name === "Drinks") return t.catDrinks;
+    return name;
+  };
 
   const filteredTenants = useMemo(() => {
     const q = tenantSearchQuery.trim().toLowerCase();
@@ -2900,6 +2797,7 @@ export default function App() {
                     } else {
                       setNavTab("home");
                       setActiveTenantView(null);
+                      setShowAllMenus(false);
                       setSelectedCategory("All");
                     }
                   }}
@@ -2911,21 +2809,11 @@ export default function App() {
                     minWidth: 0,
                   }}
                 >
-                  <svg className="header-logo-svg" width="38" height="38" viewBox="0 0 100 100" fill="none" style={{ flexShrink: 0 }}>
-                    <circle cx="50" cy="50" r="46" stroke="#D49354" strokeWidth="3" />
-                    <circle cx="50" cy="50" r="41" stroke="#E5B888" strokeWidth="1.5" />
-                    <path
-                      d="M33 26V40C33 44 36 46 39 46V74H43V46C46 46 49 44 49 40V26H46V38H44V26H38V38H36V26H33Z"
-                      fill="var(--maroon)"
-                    />
-                    <path
-                      d="M51 32L78 50L51 68V32Z"
-                      fill="#F8A34B"
-                      stroke="var(--maroon)"
-                      strokeWidth="3.5"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  <BrandLogo
+                    className="header-logo-svg"
+                    size={38}
+                    style={{ flexShrink: 0 }}
+                  />
 
                   <div style={{ minWidth: 0 }}>
                     <div
@@ -2971,8 +2859,7 @@ export default function App() {
                       width: pillStyle.width,
                       height: pillStyle.height || 38,
                       boxSizing: "border-box",
-                      borderRadius: "var(--radius-pill)",
-                      backgroundColor: "var(--bg-cream)",
+                      ...CHIP_CREAM,
                       border:
                         portalMode === "tenant"
                           ? "1px solid var(--border-light)"
@@ -3022,6 +2909,7 @@ export default function App() {
                         } else {
                           setNavTab(tab.tab);
                           setActiveTenantView(null);
+                          setShowAllMenus(false);
                           closeFoodDetail();
                         }
                       }}
@@ -3088,6 +2976,7 @@ export default function App() {
                       />
                       <div
                         role="listbox"
+                        className="animate-dropdown"
                         style={{
                           position: "absolute",
                           top: "calc(100% + 8px)",
@@ -3236,6 +3125,7 @@ export default function App() {
                     } else {
                       setNavTab(tab.tab);
                       setActiveTenantView(null);
+                      setShowAllMenus(false);
                       closeFoodDetail();
                     }
                   }}
@@ -3299,9 +3189,7 @@ export default function App() {
                       <div>
                         <h1
                           style={{
-                            fontSize: 32,
-                            fontWeight: 900,
-                            color: "var(--maroon)",
+                            ...PAGE_TITLE,
                             letterSpacing: "-0.02em",
                             marginBottom: 2,
                           }}
@@ -3442,9 +3330,7 @@ export default function App() {
                             ...LAYOUT.inlineRow,
                             gap: 6,
                             padding: "9px 16px",
-                            borderRadius: "var(--radius-pill)",
-                            border: "1px solid var(--border-input)",
-                            backgroundColor: "var(--bg-card)",
+                            ...BUTTON_PILL_OUTLINE,
                             color: "var(--maroon)",
                             fontSize: 13,
                             fontWeight: 700,
@@ -3534,8 +3420,7 @@ export default function App() {
                                   ...LAYOUT.inlineRow,
                                   gap: 4,
                                   padding: "3px 10px",
-                                  borderRadius: "var(--radius-pill)",
-                                  backgroundColor: "var(--bg-cream)",
+                                  ...CHIP_CREAM,
                                   color: "var(--maroon)",
                                   fontSize: 11,
                                   fontWeight: 800,
@@ -3578,9 +3463,7 @@ export default function App() {
                     >
                       <div
                         style={{
-                          backgroundColor: "var(--bg-card)",
-                          borderRadius: "var(--radius-xl)",
-                          border: "1px solid var(--border-light)",
+                          ...SURFACE_CARD,
                           padding: "24px 26px",
                           boxShadow: "var(--shadow-card)",
                         }}
@@ -3627,9 +3510,10 @@ export default function App() {
 
                         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                           {incomingOrders.map((ord) => {
-                            const isAwaiting = ord.status === "Awaiting payment";
-                            const isPrep = ord.status === "Preparing";
-                            const isReady = ord.status === "Ready for pickup";
+                            const ordStatus = ord.status;
+                            const isAwaiting = ordStatus === UI_STATUS.AWAITING_PAYMENT;
+                            const isPrep = ordStatus === UI_STATUS.PREPARING;
+                            const isReady = isReadyUiStatus(ordStatus);
 
                             return (
                               <div
@@ -3722,7 +3606,6 @@ export default function App() {
                                   {isAwaiting && (
                                     <button
                                       onClick={() => {
-                                        setTenantOrderStep(1);
                                         setTenantNavTab("orders");
                                       }}
                                       className="btn-interactive"
@@ -3746,9 +3629,7 @@ export default function App() {
                                       className="btn-interactive btn-lift"
                                       style={{
                                         padding: "8px 18px",
-                                        borderRadius: "var(--radius-pill)",
-                                        border: "none",
-                                        backgroundColor: "var(--orange)",
+                                        ...BUTTON_PILL_PRIMARY,
                                         color: "var(--on-orange-text)",
                                         fontSize: 12,
                                         fontWeight: 800,
@@ -3830,9 +3711,7 @@ export default function App() {
                           return (
                             <div
                               style={{
-                                backgroundColor: "var(--bg-card)",
-                                borderRadius: "var(--radius-xl)",
-                                border: "1px solid var(--border-light)",
+                                ...SURFACE_CARD,
                                 padding: "22px 24px",
                                 boxShadow: "var(--shadow-card)",
                               }}
@@ -3913,9 +3792,7 @@ export default function App() {
                                 style={{
                                   width: "100%",
                                   padding: "11px 16px",
-                                  borderRadius: "var(--radius-pill)",
-                                  border: "1px solid var(--border-input)",
-                                  backgroundColor: "var(--bg-card)",
+                                  ...BUTTON_PILL_OUTLINE,
                                   color: "var(--maroon)",
                                   fontSize: 13,
                                   fontWeight: 700,
@@ -3932,9 +3809,7 @@ export default function App() {
                         })()}
                         <div
                           style={{
-                            backgroundColor: "var(--bg-card)",
-                            borderRadius: "var(--radius-xl)",
-                            border: "1px solid var(--border-light)",
+                            ...SURFACE_CARD,
                             padding: "22px 24px",
                             boxShadow: "var(--shadow-card)",
                           }}
@@ -4024,9 +3899,7 @@ export default function App() {
 
                         <div
                           style={{
-                            backgroundColor: "var(--bg-card)",
-                            borderRadius: "var(--radius-xl)",
-                            border: "1px solid var(--border-light)",
+                            ...SURFACE_CARD,
                             padding: "22px 24px",
                             boxShadow: "var(--shadow-card)",
                           }}
@@ -4142,9 +4015,7 @@ export default function App() {
 
                         <div
                           style={{
-                            backgroundColor: "var(--bg-card)",
-                            borderRadius: "var(--radius-xl)",
-                            border: "1px solid var(--border-light)",
+                            ...SURFACE_CARD,
                             padding: "22px 24px",
                             boxShadow: "var(--shadow-card)",
                           }}
@@ -4164,8 +4035,7 @@ export default function App() {
                                 ...LAYOUT.inlineRow,
                                 gap: 4,
                                 padding: "4px 10px",
-                                borderRadius: "var(--radius-pill)",
-                                backgroundColor: "var(--bg-cream)",
+                                ...CHIP_CREAM,
                                 color: "var(--maroon)",
                                 fontSize: 12,
                                 fontWeight: 800,
@@ -4275,9 +4145,7 @@ export default function App() {
                       <div>
                         <h1
                           style={{
-                            fontSize: 32,
-                            fontWeight: 900,
-                            color: "var(--maroon)",
+                            ...PAGE_TITLE,
                             letterSpacing: "-0.02em",
                             marginBottom: 2,
                           }}
@@ -4340,9 +4208,7 @@ export default function App() {
                             ...LAYOUT.inlineRow,
                             gap: 8,
                             padding: "11px 22px",
-                            borderRadius: "var(--radius-pill)",
-                            border: "none",
-                            backgroundColor: "var(--orange)",
+                            ...BUTTON_PILL_PRIMARY,
                             color: "var(--on-orange-text)",
                             fontSize: 13,
                             fontWeight: 800,
@@ -4657,9 +4523,7 @@ export default function App() {
                                   ...LAYOUT.inlineRow,
                                   gap: 8,
                                   padding: "12px 24px",
-                                  borderRadius: "var(--radius-pill)",
-                                  border: "none",
-                                  backgroundColor: "var(--orange)",
+                                  ...BUTTON_PILL_PRIMARY,
                                   color: "var(--on-orange-text)",
                                   fontSize: 14,
                                   fontWeight: 800,
@@ -4682,9 +4546,7 @@ export default function App() {
                     <div style={{ marginBottom: 22 }}>
                       <h1
                         style={{
-                          fontSize: 32,
-                          fontWeight: 900,
-                          color: "var(--maroon)",
+                          ...PAGE_TITLE,
                           letterSpacing: "-0.02em",
                           marginBottom: 4,
                         }}
@@ -4730,9 +4592,7 @@ export default function App() {
                     ) : (
                       <div
                         style={{
-                          backgroundColor: "var(--bg-card)",
-                          borderRadius: "var(--radius-xl)",
-                          border: "1px solid var(--border-light)",
+                          ...SURFACE_CARD,
                           padding: "24px",
                           boxShadow: "var(--shadow-card)",
                           display: "flex",
@@ -4741,9 +4601,10 @@ export default function App() {
                         }}
                       >
                         {incomingOrders.map((ord) => {
-                          const isAwaiting = ord.status === "Awaiting payment";
-                          const isPrep = ord.status === "Preparing";
-                          const isReady = ord.status === "Ready for pickup";
+                          const ordStatus = ord.status;
+                          const isAwaiting = ordStatus === UI_STATUS.AWAITING_PAYMENT;
+                          const isPrep = ordStatus === UI_STATUS.PREPARING;
+                          const isReady = isReadyUiStatus(ordStatus);
                           return (
                             <div
                               key={ord.id}
@@ -4847,9 +4708,7 @@ export default function App() {
                                     className="btn-interactive btn-lift"
                                     style={{
                                       padding: "8px 18px",
-                                      borderRadius: "var(--radius-pill)",
-                                      border: "none",
-                                      backgroundColor: "var(--orange)",
+                                      ...BUTTON_PILL_PRIMARY,
                                       color: "var(--on-orange-text)",
                                       fontSize: 12,
                                       fontWeight: 800,
@@ -4912,9 +4771,7 @@ export default function App() {
                     <div style={{ marginBottom: 22 }}>
                       <h1
                         style={{
-                          fontSize: 32,
-                          fontWeight: 900,
-                          color: "var(--maroon)",
+                          ...PAGE_TITLE,
                           letterSpacing: "-0.02em",
                           marginBottom: 4,
                         }}
@@ -4927,10 +4784,10 @@ export default function App() {
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
                       {[
-                        { key: "All", label: t.filterAll },
-                        { key: "In progress", label: t.filterInProgress },
-                        { key: "Completed", label: t.filterCompleted },
-                        { key: "Cancelled", label: t.filterCancelled },
+                        { key: HISTORY_FILTER_KEYS.ALL, label: t.filterAll },
+                        { key: HISTORY_FILTER_KEYS.IN_PROGRESS, label: t.filterInProgress },
+                        { key: HISTORY_FILTER_KEYS.COMPLETED, label: t.filterCompleted },
+                        { key: HISTORY_FILTER_KEYS.CANCELLED, label: t.filterCancelled },
                       ].map((tab) => {
                         const active = tenantHistoryFilter === tab.key;
                         return (
@@ -4958,9 +4815,7 @@ export default function App() {
                     </div>
                     <div
                       style={{
-                        backgroundColor: "var(--bg-card)",
-                        borderRadius: "var(--radius-xl)",
-                        border: "1px solid var(--border-light)",
+                        ...SURFACE_CARD,
                         padding: "22px",
                         boxShadow: "var(--shadow-card)",
                         display: "flex",
@@ -4969,12 +4824,9 @@ export default function App() {
                       }}
                     >
                       {(() => {
-                        const filteredTenantHist = ordersHistory.filter((ord) => {
-                          const inProg = ["Awaiting payment", "Preparing", "Ready for pickup"].includes(ord.status);
-                          if (tenantHistoryFilter === "All") return true;
-                          if (tenantHistoryFilter === "In progress") return inProg;
-                          return ord.status === tenantHistoryFilter;
-                        });
+                        const filteredTenantHist = ordersHistory.filter((ord) =>
+                          matchesHistoryFilter(ord.status, ord.raw_status, tenantHistoryFilter)
+                        );
 
                         if (filteredTenantHist.length === 0) {
                           return (
@@ -4986,18 +4838,8 @@ export default function App() {
                           );
                         }
 
-                        const statusLabels = {
-                          "Awaiting payment": lang === "EN" ? "Awaiting payment" : "Menunggu bayar",
-                          Preparing: lang === "EN" ? "Preparing" : "Diproses",
-                          "Ready for pickup": lang === "EN" ? "Ready for pickup" : "Siap diambil",
-                          Completed: lang === "EN" ? "Completed" : "Selesai",
-                          Cancelled: lang === "EN" ? "Cancelled" : "Dibatalkan",
-                        };
-
                         return filteredTenantHist.map((order) => {
-                          const isPrep = ["Awaiting payment", "Preparing", "Ready for pickup"].includes(order.status);
-                          const isCompleted = order.status === "Completed";
-                          const isCancelled = order.status === "Cancelled";
+                          const isCancelled = isCancelledStatus(order.status);
                           return (
                             <div
                               key={order.id_pesanan}
@@ -5074,28 +4916,11 @@ export default function App() {
                               </div>
 
                               <div className="order-row-actions" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                <span
-                                  style={{
-                                    ...LAYOUT.inlineRow,
-                                    gap: 6,
-                                    padding: "5px 12px",
-                                    borderRadius: "var(--radius-pill)",
-                                    backgroundColor: isCompleted
-                                      ? "var(--btn-solid-bg)"
-                                      : isPrep
-                                        ? "var(--bg-cream)"
-                                        : "var(--status-cancelled-bg)",
-                                    color: isCompleted
-                                      ? "var(--btn-solid-text)"
-                                      : isPrep
-                                        ? "var(--maroon)"
-                                        : "var(--text-muted)",
-                                    fontSize: 12,
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  <span>{statusLabels[order.status] || order.status}</span>
-                                </span>
+                                <OrderStatusBadge
+                                  status={order.status}
+                                  lang={lang}
+                                  variant="tenant"
+                                />
                                 {renderOrderChatButton(order, "Chat")}
                               </div>
                             </div>
@@ -5109,7 +4934,7 @@ export default function App() {
             )}
             {portalMode === "customer" && (
               <>
-                {navTab === "home" && !activeTenantView && (
+                {navTab === "home" && !activeTenantView && !showAllMenus && (
                   <div className="container-app animate-fade home-page-container" style={{ paddingTop: 28 }}>
                     {heroSlides.length > 0 && (
                     <div
@@ -5178,8 +5003,7 @@ export default function App() {
                                   ...LAYOUT.inlineRow,
                                   gap: 6,
                                   padding: "4px 12px",
-                                  borderRadius: "var(--radius-pill)",
-                                  backgroundColor: "var(--bg-cream)",
+                                  ...CHIP_CREAM,
                                   color: "var(--maroon)",
                                   fontSize: 11,
                                   fontWeight: 800,
@@ -5231,9 +5055,7 @@ export default function App() {
                                   }}
                                   style={{
                                     padding: "12px 28px",
-                                    borderRadius: "var(--radius-pill)",
-                                    border: "none",
-                                    backgroundColor: "var(--orange)",
+                                    ...BUTTON_PILL_PRIMARY,
                                     color: "#FFFFFF",
                                     fontSize: 14,
                                     fontWeight: 700,
@@ -5516,7 +5338,16 @@ export default function App() {
                           </h2>
                         </div>
                         <button
-                          onClick={() => setSelectedCategory("All")}
+                          onClick={() => {
+                            setAllMenuCategory("All");
+                            setSelectedCategory("All");
+                            setShowAllMenus(true);
+                            setActiveTenantView(null);
+                            closeFoodDetail();
+                            if (typeof window !== "undefined" && window.scrollTo) {
+                              window.scrollTo({ top: 0, behavior: "smooth" });
+                            }
+                          }}
                           style={{
                             border: "none",
                             background: "transparent",
@@ -5539,235 +5370,19 @@ export default function App() {
                           gap: 22,
                         }}
                       >
-                        {filteredMenus.map((item) => {
-                          const itemTenantObj = getItemTenantObj(item);
-                          const itemTenantOpen = isItemTenantOpen(item);
-                          return (
-                          <div
+                        {filteredMenus.map((item) => (
+                          <MenuCard
                             key={item.id_menu}
-                            className="card-hover img-zoom-parent"
-                            style={{
-                              borderRadius: "var(--radius-lg)",
-                              backgroundColor: "var(--bg-card)",
-                              border: itemTenantOpen ? "1px solid var(--border-light)" : "1px solid #FCA5A5",
-                              overflow: "hidden",
-                              boxShadow: "var(--shadow-sm)",
-                              display: "flex",
-                              flexDirection: "column",
-                            }}
-                          >
-                            <div
-                              onClick={() => openFoodDetail(item)}
-                              style={{
-                                position: "relative",
-                                height: 190,
-                                backgroundColor: "var(--bg-warm-img)",
-                                cursor: "pointer",
-                                overflow: "hidden",
-                              }}
-                            >
-                              <SafeImage
-                                src={item.gambar}
-                                alt={item.nama_menu}
-                                className="img-zoom-child"
-                                focusX={item.foto_x}
-                                focusY={item.foto_y}
-                                zoom={item.foto_zoom}
-                                style={{
-                                  filter: itemTenantOpen ? "none" : "grayscale(0.28) brightness(0.9)",
-                                }}
-                                iconSize={36}
-                              />
-                              {!itemTenantOpen && (
-                                <div
-                                  style={{
-                                    position: "absolute",
-                                    bottom: 10,
-                                    left: 10,
-                                    padding: "4px 10px",
-                                    borderRadius: "var(--radius-pill)",
-                                    backgroundColor: "rgba(220, 38, 38, 0.94)",
-                                    color: "#FFFFFF",
-                                    fontSize: 11,
-                                    fontWeight: 800,
-                                    ...LAYOUT.inlineRow,
-                                    gap: 5,
-                                    boxShadow: "0 2px 8px rgba(220, 38, 38, 0.35)",
-                                  }}
-                                >
-                                  <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: "#FFFFFF" }} />
-                                  <span>
-                                    {lang === "EN"
-                                      ? `Tenant Closed · Opens ${itemTenantObj?.jam_buka || "07:00"}`
-                                      : `Tenant Tutup · Buka ${itemTenantObj?.jam_buka || "07:00"}`}
-                                  </span>
-                                </div>
-                              )}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleFavorite(item.id_menu);
-                                }}
-                                aria-label="Toggle favorite"
-                                style={{
-                                  position: "absolute",
-                                  top: 12,
-                                  left: 12,
-                                  width: 30,
-                                  height: 30,
-                                  borderRadius: "50%",
-                                  border: "none",
-                                  backgroundColor: "var(--bg-overlay-glass)",
-                                  ...LAYOUT.center,
-                                  cursor: "pointer",
-                                  boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
-                                }}
-                              >
-                                <Heart
-                                  size={14}
-                                  color={favoriteIds.includes(item.id_menu) ? "#C84336" : "var(--maroon)"}
-                                  fill={favoriteIds.includes(item.id_menu) ? "#C84336" : "none"}
-                                />
-                              </button>
-                              <div
-                                style={{
-                                  position: "absolute",
-                                  top: 12,
-                                  right: 12,
-                                  padding: "4px 8px",
-                                  borderRadius: "var(--radius-pill)",
-                                  backgroundColor: "var(--bg-card)",
-                                  ...LAYOUT.row,
-                                  gap: 4,
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  color: "var(--maroon)",
-                                  boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
-                                }}
-                              >
-                                <Star size={12} fill="#F8A34B" color="#F8A34B" />
-                                <span>{item.rating || (lang === "EN" ? "New" : "Baru")}</span>
-                              </div>
-                            </div>
-                            <div
-                              style={{
-                                padding: "16px 18px",
-                                display: "flex",
-                                flexDirection: "column",
-                                flexGrow: 1,
-                                justifyContent: "space-between",
-                              }}
-                            >
-                              <div>
-                                <h3
-                                  onClick={() => openFoodDetail(item)}
-                                  style={{
-                                    fontSize: 16,
-                                    fontWeight: 800,
-                                    color: "var(--maroon)",
-                                    marginBottom: 4,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  {item.nama_menu}
-                                </h3>
-                                <div
-                                  style={{
-                                    ...LAYOUT.row,
-                                    gap: 6,
-                                    fontSize: 12,
-                                    color: "var(--text-muted)",
-                                    marginBottom: 14,
-                                    flexWrap: "wrap",
-                                  }}
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      openTenantMenuFromItem(item);
-                                    }}
-                                    style={{
-                                      border: "none",
-                                      background: "transparent",
-                                      padding: 0,
-                                      margin: 0,
-                                      fontSize: 12,
-                                      fontWeight: 700,
-                                      color: "var(--maroon)",
-                                      cursor: "pointer",
-                                      ...LAYOUT.inlineRow,
-                                      gap: 4,
-                                      textDecoration: "underline",
-                                      textUnderlineOffset: 2,
-                                    }}
-                                    title={lang === "EN" ? `Go to ${item.tenant_name}` : `Ke menu ${item.tenant_name}`}
-                                  >
-                                    <Store size={12} color="var(--orange-dark)" />
-                                    <span>{item.tenant_name}</span>
-                                  </button>
-                                  {!itemTenantOpen && (
-                                    <span
-                                      style={{
-                                        padding: "1px 6px",
-                                        borderRadius: 999,
-                                        backgroundColor: "#FEE2E2",
-                                        color: "#B91C1C",
-                                        fontSize: 10.5,
-                                        fontWeight: 800,
-                                      }}
-                                    >
-                                      {lang === "EN" ? "Closed" : "Tutup"}
-                                    </span>
-                                  )}
-                                  <span>·</span>
-                                  <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                                    <Clock size={12} />
-                                    {item.estimasi_menit} min
-                                  </span>
-                                </div>
-                              </div>
-                              <div
-                                style={{
-                                  ...LAYOUT.between,
-                                  paddingTop: 10,
-                                  borderTop: "1px solid var(--border-light)",
-                                }}
-                              >
-                                <div
-                                  className="tabular"
-                                  style={{
-                                    fontSize: 17,
-                                    fontWeight: 800,
-                                    color: "var(--maroon)",
-                                  }}
-                                >
-                                  {formatRupiah(item.harga)}
-                                </div>
-                                <button
-                                  onClick={() => openFoodDetail(item)}
-                                  className="btn-interactive"
-                                  style={{
-                                    width: 36,
-                                    height: 36,
-                                    borderRadius: "50%",
-                                    border: "none",
-                                    backgroundColor: itemTenantOpen ? "var(--orange)" : "#9CA3AF",
-                                    color: "#FFFFFF",
-                                    ...LAYOUT.center,
-                                    cursor: "pointer",
-                                    boxShadow: itemTenantOpen ? "0 3px 8px rgba(248, 163, 75, 0.4)" : "none",
-                                  }}
-                                  title={lang === "EN" ? "View menu & add" : "Lihat menu & pesan"}
-                                >
-                                  <Plus size={18} strokeWidth={2.6} />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          );
-                        })}
+                            item={item}
+                            lang={lang}
+                            isOpen={isItemTenantOpen(item)}
+                            isFavorite={favoriteIds.includes(item.id_menu)}
+                            tenantOpenTime={getItemTenantObj(item)?.jam_buka || "07:00"}
+                            onOpenDetail={() => openFoodDetail(item)}
+                            onToggleFavorite={() => toggleFavorite(item.id_menu)}
+                            onOpenTenant={() => openTenantMenuFromItem(item)}
+                          />
+                        ))}
                       </div>
                       {filteredMenus.length === 0 && (
                         <div
@@ -5791,6 +5406,109 @@ export default function App() {
                     </div>
                   </div>
                 )}
+                {navTab === "home" && showAllMenus && (
+                  <div className="container-app animate-fade" style={{ paddingTop: 24, paddingBottom: 32 }}>
+                    <button
+                      onClick={() => {
+                        setShowAllMenus(false);
+                        if (typeof window !== "undefined" && window.scrollTo) {
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }
+                      }}
+                      style={{
+                        ...BUTTON_PILL_OUTLINE,
+                        padding: "8px 16px",
+                        color: "var(--maroon)",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        marginBottom: 20,
+                      }}
+                    >
+                      <ArrowLeft size={15} />
+                      <span style={{ marginLeft: 6 }}>
+                        {lang === "EN" ? "Back to home" : "Kembali ke beranda"}
+                      </span>
+                    </button>
+
+                    <div style={{ marginBottom: 20 }}>
+                      <h1 style={{ ...PAGE_TITLE, letterSpacing: "-0.02em", marginBottom: 4 }}>
+                        {lang === "EN" ? "All menus" : "Semua menu"}
+                      </h1>
+                      <p style={{ fontSize: 14, color: "var(--text-muted)" }}>
+                        {lang === "EN"
+                          ? "Sorted by popularity — the most ordered dishes come first."
+                          : "Diurutkan dari yang paling laris — menu yang paling sering dipesan ada di atas."}
+                      </p>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
+                      {allMenuCategoryOptions.map((cat) => {
+                        const active = allMenuCategory === cat;
+                        return (
+                          <button
+                            key={cat}
+                            onClick={() => setAllMenuCategory(cat)}
+                            className="btn-interactive"
+                            style={{
+                              ...BUTTON_PILL_OUTLINE,
+                              border: active
+                                ? "1px solid var(--maroon)"
+                                : BUTTON_PILL_OUTLINE.border,
+                              backgroundColor: active ? "var(--btn-solid-bg)" : "var(--bg-card)",
+                              color: active ? "var(--btn-solid-text)" : "var(--maroon)",
+                              padding: "8px 18px",
+                              fontSize: 13,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {menuCategoryLabel(cat)}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {allMenusSorted.length === 0 ? (
+                      <div style={{ ...SURFACE_CARD, padding: "48px 24px", textAlign: "center" }}>
+                        <div
+                          style={{
+                            fontSize: 18,
+                            fontWeight: 800,
+                            color: "var(--maroon)",
+                            marginBottom: 6,
+                          }}
+                        >
+                          {t.emptyMenuTitle}
+                        </div>
+                        <p style={{ fontSize: 14, color: "var(--text-muted)" }}>{t.emptyMenuDesc}</p>
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fill, minmax(265px, 1fr))",
+                          gap: 22,
+                        }}
+                      >
+                        {allMenusSorted.map((item) => (
+                          <MenuCard
+                            key={item.id_menu}
+                            item={item}
+                            lang={lang}
+                            isOpen={isItemTenantOpen(item)}
+                            isFavorite={favoriteIds.includes(item.id_menu)}
+                            tenantOpenTime={getItemTenantObj(item)?.jam_buka || "07:00"}
+                            showSoldCount
+                            onOpenDetail={() => openFoodDetail(item)}
+                            onToggleFavorite={() => toggleFavorite(item.id_menu)}
+                            onOpenTenant={() => openTenantMenuFromItem(item)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {navTab === "tenant" && !activeTenantView && (
                   <div id="tenant-directory" className="container-app animate-fade" style={{ paddingTop: 32 }}>
                     <div
@@ -5804,9 +5522,7 @@ export default function App() {
                       <div>
                         <h1
                           style={{
-                            fontSize: 32,
-                            fontWeight: 900,
-                            color: "var(--maroon)",
+                            ...PAGE_TITLE,
                             letterSpacing: "-0.02em",
                             marginBottom: 4,
                           }}
@@ -6142,8 +5858,7 @@ export default function App() {
                                 ...LAYOUT.inlineRow,
                                 gap: 5,
                                 padding: "3px 10px",
-                                borderRadius: "var(--radius-pill)",
-                                backgroundColor: "var(--bg-cream)",
+                                ...CHIP_CREAM,
                                 color: "var(--maroon)",
                                 fontSize: 11,
                                 fontWeight: 800,
@@ -6492,9 +6207,7 @@ export default function App() {
                     <div style={{ marginBottom: 20 }}>
                       <h1
                         style={{
-                          fontSize: 32,
-                          fontWeight: 900,
-                          color: "var(--maroon)",
+                          ...PAGE_TITLE,
                           letterSpacing: "-0.02em",
                           marginBottom: 4,
                         }}
@@ -6578,9 +6291,7 @@ export default function App() {
                             ...LAYOUT.inlineRow,
                             gap: 8,
                             padding: "13px 28px",
-                            borderRadius: "var(--radius-pill)",
-                            border: "none",
-                            backgroundColor: "var(--orange)",
+                            ...BUTTON_PILL_PRIMARY,
                             color: "var(--on-orange-text)",
                             fontSize: 14,
                             fontWeight: 800,
@@ -6594,34 +6305,9 @@ export default function App() {
                       </div>
                     ) : (
                       <>
-                        <div
-                          style={{
-                            backgroundColor: "var(--bg-card)",
-                            borderRadius: "var(--radius-xl)",
-                            border: "1px solid var(--border-light)",
-                            padding: "16px 28px",
-                            marginBottom: 32,
-                            boxShadow: "var(--shadow-sm)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              ...LAYOUT.between,
-                              position: "relative",
-                            }}
-                          >
-                            <div
-                              style={{
-                                position: "absolute",
-                                top: "50%",
-                                left: "10%",
-                                right: "10%",
-                                height: 2,
-                                backgroundColor: "var(--border-input)",
-                                zIndex: 1,
-                                transform: "translateY(-50%)",
-                              }}
-                            >
+                        <div className="checkout-stepper" style={SURFACE_CARD}>
+                          <div className="checkout-stepper-track">
+                            <div className="checkout-stepper-rail">
                               <div
                                 style={{
                                   height: "100%",
@@ -6649,43 +6335,31 @@ export default function App() {
                               const isDone = checkoutStep > s.step;
                               const isActive = checkoutStep === s.step;
                               return (
-                                <div
-                                  key={s.step}
-                                  style={{
-                                    ...LAYOUT.row,
-                                    gap: 10,
-                                    zIndex: 2,
-                                    backgroundColor: "var(--bg-card)",
-                                    padding: "0 8px",
-                                  }}
-                                >
+                                <div className="checkout-stepper-step" key={s.step}>
                                   <div
+                                    className="checkout-stepper-icon"
                                     onClick={() => {
                                       if (s.step < checkoutStep) setCheckoutStep(s.step);
                                     }}
                                     style={{
-                                      width: 38,
-                                      height: 38,
-                                      borderRadius: "50%",
                                       backgroundColor: isDone
                                         ? "var(--btn-solid-bg)"
                                         : isActive
                                           ? "var(--orange)"
                                           : "var(--bg-surface-muted)",
                                       color: isDone ? "var(--btn-solid-text)" : isActive ? "#FFFFFF" : "var(--text-muted)",
-                                      ...LAYOUT.center,
                                       cursor: s.step < checkoutStep ? "pointer" : "default",
-                                      transition: "all 0.2s ease",
                                     }}
                                   >
                                     {isDone ? <Check size={18} strokeWidth={2.8} /> : <Icon size={18} />}
                                   </div>
                                   <span
-                                    style={{
-                                      fontSize: 14,
-                                      fontWeight: isActive ? 800 : 600,
-                                      color: isActive ? "var(--maroon)" : "var(--text-muted)",
-                                    }}
+                                    className={
+                                      isActive
+                                        ? "checkout-stepper-label is-active"
+                                        : "checkout-stepper-label"
+                                    }
+                                    style={{ color: isActive ? "var(--maroon)" : "var(--text-muted)" }}
                                   >
                                     {s.label}
                                   </span>
@@ -6698,9 +6372,7 @@ export default function App() {
                           <div className="grid-checkout-split">
                             <div
                               style={{
-                                backgroundColor: "var(--bg-card)",
-                                borderRadius: "var(--radius-xl)",
-                                border: "1px solid var(--border-light)",
+                                ...SURFACE_CARD,
                                 padding: "24px",
                                 boxShadow: "var(--shadow-sm)",
                               }}
@@ -6890,9 +6562,7 @@ export default function App() {
                             </div>
                             <div
                               style={{
-                                backgroundColor: "var(--bg-card)",
-                                borderRadius: "var(--radius-xl)",
-                                border: "1px solid var(--border-light)",
+                                ...SURFACE_CARD,
                                 padding: "24px",
                                 boxShadow: "var(--shadow-sm)",
                               }}
@@ -7068,9 +6738,7 @@ export default function App() {
                                 style={{
                                   width: "100%",
                                   padding: "15px",
-                                  borderRadius: "var(--radius-pill)",
-                                  border: "none",
-                                  backgroundColor: "var(--orange)",
+                                  ...BUTTON_PILL_PRIMARY,
                                   color: "#FFFFFF",
                                   fontSize: 15,
                                   fontWeight: 800,
@@ -7090,9 +6758,7 @@ export default function App() {
                           <div className="grid-payment-split">
                             <div
                               style={{
-                                backgroundColor: "var(--bg-card)",
-                                borderRadius: "var(--radius-xl)",
-                                border: "1px solid var(--border-light)",
+                                ...SURFACE_CARD,
                                 padding: "26px",
                                 boxShadow: "var(--shadow-sm)",
                               }}
@@ -7207,9 +6873,7 @@ export default function App() {
                                 style={{
                                   width: "100%",
                                   padding: "11px",
-                                  borderRadius: "var(--radius-pill)",
-                                  border: "1px solid var(--border-input)",
-                                  backgroundColor: "var(--bg-card)",
+                                  ...BUTTON_PILL_OUTLINE,
                                   color: "var(--maroon)",
                                   fontSize: 13,
                                   fontWeight: 700,
@@ -7221,9 +6885,7 @@ export default function App() {
                             </div>
                             <div
                               style={{
-                                backgroundColor: "var(--bg-card)",
-                                borderRadius: "var(--radius-xl)",
-                                border: "1px solid var(--border-light)",
+                                ...SURFACE_CARD,
                                 padding: "32px 28px",
                                 boxShadow: "var(--shadow-sm)",
                                 textAlign: "center",
@@ -7373,9 +7035,7 @@ export default function App() {
                                 style={{
                                   width: "100%",
                                   padding: "15px",
-                                  borderRadius: "var(--radius-pill)",
-                                  border: "none",
-                                  backgroundColor: "var(--orange)",
+                                  ...BUTTON_PILL_PRIMARY,
                                   color: "#FFFFFF",
                                   fontSize: 15,
                                   fontWeight: 800,
@@ -7547,9 +7207,7 @@ export default function App() {
                               style={{
                                 width: "100%",
                                 padding: "15px",
-                                borderRadius: "var(--radius-pill)",
-                                border: "1px solid var(--border-input)",
-                                backgroundColor: "var(--bg-card)",
+                                ...BUTTON_PILL_OUTLINE,
                                 color: "var(--maroon)",
                                 fontSize: 15,
                                 fontWeight: 800,
@@ -7703,9 +7361,7 @@ export default function App() {
                               style={{
                                 width: "100%",
                                 padding: "16px",
-                                borderRadius: "var(--radius-pill)",
-                                border: "none",
-                                backgroundColor: "var(--orange)",
+                                ...BUTTON_PILL_PRIMARY,
                                 color: "#FFFFFF",
                                 fontSize: 16,
                                 fontWeight: 800,
@@ -7727,9 +7383,7 @@ export default function App() {
                                   width: "100%",
                                   marginTop: 10,
                                   padding: "12px 16px",
-                                  borderRadius: "var(--radius-pill)",
-                                  border: "1px solid var(--border-input)",
-                                  backgroundColor: "var(--bg-card)",
+                                  ...BUTTON_PILL_OUTLINE,
                                   color: "var(--maroon)",
                                   fontSize: 14,
                                   fontWeight: 700,
@@ -7755,9 +7409,7 @@ export default function App() {
                     <div style={{ marginBottom: 24 }}>
                       <h1
                         style={{
-                          fontSize: 32,
-                          fontWeight: 900,
-                          color: "var(--maroon)",
+                          ...PAGE_TITLE,
                           letterSpacing: "-0.02em",
                           marginBottom: 4,
                         }}
@@ -7770,10 +7422,10 @@ export default function App() {
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
                       {[
-                        { key: "All", label: t.filterAll },
-                        { key: "In progress", label: t.filterInProgress },
-                        { key: "Completed", label: t.filterCompleted },
-                        { key: "Cancelled", label: t.filterCancelled },
+                        { key: HISTORY_FILTER_KEYS.ALL, label: t.filterAll },
+                        { key: HISTORY_FILTER_KEYS.IN_PROGRESS, label: t.filterInProgress },
+                        { key: HISTORY_FILTER_KEYS.COMPLETED, label: t.filterCompleted },
+                        { key: HISTORY_FILTER_KEYS.CANCELLED, label: t.filterCancelled },
                       ].map((tab) => {
                         const active = historyFilter === tab.key;
                         return (
@@ -7798,26 +7450,15 @@ export default function App() {
                     </div>
                     <div
                       style={{
-                        backgroundColor: "var(--bg-card)",
-                        borderRadius: "var(--radius-xl)",
-                        border: "1px solid var(--border-light)",
+                        ...SURFACE_CARD,
                         boxShadow: "var(--shadow-sm)",
                         overflow: "hidden",
                       }}
                     >
                       {(() => {
-                        const filteredHistory = ordersHistory.filter((order) => {
-                          const isInProgress =
-                            ["Awaiting payment", "Preparing", "Ready for pickup", "Ready"].includes(
-                              order.status
-                            ) ||
-                            ["Menunggu Pembayaran", "Sedang Diproses", "Diproses", "Siap Diambil"].includes(
-                              order.raw_status
-                            );
-                          if (historyFilter === "All") return true;
-                          if (historyFilter === "In progress") return isInProgress;
-                          return order.status === historyFilter;
-                        });
+                        const filteredHistory = ordersHistory.filter((order) =>
+                          matchesHistoryFilter(order.status, order.raw_status, historyFilter)
+                        );
 
                         if (filteredHistory.length === 0) {
                           return (
@@ -7851,25 +7492,12 @@ export default function App() {
                           );
                         }
 
-                        const statusLabelMap = {
-                          "Awaiting payment": lang === "EN" ? "Awaiting payment" : "Menunggu bayar",
-                          Preparing: lang === "EN" ? "Preparing" : "Diproses",
-                          "Ready for pickup": lang === "EN" ? "Ready for pickup" : "Siap diambil",
-                          Ready: lang === "EN" ? "Ready for pickup" : "Siap diambil",
-                          Completed: lang === "EN" ? "Completed" : "Selesai",
-                          Cancelled: lang === "EN" ? "Cancelled" : "Dibatalkan",
-                        };
-
                         return filteredHistory.map((order, idx, arr) => {
                           const isInProgress =
-                            ["Awaiting payment", "Preparing", "Ready for pickup", "Ready"].includes(
-                              order.status
-                            ) ||
-                            ["Menunggu Pembayaran", "Sedang Diproses", "Diproses", "Siap Diambil"].includes(
-                              order.raw_status
-                            );
-                          const isReadyStatus =
-                            order.status === "Ready for pickup" || order.status === "Ready";
+                            isInProgressStatus(order.status) || isActiveStatus(order.raw_status);
+                          const isReadyStatus = isReadyUiStatus(order.status);
+                          const isCompleted = isCompletedStatus(order.status);
+                          const isCancelled = isCancelledStatus(order.status);
 
                           return (
                             <div
@@ -7925,7 +7553,7 @@ export default function App() {
                                     <div
                                       style={{
                                         fontSize: 12,
-                                        color: order.status === "Cancelled" ? "#C84336" : "var(--maroon)",
+                                        color: isCancelled ? "#C84336" : "var(--maroon)",
                                         marginTop: 3,
                                         fontWeight: 600,
                                       }}
@@ -7942,35 +7570,7 @@ export default function App() {
                                 className="order-row-actions"
                                 style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
                               >
-                                <span
-                                  style={{
-                                    ...LAYOUT.inlineRow,
-                                    gap: 6,
-                                    padding: "5px 14px",
-                                    borderRadius: "var(--radius-pill)",
-                                    fontSize: 12,
-                                    fontWeight: 700,
-                                    backgroundColor:
-                                      order.status === "Completed"
-                                        ? "var(--maroon)"
-                                        : order.status === "Cancelled"
-                                          ? "var(--status-cancelled-bg)"
-                                          : isReadyStatus
-                                            ? "var(--orange)"
-                                            : "var(--status-preparing-bg)",
-                                    color:
-                                      order.status === "Completed"
-                                        ? "#FFFFFF"
-                                        : order.status === "Cancelled"
-                                          ? "var(--text-muted)"
-                                          : isReadyStatus
-                                            ? "var(--maroon)"
-                                            : "var(--status-preparing-text)",
-                                  }}
-                                >
-                                  <span>●</span>
-                                  <span>{statusLabelMap[order.status] || order.status}</span>
-                                </span>
+                                <OrderStatusBadge status={order.status} lang={lang} />
 
                                 {renderOrderChatButton(order, "Chat")}
 
@@ -8022,7 +7622,7 @@ export default function App() {
                                   </>
                                 ) : (
                                   <>
-                                    {order.status === "Completed" && !order.has_reviewed && (
+                                    {isCompleted && !order.has_reviewed && (
                                       <button
                                         type="button"
                                         onClick={(e) => {
@@ -8046,7 +7646,7 @@ export default function App() {
                                         <span>{lang === "EN" ? "Rate" : "Beri Rating"}</span>
                                       </button>
                                     )}
-                                    {order.status === "Completed" && order.has_reviewed && (
+                                    {isCompleted && order.has_reviewed && (
                                       <span
                                         style={{
                                           ...LAYOUT.inlineRow,
@@ -8099,29 +7699,16 @@ export default function App() {
             )}
           </main>
           {editingDish && (
-            <div
-              style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 1250,
-                backgroundColor: "var(--backdrop)",
-                backdropFilter: "blur(5px)",
-                ...LAYOUT.center,
-                padding: 20,
-              }}
-              className="animate-fade"
-              onClick={() => setEditingDish(null)}
+            <Modal
+              zIndex={1250}
+              onClose={() => setEditingDish(null)}
             >
-              <div
-                onClick={(e) => e.stopPropagation()}
-                className="animate-modal-zoom"
+              <DialogCard
+                maxWidth={460}
                 style={{
-                  width: "100%",
-                  maxWidth: 460,
-                  backgroundColor: "var(--bg-card)",
-                  borderRadius: "var(--radius-xl)",
                   padding: "26px 28px",
                   boxShadow: "var(--shadow-float)",
+                  border: "none",
                 }}
               >
                 <div
@@ -8532,9 +8119,7 @@ export default function App() {
                       className="btn-interactive"
                       style={{
                         padding: "12px",
-                        borderRadius: "var(--radius-pill)",
-                        border: "1px solid var(--border-input)",
-                        backgroundColor: "var(--bg-card)",
+                        ...BUTTON_PILL_OUTLINE,
                         color: "var(--maroon)",
                         fontSize: 13,
                         fontWeight: 700,
@@ -8549,9 +8134,7 @@ export default function App() {
                       className="btn-interactive btn-lift"
                       style={{
                         padding: "12px",
-                        borderRadius: "var(--radius-pill)",
-                        border: "none",
-                        backgroundColor: "var(--orange)",
+                        ...BUTTON_PILL_PRIMARY,
                         color: "var(--on-orange-text)",
                         fontSize: 13,
                         fontWeight: 800,
@@ -8638,37 +8221,23 @@ export default function App() {
                     </button>
                   )}
                 </form>
-              </div>
-            </div>
+              </DialogCard>
+            </Modal>
           )}
 
           {isAddMenuOpen && (
-            <div
-              style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 1150,
-                backgroundColor: "rgba(42, 24, 18, 0.45)",
-                backdropFilter: "blur(5px)",
-                ...LAYOUT.center,
-                padding: 20,
-              }}
-              onClick={() => setIsAddMenuOpen(false)}
-              className="animate-fade"
+            <Modal
+              zIndex={1150}
+              style={{ backgroundColor: "rgba(42, 24, 18, 0.45)" }}
+              onClose={() => setIsAddMenuOpen(false)}
             >
-              <div
-                onClick={(e) => e.stopPropagation()}
-                className="animate-modal-zoom"
+              <DialogCard
+                maxWidth={480}
                 style={{
-                  width: "100%",
-                  maxWidth: 480,
                   maxHeight: "90vh",
                   overflowY: "auto",
-                  backgroundColor: "var(--bg-card)",
-                  borderRadius: "var(--radius-xl)",
                   padding: "26px 28px 24px",
                   boxShadow: "0 20px 50px rgba(82, 42, 40, 0.24)",
-                  border: "1px solid var(--border-light)",
                 }}
               >
                 <div
@@ -9025,9 +8594,7 @@ export default function App() {
                       className="btn-interactive"
                       style={{
                         padding: "12px",
-                        borderRadius: "var(--radius-pill)",
-                        border: "1px solid var(--border-input)",
-                        backgroundColor: "var(--bg-card)",
+                        ...BUTTON_PILL_OUTLINE,
                         color: "var(--maroon)",
                         fontSize: 13,
                         fontWeight: 700,
@@ -9042,9 +8609,7 @@ export default function App() {
                       className="btn-interactive btn-lift"
                       style={{
                         padding: "12px",
-                        borderRadius: "var(--radius-pill)",
-                        border: "none",
-                        backgroundColor: "var(--orange)",
+                        ...BUTTON_PILL_PRIMARY,
                         color: "var(--on-orange-text)",
                         fontSize: 13,
                         fontWeight: 800,
@@ -9059,8 +8624,8 @@ export default function App() {
                     </button>
                   </div>
                 </form>
-              </div>
-            </div>
+              </DialogCard>
+            </Modal>
           )}
 
           {drawerMounted && (
@@ -9270,34 +8835,26 @@ export default function App() {
           )}
 
           {activeDrawerModal && (
-            <div
-              style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 1150,
-                backgroundColor: "rgba(42, 24, 18, 0.45)",
-                backdropFilter: "blur(5px)",
-                ...LAYOUT.center,
-                padding: 20,
-              }}
-              onClick={() => setActiveDrawerModal(null)}
-              className="animate-fade"
+            <Modal
+              zIndex={1150}
+              style={{ backgroundColor: "rgba(42, 24, 18, 0.45)" }}
+              onClose={() => setActiveDrawerModal(null)}
             >
-              <div
-                onClick={(e) => e.stopPropagation()}
-                className="animate-modal-zoom"
+              <DialogCard
+                maxWidth={
+                  activeDrawerModal === "profile"
+                    ? portalMode === "tenant"
+                      ? 520
+                      : 760
+                    : 460
+                }
                 style={{
-                  width: "100%",
-                  maxWidth: activeDrawerModal === "profile" ? (portalMode === "tenant" ? 520 : 760) : 460,
                   maxHeight: "88vh",
                   display: "flex",
                   flexDirection: "column",
                   overflow: "hidden",
-                  backgroundColor: "var(--bg-card)",
-                  borderRadius: "var(--radius-xl)",
                   padding: 0,
                   boxShadow: "0 20px 50px rgba(82, 42, 40, 0.24)",
-                  border: "1px solid var(--border-light)",
                 }}
               >
                 <div
@@ -9727,9 +9284,7 @@ export default function App() {
                               border: "3px solid #EDD1B4",
                               overflow: "hidden",
                               ...LAYOUT.center,
-                              fontSize: 32,
-                              fontWeight: 900,
-                              color: "var(--maroon)",
+                              ...PAGE_TITLE,
                               marginBottom: 16,
                               boxShadow: "0 6px 18px rgba(82, 42, 40, 0.1)",
                             }}
@@ -9791,9 +9346,7 @@ export default function App() {
                             style={{
                               display: "inline-block",
                               padding: "9px 20px",
-                              borderRadius: "var(--radius-pill)",
-                              border: "1px solid var(--border-input)",
-                              backgroundColor: "var(--bg-card)",
+                              ...BUTTON_PILL_OUTLINE,
                               color: "var(--maroon)",
                               fontSize: 13,
                               fontWeight: 700,
@@ -9866,27 +9419,25 @@ export default function App() {
 
                         {deleteAccountMode ? (
                           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
-                            {!currentUser?.google_linked && (
-                              <input
-                                type="password"
-                                value={deleteAccountForm.password}
-                                onChange={(e) =>
-                                  setDeleteAccountForm((p) => ({ ...p, password: e.target.value }))
-                                }
-                                placeholder={lang === "EN" ? "Your account password" : "Password akun Anda"}
-                                autoComplete="current-password"
-                                style={{
-                                  width: "100%",
-                                  padding: "10px 14px",
-                                  borderRadius: 10,
-                                  border: "1px solid var(--alert-error-border)",
-                                  backgroundColor: "var(--bg-card)",
-                                  fontSize: 13,
-                                  color: "var(--maroon)",
-                                  outline: "none",
-                                }}
-                              />
-                            )}
+                            <input
+                              type="password"
+                              value={deleteAccountForm.password}
+                              onChange={(e) =>
+                                setDeleteAccountForm((p) => ({ ...p, password: e.target.value }))
+                              }
+                              placeholder={lang === "EN" ? "Your account password" : "Password akun Anda"}
+                              autoComplete="current-password"
+                              style={{
+                                width: "100%",
+                                padding: "10px 14px",
+                                borderRadius: 10,
+                                border: "1px solid var(--alert-error-border)",
+                                backgroundColor: "var(--bg-card)",
+                                fontSize: 13,
+                                color: "var(--maroon)",
+                                outline: "none",
+                              }}
+                            />
                             <input
                               type="text"
                               value={deleteAccountForm.confirm}
@@ -9942,7 +9493,7 @@ export default function App() {
                                   !["HAPUS AKUN", "DELETE ACCOUNT"].includes(
                                     deleteAccountForm.confirm.trim().toUpperCase().replace(/\s+/g, " ")
                                   ) ||
-                                  (!currentUser?.google_linked && !deleteAccountForm.password)
+                                  (!deleteAccountForm.password)
                                 }
                                 className="btn-interactive"
                                 style={{
@@ -10006,9 +9557,7 @@ export default function App() {
                         className="btn-interactive btn-lift"
                         style={{
                           padding: "11px 32px",
-                          borderRadius: "var(--radius-pill)",
-                          border: "none",
-                          backgroundColor: "var(--orange)",
+                          ...BUTTON_PILL_PRIMARY,
                           color: "var(--on-orange-text)",
                           fontSize: 14,
                           fontWeight: 800,
@@ -10181,8 +9730,8 @@ export default function App() {
                     </div>
                   </div>
                 )}
-              </div>
-            </div>
+              </DialogCard>
+            </Modal>
           )}
 
           {detailMounted && activeMenuDetail && (
@@ -10449,9 +9998,7 @@ export default function App() {
                           style={{
                             ...LAYOUT.row,
                             padding: "5px 12px",
-                            borderRadius: "var(--radius-pill)",
-                            border: "1px solid var(--border-input)",
-                            backgroundColor: "var(--bg-card)",
+                            ...BUTTON_PILL_OUTLINE,
                           }}
                         >
                           <button
@@ -10695,826 +10242,29 @@ export default function App() {
       )}
 
       {(!currentUser || isAuthOpen) && tenantOnboardingStep === 0 && (
-        <div className="auth-page-overlay">
-          <div className="auth-header-controls">
-            <button
-              type="button"
-              className="header-lang-btn"
-              onClick={() => changeLanguage(lang === "ID" ? "EN" : "ID")}
-              style={{
-                ...LAYOUT.row,
-                gap: 6,
-                minWidth: 74,
-                justifyContent: "center",
-                padding: "7px 12px",
-                borderRadius: "var(--radius-pill)",
-                border: "1px solid var(--border-light)",
-                backgroundColor: "var(--bg-card)",
-                color: "var(--maroon)",
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: "pointer",
-                boxShadow: "var(--shadow-sm)",
-              }}
-            >
-              <Globe size={14} color="var(--text-muted)" />
-              <span>{lang}</span>
-            </button>
-            <ThemeToggleButton
-              darkTitle={t.themeToDark}
-              lightTitle={t.themeToLight}
-              size={34}
-            />
-          </div>
-          <div className="auth-page-scroll">
-            <div className="auth-page-inner">
-              <div style={{ textAlign: "center", marginBottom: 14, flexShrink: 0 }}>
-            <div style={{ display: "inline-block", marginBottom: 6 }}>
-              <svg width="54" height="54" viewBox="0 0 100 100" fill="none">
-                <circle cx="50" cy="50" r="46" stroke="#D49354" strokeWidth="3" />
-                <circle cx="50" cy="50" r="41" stroke="#E5B888" strokeWidth="1.5" />
-                <path
-                  d="M33 26V40C33 44 36 46 39 46V74H43V46C46 46 49 44 49 40V26H46V38H44V26H38V38H36V26H33Z"
-                  fill="var(--maroon)"
-                />
-                <path
-                  d="M51 32L78 50L51 68V32Z"
-                  fill="#F8A34B"
-                  stroke="var(--maroon)"
-                  strokeWidth="3.5"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </div>
-
-            <div
-              style={{
-                fontSize: 9,
-                fontWeight: 800,
-                color: "var(--orange-tag)",
-                letterSpacing: "0.22em",
-                marginBottom: 2,
-              }}
-            >
-              E S T D &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 2 0 2 6
-            </div>
-
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 900,
-                color: "var(--maroon)",
-                letterSpacing: "-0.01em",
-                marginBottom: 2,
-              }}
-            >
-              LETSORDER.COM
-            </div>
-
-            <div
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                color: "var(--text-muted)",
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-              }}
-            >
-              {lang === "EN" ? "FROM OUR CANTEEN TO YOUR HANDS" : "DARI KANTIN KAMPUS KE TANGANMU"}
-            </div>
-          </div>
-
-          <div
-            style={{
-              backgroundColor: "var(--bg-card)",
-              borderRadius: "var(--radius-xl)",
-              boxShadow: "0 16px 44px rgba(82, 42, 40, 0.1), 0 2px 8px rgba(82, 42, 40, 0.04)",
-              border: "1px solid var(--border-light)",
-              position: "relative",
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-            }}
-            className="auth-card animate-modal-zoom"
-          >
-            {currentUser && (
-              <button
-                onClick={() => setIsAuthOpen(false)}
-                className="btn-interactive"
-                style={{
-                  position: "absolute",
-                  top: 18,
-                  right: 18,
-                  border: "none",
-                  background: "var(--bg-subtle)",
-                  width: 30,
-                  height: 30,
-                  borderRadius: "50%",
-                  cursor: "pointer",
-                  color: "var(--text-muted)",
-                  ...LAYOUT.center,
-                }}
-              >
-                <X size={16} />
-              </button>
-            )}
-
-            <div style={{ textAlign: "center", marginBottom: 14, flexShrink: 0 }}>
-              <h2 style={{ fontSize: 24, fontWeight: 900, color: "var(--maroon)", marginBottom: 2 }}>
-                {authMode === "forgot"
-                  ? t.authForgot
-                  : authMode === "login"
-                    ? t.authWelcome
-                    : t.authCreate}
-              </h2>
-              <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {authMode === "forgot"
-                  ? lang === "EN"
-                    ? "Enter your username or email to set a new password."
-                    : "Masukkan username atau email Anda untuk membuat password baru."
-                  : authMode === "login"
-                    ? loginRoleTab === "Vendor"
-                      ? lang === "EN"
-                        ? "Log in to manage your canteen tenant & orders."
-                        : "Masuk untuk mengelola tenant kantin & pesanan."
-                      : lang === "EN"
-                        ? "Log in to pre-order and track your meals."
-                        : "Masuk untuk memesan dan memantau pesanan kantin."
-                    : loginRoleTab === "Vendor"
-                      ? lang === "EN"
-                        ? "Register your campus canteen tenant account."
-                        : "Daftarkan akun tenant kantin kampus Anda."
-                      : lang === "EN"
-                        ? "For students, lecturers and campus staff."
-                        : "Untuk mahasiswa, dosen, dan staf kampus."}
-              </p>
-            </div>
-
-            {authMode !== "forgot" && (
-              <div
-                style={{
-                  position: "relative",
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  padding: 4,
-                  borderRadius: "var(--radius-pill)",
-                  backgroundColor: "var(--bg-subtle)",
-                  border: "1px solid var(--border-light)",
-                  marginBottom: 14,
-                  overflow: "hidden",
-                  flexShrink: 0,
-                }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 4,
-                    bottom: 4,
-                    left: 4,
-                    width: "calc(50% - 4px)",
-                    borderRadius: "var(--radius-pill)",
-                    backgroundColor: "var(--bg-cream)",
-                    border: "1.5px solid var(--maroon)",
-                    boxShadow: "0 3px 10px rgba(82, 42, 40, 0.12)",
-                    transform: loginRoleTab === "Vendor" ? "translateX(100%)" : "translateX(0%)",
-                    transition: "transform 0.38s cubic-bezier(0.22, 1, 0.36, 1)",
-                    pointerEvents: "none",
-                    zIndex: 1,
-                  }}
-                />
-                {[
-                  {
-                    role: "Customer",
-                    label: lang === "EN" ? "Customer" : "Pengguna (Pembeli)",
-                  },
-                  {
-                    role: "Vendor",
-                    label: lang === "EN" ? "Tenant (Vendor)" : "Tenant (Penjual)",
-                  },
-                ].map((r) => {
-                  const active = loginRoleTab === r.role;
-                  return (
-                    <button
-                      key={r.role}
-                      type="button"
-                      onClick={() => {
-                        setLoginRoleTab(r.role);
-                        setAuthError("");
-                        setAuthSuccess("");
-                      }}
-                      style={{
-                        position: "relative",
-                        zIndex: 2,
-                        padding: "8px 12px",
-                        borderRadius: "var(--radius-pill)",
-                        border: "none",
-                        backgroundColor: "transparent",
-                        color: "var(--maroon)",
-                        fontSize: 12,
-                        fontWeight: active ? 800 : 600,
-                        cursor: "pointer",
-                        transition: "color 0.25s ease, transform 0.2s ease",
-                      }}
-                    >
-                      {r.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {authError && (
-              <div
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  backgroundColor: "var(--alert-error-bg)",
-                  border: "1px solid var(--alert-error-border)",
-                  color: "var(--alert-error-text)",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  marginBottom: 12,
-                  ...LAYOUT.row,
-                  gap: 8,
-                  flexShrink: 0,
-                }}
-              >
-                <AlertCircle size={15} />
-                <span>{authError}</span>
-              </div>
-            )}
-
-            {authSuccess && (
-              <div
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  backgroundColor: "var(--alert-success-bg)",
-                  border: "1px solid var(--alert-success-border)",
-                  color: "var(--alert-success-text)",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  marginBottom: 12,
-                  ...LAYOUT.row,
-                  gap: 8,
-                  flexShrink: 0,
-                }}
-              >
-                <CheckCircle2 size={15} />
-                <span>{authSuccess}</span>
-              </div>
-            )}
-
-            <form
-              key={`${authMode}-${loginRoleTab}`}
-              onSubmit={handleAuthSubmit}
-              className="animate-fade"
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 12,
-                overflowY: "auto",
-                paddingRight: 4,
-              }}
-            >
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
-                  {authMode === "forgot"
-                    ? lang === "EN"
-                      ? "Username or Email"
-                      : "Username atau Email"
-                    : "Username"}
-                </label>
-                <div
-                  style={{
-                    ...LAYOUT.row,
-                    gap: 10,
-                    padding: "10px 14px",
-                    borderRadius: "var(--radius-md)",
-                    border: "1px solid var(--border-input)",
-                  }}
-                >
-                  <User size={16} color="var(--text-muted)" />
-                  <input
-                    type="text"
-                    required
-                    autoComplete="off"
-                    placeholder={
-                      loginRoleTab === "Vendor"
-                        ? lang === "EN"
-                          ? "Enter tenant username"
-                          : "Masukkan username tenant"
-                        : lang === "EN"
-                          ? "Enter your username"
-                          : "Masukkan username Anda"
-                    }
-                    value={authForm.username}
-                    onChange={(e) => setAuthForm((prev) => ({ ...prev, username: e.target.value }))}
-                    style={{
-                      border: "none",
-                      outline: "none",
-                      background: "transparent",
-                      fontSize: 14,
-                      color: "var(--maroon)",
-                      width: "100%",
-                    }}
-                  />
-                </div>
-              </div>
-
-              {authMode === "register" && (
-                <>
-                  <div>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
-                      {loginRoleTab === "Vendor"
-                        ? lang === "EN"
-                          ? "Canteen / Tenant Name"
-                          : "Nama Kantin / Tenant"
-                        : lang === "EN"
-                          ? "Full Name"
-                          : "Nama Lengkap"}
-                    </label>
-                    <div
-                      style={{
-                        ...LAYOUT.row,
-                        gap: 10,
-                        padding: "10px 14px",
-                        borderRadius: "var(--radius-md)",
-                        border: "1px solid var(--border-input)",
-                      }}
-                    >
-                      <Store size={16} color="var(--text-muted)" />
-                      <input
-                        type="text"
-                        required
-                        autoComplete="off"
-                        placeholder={
-                          loginRoleTab === "Vendor"
-                            ? lang === "EN"
-                              ? "e.g. Campus Nusantara Canteen"
-                              : "Contoh: Kantin Nusantara"
-                            : lang === "EN"
-                              ? "Enter your full name"
-                              : "Masukkan nama lengkap Anda"
-                        }
-                        value={loginRoleTab === "Vendor" ? authForm.nama_tenant : authForm.nama}
-                        onChange={(e) =>
-                          setAuthForm((prev) => ({
-                            ...prev,
-                            nama: e.target.value,
-                            nama_tenant: e.target.value,
-                          }))
-                        }
-                        style={{
-                          border: "none",
-                          outline: "none",
-                          background: "transparent",
-                          fontSize: 14,
-                          color: "var(--maroon)",
-                          width: "100%",
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
-                      Email
-                    </label>
-                    <div
-                      style={{
-                        ...LAYOUT.row,
-                        gap: 10,
-                        padding: "10px 14px",
-                        borderRadius: "var(--radius-md)",
-                        border: "1px solid var(--border-input)",
-                      }}
-                    >
-                      <Mail size={16} color="var(--text-muted)" />
-                      <input
-                        type="email"
-                        required
-                        autoComplete="off"
-                        placeholder="nama@email.com"
-                        value={authForm.email}
-                        onChange={(e) => setAuthForm((prev) => ({ ...prev, email: e.target.value }))}
-                        style={{
-                          border: "none",
-                          outline: "none",
-                          background: "transparent",
-                          fontSize: 14,
-                          color: "var(--maroon)",
-                          width: "100%",
-                        }}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {authMode === "forgot" ? (
-                forgotStep === 1 ? (
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "var(--text-muted)",
-                      backgroundColor: "var(--bg-subtle)",
-                      borderRadius: "var(--radius-md)",
-                      padding: "10px 12px",
-                    }}
-                  >
-                    {lang === "EN"
-                      ? "We will generate a 6-digit verification code on the server before allowing a password change."
-                      : "Server akan menerbitkan kode verifikasi 6 digit terlebih dahulu sebelum Anda membuat password baru."}
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
-                        {lang === "EN" ? "6-Digit Verification Code" : "Kode Verifikasi (6 Digit)"}
-                      </label>
-                      <div
-                        style={{
-                          ...LAYOUT.row,
-                          gap: 10,
-                          padding: "10px 14px",
-                          borderRadius: "var(--radius-md)",
-                          border: "1px solid var(--border-input)",
-                        }}
-                      >
-                        <Lock size={16} color="var(--text-muted)" style={{ flexShrink: 0 }} />
-                        <input
-                          type="text"
-                          required
-                          autoComplete="one-time-code"
-                          placeholder="123456"
-                          value={authForm.reset_token || ""}
-                          onChange={(e) => setAuthForm((prev) => ({ ...prev, reset_token: e.target.value }))}
-                          style={{
-                            border: "none",
-                            outline: "none",
-                            background: "transparent",
-                            fontSize: 14,
-                            color: "var(--maroon)",
-                            width: "100%",
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
-                        {lang === "EN" ? "New Password" : "Password Baru"}
-                      </label>
-                      <div
-                        style={{
-                          ...LAYOUT.row,
-                          gap: 10,
-                          padding: "10px 14px",
-                          borderRadius: "var(--radius-md)",
-                          border: "1px solid var(--border-input)",
-                        }}
-                      >
-                        <Lock size={16} color="var(--text-muted)" style={{ flexShrink: 0 }} />
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          required
-                          autoComplete="new-password"
-                          placeholder={lang === "EN" ? "Minimum 6 characters" : "Minimal 6 karakter"}
-                          value={authForm.new_password}
-                          onChange={(e) => setAuthForm((prev) => ({ ...prev, new_password: e.target.value }))}
-                          style={{
-                            border: "none",
-                            outline: "none",
-                            background: "transparent",
-                            fontSize: 14,
-                            color: "var(--maroon)",
-                            width: "100%",
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          aria-label={showPassword ? "Hide password" : "Show password"}
-                          style={{
-                            border: "none",
-                            background: "transparent",
-                            cursor: "pointer",
-                            color: "var(--text-muted)",
-                            ...LAYOUT.center,
-                            padding: 0,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )
-              ) : (
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "var(--maroon)", marginBottom: 5 }}>
-                    {lang === "EN" ? "Password" : "Kata Sandi"}
-                  </label>
-                  <div
-                    style={{
-                      ...LAYOUT.row,
-                      gap: 10,
-                      padding: "10px 14px",
-                      borderRadius: "var(--radius-md)",
-                      border: "1px solid var(--border-input)",
-                    }}
-                  >
-                    <Lock size={16} color="var(--text-muted)" style={{ flexShrink: 0 }} />
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      required
-                      autoComplete={authMode === "login" ? "current-password" : "new-password"}
-                      placeholder={authMode === "register" ? (lang === "EN" ? "Minimum 6 characters" : "Minimal 6 karakter") : "••••••••"}
-                      value={authForm.password}
-                      onChange={(e) => setAuthForm((prev) => ({ ...prev, password: e.target.value }))}
-                      style={{
-                        border: "none",
-                        outline: "none",
-                        background: "transparent",
-                        fontSize: 14,
-                        color: "var(--maroon)",
-                        width: "100%",
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                      style={{
-                        border: "none",
-                        background: "transparent",
-                        cursor: "pointer",
-                        color: "var(--text-muted)",
-                        ...LAYOUT.center,
-                        padding: 0,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={authLoading}
-                className="btn-interactive btn-lift"
-                style={{
-                  width: "100%",
-                  padding: "13px",
-                  borderRadius: "var(--radius-pill)",
-                  border: "none",
-                  backgroundColor: "var(--orange)",
-                  color: "var(--on-orange-text)",
-                  fontSize: 14,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  marginTop: 2,
-                  boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
-                  opacity: authLoading ? 0.7 : 1,
-                }}
-              >
-                {authLoading
-                  ? lang === "EN"
-                    ? "Processing..."
-                    : "Memproses..."
-                  : authMode === "forgot"
-                    ? forgotStep === 1
-                      ? lang === "EN"
-                        ? "Send Reset Code"
-                        : "Kirim Kode Reset"
-                      : lang === "EN"
-                        ? "Save New Password"
-                        : "Simpan Password Baru"
-                    : authMode === "login"
-                      ? lang === "EN"
-                        ? "Log in"
-                        : "Masuk"
-                      : lang === "EN"
-                        ? "Sign up"
-                        : "Daftar"}
-              </button>
-
-              {authMode !== "forgot" &&
-                Boolean(
-                  (googleClientId || import.meta.env.VITE_GOOGLE_CLIENT_ID || "")
-                    .trim()
-                    .includes(".apps.googleusercontent.com")
-                ) && (
-                  <>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "2px 0" }}>
-                      <div style={{ flex: 1, height: 1, backgroundColor: "var(--border-light)" }} />
-                      <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700 }}>{lang === "EN" ? "OR" : "ATAU"}</span>
-                      <div style={{ flex: 1, height: 1, backgroundColor: "var(--border-light)" }} />
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleGoogleSignIn}
-                      className="btn-interactive"
-                      style={{
-                        width: "100%",
-                        padding: "11px 16px",
-                        borderRadius: "var(--radius-pill)",
-                        border: "1px solid var(--border-input)",
-                        backgroundColor: "var(--bg-card)",
-                        color: "var(--maroon)",
-                        fontSize: 13,
-                        fontWeight: 800,
-                        cursor: "pointer",
-                        ...LAYOUT.center,
-                        gap: 10,
-                      }}
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24">
-                        <path
-                          fill="#EA4335"
-                          d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.4 1 3.5 3.6 1.6 7.4l3.7 2.8C6.2 7.2 8.9 5 12 5z"
-                        />
-                        <path
-                          fill="#4285F4"
-                          d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6l3.7 2.9c2.2-2 3.7-5 3.7-8.7z"
-                        />
-                        <path
-                          fill="#FBBC05"
-                          d="M5.3 14.8c-.2-.8-.4-1.6-.4-2.5s.2-1.7.4-2.5L1.6 7C.6 9 0 11.2 0 13.5s.6 4.5 1.6 6.5l3.7-2.9z"
-                        />
-                        <path
-                          fill="#34A853"
-                          d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3.1 0-5.8-2.1-6.7-5l-3.7 2.9C3.5 20.4 7.4 23 12 23z"
-                        />
-                      </svg>
-                      <span>
-                        {lang === "EN"
-                          ? `Continue with Google (${loginRoleTab === "Vendor" ? "Tenant" : "Customer"})`
-                          : `Lanjutkan dengan Google (${loginRoleTab === "Vendor" ? "Tenant" : "Pengguna"})`}
-                      </span>
-                    </button>
-                  </>
-                )}
-
-              {authMode === "login" ? (
-                <div style={{ textAlign: "center", marginTop: 2 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthMode("forgot");
-                      setForgotStep(1);
-                      setAuthError("");
-                      setAuthSuccess("");
-                      setAuthForm({
-                        username: "",
-                        nama: "",
-                        password: "",
-                        email: "",
-                        nama_tenant: "",
-                        new_password: "",
-                        reset_token: "",
-                      });
-                    }}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      fontSize: 13,
-                      color: "var(--maroon)",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      textDecoration: "underline",
-                    }}
-                  >
-                    {lang === "EN" ? "Forgot password?" : "Lupa kata sandi?"}
-                  </button>
-                </div>
-              ) : authMode === "forgot" ? (
-                <div style={{ textAlign: "center", marginTop: 2 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthMode("login");
-                      setForgotStep(1);
-                      setAuthError("");
-                      setAuthForm({
-                        username: "",
-                        nama: "",
-                        password: "",
-                        email: "",
-                        nama_tenant: "",
-                        new_password: "",
-                        reset_token: "",
-                      });
-                    }}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      fontSize: 13,
-                      color: "var(--maroon)",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      textDecoration: "underline",
-                    }}
-                  >
-                    {lang === "EN" ? "← Back to Log in" : "← Kembali ke halaman Masuk"}
-                  </button>
-                </div>
-              ) : (
-                <div
-                  style={{
-                    textAlign: "center",
-                    marginTop: 2,
-                    fontSize: 11,
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  {lang === "EN"
-                    ? "By signing up you agree to the canteen's terms of service."
-                    : "Dengan mendaftar, Anda menyetujui syarat dan ketentuan layanan kantin."}
-                </div>
-              )}
-            </form>
-          </div>
-
-          <div
-            style={{
-              textAlign: "center",
-              marginTop: 14,
-              fontSize: 13,
-              color: "var(--text-muted)",
-              flexShrink: 0,
-            }}
-          >
-            {authMode === "login" ? (
-              <span>
-                {lang === "EN" ? "Don't have an account? " : "Belum punya akun? "}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode("register");
-                    setAuthError("");
-                    setAuthSuccess("");
-                    setAuthForm({
-                      username: "",
-                      nama: "",
-                      password: "",
-                      email: "",
-                      nama_tenant: "",
-                      new_password: "",
-                    });
-                  }}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    color: "var(--maroon)",
-                    fontWeight: 800,
-                    textDecoration: "underline",
-                    cursor: "pointer",
-                  }}
-                >
-                  {lang === "EN" ? "Sign up here" : "Daftar di sini"}
-                </button>
-              </span>
-            ) : (
-              <span>
-                {lang === "EN" ? "Already have an account? " : "Sudah punya akun? "}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode("login");
-                    setAuthError("");
-                    setAuthSuccess("");
-                    setAuthForm({
-                      username: "",
-                      nama: "",
-                      password: "",
-                      email: "",
-                      nama_tenant: "",
-                      new_password: "",
-                    });
-                  }}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    color: "var(--maroon)",
-                    fontWeight: 800,
-                    textDecoration: "underline",
-                    cursor: "pointer",
-                  }}
-                >
-                  {lang === "EN" ? "Log in here" : "Masuk di sini"}
-                </button>
-              </span>
-            )}
-          </div>
-            </div>
-          </div>
-        </div>
+        <AuthPage
+          lang={lang}
+          t={t}
+          authMode={authMode}
+          setAuthMode={setAuthMode}
+          loginRoleTab={loginRoleTab}
+          setLoginRoleTab={setLoginRoleTab}
+          forgotStep={forgotStep}
+          setForgotStep={setForgotStep}
+          authForm={authForm}
+          setAuthForm={setAuthForm}
+          authError={authError}
+          setAuthError={setAuthError}
+          authSuccess={authSuccess}
+          setAuthSuccess={setAuthSuccess}
+          authLoading={authLoading}
+          showPassword={showPassword}
+          setShowPassword={setShowPassword}
+          onSubmit={handleAuthSubmit}
+          onClose={() => setIsAuthOpen(false)}
+          onChangeLanguage={changeLanguage}
+          currentUser={currentUser}
+        />
       )}
 
       {tenantOnboardingStep > 0 && (pendingVendorSignup || portalMode === "tenant") && (
@@ -11582,381 +10332,22 @@ export default function App() {
         />
       )}
 
-      {isStoreSettingsOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1300,
-            backgroundColor: "var(--backdrop)",
-            backdropFilter: "blur(5px)",
-            ...LAYOUT.center,
-            padding: 20,
-          }}
-          onClick={() => setIsStoreSettingsOpen(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="animate-modal-zoom"
-            style={{
-              width: "100%",
-              maxWidth: 450,
-              maxHeight: "86vh",
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-              backgroundColor: "var(--bg-card)",
-              borderRadius: "var(--radius-xl)",
-              padding: 0,
-              boxShadow: "0 20px 50px rgba(82, 42, 40, 0.24)",
-              border: "1px solid var(--border-light)",
-            }}
-          >
-            {/* Fixed Header */}
-            <div
-              style={{
-                flexShrink: 0,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "20px 26px 15px",
-                borderBottom: "1px solid var(--border-light)",
-                backgroundColor: "var(--bg-card)",
-              }}
-            >
-              <div>
-                <h3 style={{ fontSize: 20, fontWeight: 900, color: "var(--maroon)", marginBottom: 2 }}>
-                  {lang === "EN" ? "Tenant Settings" : "Pengaturan Tenant"}
-                </h3>
-                <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
-                  {lang === "EN"
-                    ? "Manage your tenant profile picture, store details & operating hours"
-                    : "Kelola foto profil, informasi gerai, dan jam operasional tenant"}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsStoreSettingsOpen(false)}
-                style={{
-                  border: "none",
-                  background: "var(--bg-cream)",
-                  borderRadius: "50%",
-                  width: 34,
-                  height: 34,
-                  cursor: "pointer",
-                  ...LAYOUT.center,
-                  flexShrink: 0,
-                }}
-              >
-                <X size={16} color="var(--maroon)" />
-              </button>
-            </div>
-
-            <form
-              onSubmit={handleSaveStoreSettings}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                flex: "1 1 auto",
-                minHeight: 0,
-                overflow: "hidden",
-              }}
-            >
-              {/* Scrollable Content Body */}
-              <div
-                className="modal-scroll-body"
-                style={{
-                  padding: "20px 26px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 14,
-                }}
-              >
-                {storeSettingsError && (
-                  <div
-                    role="alert"
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 10,
-                      backgroundColor: "#FDF0EE",
-                      color: "#C84336",
-                      fontSize: 13,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {storeSettingsError}
-                  </div>
-                )}
-
-                {/* Tenant Profile Picture (PP) moved from My Profile */}
-                <div
-                  style={{
-                    ...LAYOUT.row,
-                    gap: 18,
-                    padding: "14px 16px",
-                    borderRadius: 16,
-                    backgroundColor: "var(--bg-auth-page)",
-                    border: "1px solid var(--border-light)",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 84,
-                      height: 84,
-                      borderRadius: "50%",
-                      backgroundColor: "var(--bg-cream)",
-                      border: "3px solid #EDD1B4",
-                      overflow: "hidden",
-                      ...LAYOUT.center,
-                      fontSize: 24,
-                      fontWeight: 900,
-                      color: "var(--maroon)",
-                      flexShrink: 0,
-                      boxShadow: "0 6px 16px rgba(82, 42, 40, 0.1)",
-                    }}
-                  >
-                    {storeForm.logo ? (
-                      <img
-                        src={resolveMediaUrl(storeForm.logo)}
-                        alt="Tenant Profile"
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          objectPosition: `${storeForm.foto_x ?? 50}% ${storeForm.foto_y ?? 50}%`,
-                          transform: `scale(${storeForm.foto_zoom ?? 1})`,
-                          transformOrigin: `${storeForm.foto_x ?? 50}% ${storeForm.foto_y ?? 50}%`,
-                        }}
-                      />
-                    ) : (
-                      <span>{displayInitials}</span>
-                    )}
-                  </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: "var(--maroon)" }}>
-                      {lang === "EN" ? "Tenant Profile Picture" : "Foto Profil Tenant"}
-                    </div>
-                    {storeForm.logo && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          openPhotoEditor({
-                            src: resolveMediaUrl(storeForm.logo),
-                            aspect: 1,
-                            value: {
-                              x: storeForm.foto_x,
-                              y: storeForm.foto_y,
-                              zoom: storeForm.foto_zoom,
-                            },
-                            lang,
-                            title: lang === "EN" ? "Logo position" : "Posisi logo",
-                            onSave: ({ x, y, zoom }) => {
-                              setStoreForm((p) => ({ ...p, foto_x: x, foto_y: y, foto_zoom: zoom }));
-                              setPhotoEditor(null);
-                            },
-                          })
-                        }
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          color: "var(--maroon)",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          cursor: "pointer",
-                          padding: 0,
-                        }}
-                      >
-                        {lang === "EN" ? "Adjust photo position" : "Atur posisi foto"}
-                      </button>
-                    )}
-                    <label
-                      className="btn-interactive"
-                      style={{
-                        ...LAYOUT.inlineRow,
-                        gap: 6,
-                        padding: "8px 16px",
-                        borderRadius: "var(--radius-pill)",
-                        border: "1px solid var(--border-input)",
-                        backgroundColor: "var(--bg-card)",
-                        color: "var(--maroon)",
-                        fontSize: 12.5,
-                        fontWeight: 800,
-                        cursor: "pointer",
-                        boxShadow: "var(--shadow-sm)",
-                      }}
-                    >
-                      <Upload size={13} />
-                      <span>{lang === "EN" ? "Choose Image" : "Pilih Gambar"}</span>
-                      <input
-                        type="file"
-                        accept=".jpg,.jpeg,.png,image/jpeg,image/png,image/*"
-                        style={{ display: "none" }}
-                        onChange={async (e) => {
-                          const f = e.target.files?.[0];
-                          if (!f) return;
-                          try {
-                            const dataUrl = await readAndCompressImageFile(f, 800, 0.85);
-                            setStoreForm((p) => ({ ...p, logo: dataUrl, foto_x: 50, foto_y: 50, foto_zoom: 1 }));
-                            setStoreSettingsError("");
-                            openPhotoEditor({
-                              src: dataUrl,
-                              aspect: 1,
-                              value: { x: 50, y: 50, zoom: 1 },
-                              lang,
-                              title: lang === "EN" ? "Logo position" : "Posisi logo",
-                              onSave: ({ x, y, zoom }) => {
-                                setStoreForm((p) => ({ ...p, foto_x: x, foto_y: y, foto_zoom: zoom }));
-                                setPhotoEditor(null);
-                              },
-                            });
-                          } catch (err) {
-                            setStoreSettingsError(err.message);
-                          }
-                        }}
-                      />
-                    </label>
-                    <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-                      {lang === "EN"
-                        ? "Max 1 MB · Format: .JPEG, .PNG"
-                        : "Maks. 1 MB · Format: .JPEG, .PNG"}
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
-                    {lang === "EN" ? "Tenant Name" : "Nama Tenant"}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={storeForm.nama_tenant}
-                    onChange={(e) => setStoreForm((p) => ({ ...p, nama_tenant: e.target.value }))}
-                    style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
-                    {lang === "EN" ? "Booth / Location" : "Lokasi / Stand"}
-                  </label>
-                  <input
-                    type="text"
-                    value={storeForm.booth}
-                    onChange={(e) => setStoreForm((p) => ({ ...p, booth: e.target.value }))}
-                    placeholder={lang === "EN" ? "e.g. Booth #1 · Building A Canteen" : "Contoh: Stand #1 · Kantin Gedung A"}
-                    style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
-                    {lang === "EN" ? "Description" : "Deskripsi Kantin"}
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={storeForm.deskripsi}
-                    onChange={(e) => setStoreForm((p) => ({ ...p, deskripsi: e.target.value }))}
-                    style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
-                  />
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
-                      {lang === "EN" ? "Opening Time" : "Jam Buka"}
-                    </label>
-                    <input
-                      type="time"
-                      value={storeForm.jam_buka}
-                      onChange={(e) => setStoreForm((p) => ({ ...p, jam_buka: e.target.value }))}
-                      style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--maroon)", marginBottom: 4 }}>
-                      {lang === "EN" ? "Closing Time" : "Jam Tutup"}
-                    </label>
-                    <input
-                      type="time"
-                      value={storeForm.jam_tutup}
-                      onChange={(e) => setStoreForm((p) => ({ ...p, jam_tutup: e.target.value }))}
-                      style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--border-input)", fontSize: 13 }}
-                    />
-                  </div>
-                </div>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "var(--maroon)", cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={storeForm.auto_schedule}
-                    onChange={(e) => setStoreForm((p) => ({ ...p, auto_schedule: e.target.checked }))}
-                  />
-                  <span>
-                    {lang === "EN"
-                      ? "Automatically open/close based on schedule hours"
-                      : "Buka/tutup otomatis mengikuti jam operasional"}
-                  </span>
-                </label>
-              </div>
-
-              {/* Fixed Footer */}
-              <div
-                style={{
-                  flexShrink: 0,
-                  padding: "14px 26px",
-                  borderTop: "1px solid var(--border-light)",
-                  backgroundColor: "var(--bg-card)",
-                  display: "flex",
-                  justifyContent: "flex-end",
-                }}
-              >
-                <button
-                  type="submit"
-                  className="btn-interactive btn-lift"
-                  style={{
-                    width: "100%",
-                    padding: "12px 24px",
-                    borderRadius: "var(--radius-pill)",
-                    border: "none",
-                    backgroundColor: "var(--orange)",
-                    color: "var(--on-orange-text)",
-                    fontSize: 14,
-                    fontWeight: 800,
-                    cursor: "pointer",
-                    boxShadow: "0 4px 14px rgba(248, 163, 75, 0.35)",
-                  }}
-                >
-                  {lang === "EN" ? "Save" : "Simpan"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <StoreSettingsModal
+        open={isStoreSettingsOpen}
+        onClose={() => setIsStoreSettingsOpen(false)}
+        lang={lang}
+        form={storeForm}
+        setForm={setStoreForm}
+        error={storeSettingsError}
+        setError={setStoreSettingsError}
+        onSave={handleSaveStoreSettings}
+        onEditPhoto={openPhotoEditor}
+        onClosePhotoEditor={() => setPhotoEditor(null)}
+      />
 
       {isPromoModalOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1300,
-            backgroundColor: "var(--backdrop)",
-            backdropFilter: "blur(5px)",
-            ...LAYOUT.center,
-            padding: 20,
-          }}
-          onClick={() => setIsPromoModalOpen(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "100%",
-              maxWidth: 420,
-              backgroundColor: "var(--bg-card)",
-              borderRadius: "var(--radius-xl)",
-              padding: "26px",
-              boxShadow: "var(--shadow-card)",
-              border: "1px solid var(--border-light)",
-            }}
-          >
+        <Modal zIndex={1300} onClose={() => setIsPromoModalOpen(false)}>
+          <DialogCard padding={26}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <h3 style={{ fontSize: 18, fontWeight: 900, color: "var(--maroon)" }}>
                 {lang === "EN" ? "Create Tenant Promo" : "Buat Promo Khusus Tenant"}
@@ -12075,35 +10466,13 @@ export default function App() {
                 {lang === "EN" ? "Publish Promo" : "Simpan Promo"}
               </button>
             </form>
-          </div>
-        </div>
+          </DialogCard>
+        </Modal>
       )}
 
       {cancelTarget && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1350,
-            backgroundColor: "var(--backdrop)",
-            backdropFilter: "blur(5px)",
-            ...LAYOUT.center,
-            padding: 20,
-          }}
-          onClick={() => setCancelTarget(null)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "100%",
-              maxWidth: 420,
-              backgroundColor: "var(--bg-card)",
-              borderRadius: "var(--radius-xl)",
-              padding: "24px",
-              boxShadow: "var(--shadow-card)",
-              border: "1px solid var(--border-light)",
-            }}
-          >
+        <Modal zIndex={1350} onClose={() => setCancelTarget(null)}>
+          <DialogCard>
             <h3 style={{ fontSize: 18, fontWeight: 900, color: "var(--maroon)", marginBottom: 6 }}>
               {lang === "EN" ? `Cancel Order ${cancelTarget.code}?` : `Batalkan Pesanan ${cancelTarget.code}?`}
             </h3>
@@ -12136,35 +10505,13 @@ export default function App() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+          </DialogCard>
+        </Modal>
       )}
 
       {reviewTarget && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1350,
-            backgroundColor: "var(--backdrop)",
-            backdropFilter: "blur(5px)",
-            ...LAYOUT.center,
-            padding: 20,
-          }}
-          onClick={() => setReviewTarget(null)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "100%",
-              maxWidth: 420,
-              backgroundColor: "var(--bg-card)",
-              borderRadius: "var(--radius-xl)",
-              padding: "24px",
-              boxShadow: "var(--shadow-card)",
-              border: "1px solid var(--border-light)",
-            }}
-          >
+        <Modal zIndex={1350} onClose={() => setReviewTarget(null)}>
+          <DialogCard>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <h3 style={{ fontSize: 18, fontWeight: 900, color: "var(--maroon)" }}>
                 {lang === "EN" ? `Rate Order ${reviewTarget.nomor_antrean}` : `Beri Rating ${reviewTarget.nomor_antrean}`}
@@ -12222,38 +10569,26 @@ export default function App() {
                 {lang === "EN" ? "Submit Rating" : "Kirim Rating & Ulasan"}
               </button>
             </form>
-          </div>
-        </div>
+          </DialogCard>
+        </Modal>
       )}
 
       {chatOrder && (
-        <div
+        <Modal
+          zIndex={1400}
           data-testid="order-chat-modal"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1400,
-            backgroundColor: "var(--backdrop)",
-            backdropFilter: "blur(5px)",
-            ...LAYOUT.center,
-            padding: 16,
-          }}
-          onClick={() => {
+          style={{ padding: 16 }}
+          onClose={() => {
             setChatOrder(null);
             setChatError("");
             setChatImage("");
           }}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="animate-modal-zoom"
+          <DialogCard
+            maxWidth={480}
+            padding={0}
             style={{
-              width: "100%",
-              maxWidth: 480,
               height: "min(84vh, 640px)",
-              backgroundColor: "var(--bg-card)",
-              borderRadius: "var(--radius-xl)",
-              border: "1px solid var(--border-light)",
               boxShadow: "var(--shadow-float)",
               display: "flex",
               flexDirection: "column",
@@ -12290,8 +10625,7 @@ export default function App() {
                       fontSize: 11,
                       fontWeight: 800,
                       padding: "2px 8px",
-                      borderRadius: "var(--radius-pill)",
-                      backgroundColor: "var(--bg-cream)",
+                      ...CHIP_CREAM,
                       color: "var(--maroon)",
                       flexShrink: 0,
                     }}
@@ -12657,12 +10991,13 @@ export default function App() {
                 <Send size={16} />
               </button>
             </form>
-          </div>
-        </div>
+          </DialogCard>
+        </Modal>
       )}
 
       {chatPreviewImage && (
         <div
+          className="animate-fade"
           style={{
             position: "fixed",
             inset: 0,
@@ -12733,6 +11068,7 @@ export default function App() {
             onClick={() => {
               setNavTab("orders");
               setActiveTenantView(null);
+              setShowAllMenus(false);
               closeFoodDetail();
               if (typeof window !== "undefined" && window.scrollTo) {
                 window.scrollTo({ top: 0, behavior: "smooth" });
@@ -12795,6 +11131,7 @@ export default function App() {
         <div
           role="alert"
           data-testid="incoming-chat-banner"
+          className="animate-slide-up"
           style={{
             position: "fixed",
             top: 86,
@@ -12864,9 +11201,7 @@ export default function App() {
               className="btn-interactive"
               style={{
                 padding: "5px 12px",
-                borderRadius: "var(--radius-pill)",
-                border: "none",
-                backgroundColor: "var(--orange)",
+                ...BUTTON_PILL_PRIMARY,
                 color: "#FFFFFF",
                 fontSize: 11.5,
                 fontWeight: 800,
@@ -12895,6 +11230,7 @@ export default function App() {
       {toastAlert && (
         <div
           role="status"
+          className="animate-toast"
           style={{
             position: "fixed",
             bottom: 24,

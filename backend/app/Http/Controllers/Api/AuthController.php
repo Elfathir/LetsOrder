@@ -8,10 +8,11 @@ use App\Support\ImageValidator;
 use App\Support\PhotoFocus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Http;
+
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
+
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -175,169 +176,6 @@ class AuthController extends Controller
         ], 200);
     }
 
-    /**
-     * Redirect langsung ke halaman Google OAuth 2.0.
-     */
-    public function googleRedirect(Request $request)
-    {
-        $peran = $request->query('peran') === 'Vendor' ? 'Vendor' : 'Customer';
-        $origin = $this->validateFrontendOrigin($request->query('origin'));
-        $clientId = env('GOOGLE_CLIENT_ID', '');
-        $redirectUri = env('GOOGLE_REDIRECT_URI', url('/api/auth/google/callback'));
-
-        if (!$clientId || !str_contains($clientId, '.apps.googleusercontent.com')) {
-            return response()->json([
-                'success' => false,
-                'message' => 'GOOGLE_CLIENT_ID belum dikonfigurasi pada file .env backend.',
-            ], 400);
-        }
-
-        $state = $this->signOAuthState([
-            'peran' => $peran,
-            'origin' => $origin,
-        ]);
-
-        $query = http_build_query([
-            'client_id' => $clientId,
-            'redirect_uri' => $redirectUri,
-            'response_type' => 'code',
-            'scope' => 'openid email profile',
-            'access_type' => 'online',
-            'prompt' => 'select_account',
-            'state' => $state,
-        ]);
-
-        return redirect()->away('https://accounts.google.com/o/oauth2/v2/auth?' . $query);
-    }
-
-    /**
-     * Callback resmi dari Google OAuth 2.0.
-     */
-    public function googleCallback(Request $request)
-    {
-        $state = $this->verifyOAuthState((string) $request->query('state', ''));
-        $origin = $this->validateFrontendOrigin($state['origin'] ?? null);
-        $peran = (($state['peran'] ?? 'Customer') === 'Vendor') ? 'Vendor' : 'Customer';
-
-        if (!$state) {
-            return redirect()->away($origin . '?google_error=' . urlencode('State OAuth Google tidak valid atau telah kedaluwarsa.'));
-        }
-
-        if ($request->query('error') || !$request->query('code')) {
-            return redirect()->away($origin . '?google_error=' . urlencode($request->query('error', 'Login Google dibatalkan.')));
-        }
-
-        $tokenRes = Http::asForm()->post('https://oauth2.googleapis.com/token', [
-            'code' => $request->query('code'),
-            'client_id' => env('GOOGLE_CLIENT_ID'),
-            'client_secret' => env('GOOGLE_CLIENT_SECRET'),
-            'redirect_uri' => env('GOOGLE_REDIRECT_URI', url('/api/auth/google/callback')),
-            'grant_type' => 'authorization_code',
-        ]);
-
-        $accessToken = $tokenRes->json('access_token');
-        if (!$accessToken) {
-            return redirect()->away($origin . '?google_error=' . urlencode('Gagal menukar kode OAuth Google.'));
-        }
-
-        $profile = Http::withToken($accessToken)->get('https://www.googleapis.com/oauth2/v3/userinfo')->json();
-        $emailVerified = ($profile['email_verified'] ?? false) === true || ($profile['email_verified'] ?? '') === 'true';
-        if (!$profile || empty($profile['email']) || !$emailVerified) {
-            return redirect()->away($origin . '?google_error=' . urlencode('Akun Google belum terverifikasi.'));
-        }
-
-        $result = $this->upsertGoogleUser($profile, $peran);
-        $exchangeCode = Str::random(48);
-        Cache::put('google_exchange:' . $exchangeCode, $result, now()->addSeconds(60));
-
-        return redirect()->away(
-            $origin . '?google_auth_code=' . urlencode($exchangeCode)
-        );
-    }
-
-    /**
-     * Menukarkan kode sekali pakai Google callback menjadi token API.
-     */
-    public function exchangeGoogleCode(Request $request)
-    {
-        $code = trim((string) $request->input('code'));
-        $payload = $code ? Cache::pull('google_exchange:' . $code) : null;
-
-        if (!$payload) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Kode login Google tidak valid atau sudah digunakan.',
-            ], 401);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Login dengan Google berhasil.',
-            'data' => [
-                'access_token' => $payload['token'],
-                'token' => $payload['token'],
-                'token_type' => 'Bearer',
-                'user' => $payload['user'],
-            ],
-        ], 200);
-    }
-
-    /**
-     * Verifikasi token Google OAuth dari frontend.
-     */
-    public function googleLogin(Request $request)
-    {
-        $expectedClientId = trim((string) env('GOOGLE_CLIENT_ID', ''));
-        if (!$expectedClientId || !str_contains($expectedClientId, '.apps.googleusercontent.com')) {
-            return response()->json([
-                'success' => false,
-                'message' => 'GOOGLE_CLIENT_ID belum dikonfigurasi pada server.',
-            ], 503);
-        }
-
-        $peran = $request->input('peran') === 'Vendor' ? 'Vendor' : 'Customer';
-        $profile = null;
-
-        if ($request->filled('access_token')) {
-            $tokenInfo = Http::get('https://www.googleapis.com/oauth2/v3/tokeninfo', [
-                'access_token' => $request->input('access_token'),
-            ]);
-            if ($tokenInfo->successful() && $tokenInfo->json('aud') === $expectedClientId) {
-                $res = Http::withToken($request->input('access_token'))
-                    ->get('https://www.googleapis.com/oauth2/v3/userinfo');
-                if ($res->successful()) {
-                    $profile = $res->json();
-                }
-            }
-        } elseif ($request->filled('credential') || $request->filled('id_token')) {
-            $idToken = $request->input('credential') ?? $request->input('id_token');
-            $res = Http::get('https://oauth2.googleapis.com/tokeninfo', ['id_token' => $idToken]);
-            if ($res->successful() && $res->json('aud') === $expectedClientId) {
-                $profile = $res->json();
-            }
-        }
-
-        $emailVerified = ($profile['email_verified'] ?? false) === true || ($profile['email_verified'] ?? '') === 'true';
-        if (!$profile || empty($profile['email']) || !$emailVerified) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Token Google OAuth tidak valid atau email belum terverifikasi.',
-            ], 401);
-        }
-
-        $result = $this->upsertGoogleUser($profile, $peran);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Login dengan Google berhasil.',
-            'data' => [
-                'access_token' => $result['token'],
-                'token' => $result['token'],
-                'token_type' => 'Bearer',
-                'user' => $result['user'],
-            ],
-        ], 200);
-    }
 
     /**
      * Meminta kode verifikasi reset password 6 digit (berlaku 15 menit).
@@ -559,88 +397,141 @@ class AuthController extends Controller
         ], 200);
     }
 
-    private function validateFrontendOrigin(?string $candidate): string
-    {
-        $defaultOrigin = rtrim((string) env('FRONTEND_URL', 'http://localhost:5173'), '/');
-        $allowed = array_filter([
-            $defaultOrigin,
-            'http://localhost:5173',
-            'http://127.0.0.1:5173',
-        ]);
-        if ($candidate) {
-            $parts = parse_url($candidate);
-            if (!empty($parts['scheme']) && !empty($parts['host'])) {
-                $normalized = $parts['scheme'] . '://' . $parts['host'] . (!empty($parts['port']) ? ':' . $parts['port'] : '');
-                if (in_array($normalized, $allowed, true)) {
-                    return $normalized;
-                }
-            }
-        }
-        return $defaultOrigin;
-    }
-
-    private function signOAuthState(array $payload): string
-    {
-        $payload['nonce'] = Str::random(16);
-        $payload['exp'] = now()->addMinutes(10)->timestamp;
-        $encoded = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
-        $sig = rtrim(strtr(base64_encode(hash_hmac('sha256', $encoded, (string) config('app.key'), true)), '+/', '-_'), '=');
-        return $encoded . '.' . $sig;
-    }
-
-    private function verifyOAuthState(string $state): ?array
-    {
-        if (!str_contains($state, '.')) {
-            return null;
-        }
-        [$encoded, $sig] = explode('.', $state, 2);
-        $expected = rtrim(strtr(base64_encode(hash_hmac('sha256', $encoded, (string) config('app.key'), true)), '+/', '-_'), '=');
-        if (!hash_equals($expected, $sig)) {
-            return null;
-        }
-        $decoded = json_decode(base64_decode(strtr($encoded, '-_', '+/')), true);
-        if (!is_array($decoded) || empty($decoded['exp']) || now()->timestamp > (int) $decoded['exp']) {
-            return null;
-        }
-        return $decoded;
-    }
-
-    private function upsertGoogleUser(array $profile, string $peran): array
-    {
-        $email = strtolower(trim((string) $profile['email']));
-        $nama = trim((string) ($profile['name'] ?? explode('@', $email)[0]));
-        $user = User::where('email', $email)->first();
-
-        if (!$user) {
-            $baseUsername = preg_replace('/[^a-zA-Z0-9_]/', '', explode('@', $email)[0]) ?: 'user';
-            $user = User::create([
-                'username' => $baseUsername . '_' . Str::lower(Str::random(4)),
-                'nama' => $nama,
-                'email' => $email,
-                'password' => Hash::make(Str::random(24)),
-                'peran' => $peran,
-            ]);
-        }
-
-        if ($user->peran === 'Vendor' && !\App\Models\Tenant::where('id_user', $user->id_user)->exists()) {
-            \App\Models\Tenant::create([
-                'id_user' => $user->id_user,
-                'nama_tenant' => $nama,
-                'deskripsi' => '',
-                'logo' => '',
-                'status_buka' => true,
-            ]);
-        }
-
-        $token = $this->issueApiToken($user);
-        return ['user' => $user, 'token' => $token];
-    }
 
     private function issueApiToken(User $user): string
     {
         $days = max(1, (int) env('SESSION_INACTIVITY_DAYS', 5));
 
         return $user->createToken('letsorder-api', ['*'], now()->addDays($days))->plainTextToken;
+    }
+
+    /**
+     * Hapus akun beserta seluruh data terkait.
+     *
+     * Aturan mengikuti backend Node: konfirmasi teks + password, Administrator
+     * ditolak, dan tenant yang masih punya pesanan aktif tidak boleh dihapus.
+     */
+    public function deleteAccount(Request $request)
+    {
+        $user = $request->user();
+
+        if (strtolower((string) $user->peran) === 'administrator') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun administrator tidak dapat dihapus dari halaman ini.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'confirm' => 'required|string|max:40',
+            'password' => 'nullable|string',
+        ]);
+
+        $confirmText = preg_replace('/\s+/', ' ', strtoupper(trim((string) $validated['confirm'])));
+        if (!in_array($confirmText, ['HAPUS AKUN', 'DELETE ACCOUNT'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ketik "HAPUS AKUN" pada kolom konfirmasi untuk melanjutkan.',
+            ], 422);
+        }
+
+        if (!Hash::check((string) ($validated['password'] ?? ''), $user->password)) {
+            Log::warning('security_event.account_delete_failed', [
+                'id_user' => $user->id_user,
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Password tidak sesuai. Akun Anda tidak dihapus.',
+            ], 422);
+        }
+
+        $tenantIds = DB::table('tenants')
+            ->where('id_user', $user->id_user)
+            ->pluck('id_tenant')
+            ->all();
+
+        if (!empty($tenantIds)) {
+            $hasActiveOrder = DB::table('orders')
+                ->whereIn('id_tenant', $tenantIds)
+                ->whereNotIn('status_pesanan', ['Selesai', 'Dibatalkan'])
+                ->exists();
+
+            if ($hasActiveOrder) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Akun tenant tidak dapat dihapus selama masih ada pesanan yang belum selesai. Selesaikan atau batalkan pesanan tersebut terlebih dahulu.',
+                ], 409);
+            }
+        }
+
+        DB::transaction(function () use ($user, $tenantIds, $request) {
+            $tenantScope = !empty($tenantIds) ? $tenantIds : [0];
+
+            $orderIds = DB::table('orders')
+                ->where('id_user', $user->id_user)
+                ->orWhereIn('id_tenant', $tenantScope)
+                ->pluck('id_pesanan')
+                ->all();
+
+            if (!empty($orderIds)) {
+                DB::table('order_messages')->whereIn('id_pesanan', $orderIds)->delete();
+                DB::table('payments')->whereIn('id_pesanan', $orderIds)->delete();
+                DB::table('status_histories')->whereIn('id_pesanan', $orderIds)->delete();
+                DB::table('notifications')->whereIn('id_pesanan', $orderIds)->delete();
+                DB::table('reviews')->whereIn('id_pesanan', $orderIds)->delete();
+                DB::table('order_details')->whereIn('id_pesanan', $orderIds)->delete();
+                DB::table('orders')->whereIn('id_pesanan', $orderIds)->delete();
+            }
+
+            DB::table('notifications')->where('id_user', $user->id_user)->delete();
+            DB::table('reviews')->where('id_user', $user->id_user)->delete();
+            DB::table('order_messages')->where('id_pengirim', $user->id_user)->delete();
+
+            if (!empty($tenantIds)) {
+                DB::table('reviews')->whereIn('id_tenant', $tenantIds)->delete();
+
+                // Ulasan bisa menempel ke menu tenant ini walau barisnya bukan
+                // milik tenant tersebut, jadi bersihkan lewat id_menu juga.
+                $menuIds = DB::table('menus')
+                    ->whereIn('id_tenant', $tenantIds)
+                    ->pluck('id_menu')
+                    ->all();
+                if (!empty($menuIds)) {
+                    DB::table('reviews')->whereIn('id_menu', $menuIds)->delete();
+                }
+
+                DB::table('promos')->whereIn('id_tenant', $tenantIds)->delete();
+                DB::table('menus')->whereIn('id_tenant', $tenantIds)->delete();
+                DB::table('tenants')->whereIn('id_tenant', $tenantIds)->delete();
+            }
+
+            $cartIds = DB::table('carts')->where('id_user', $user->id_user)->pluck('id_keranjang')->all();
+            if (!empty($cartIds)) {
+                DB::table('cart_items')->whereIn('id_keranjang', $cartIds)->delete();
+                DB::table('carts')->whereIn('id_keranjang', $cartIds)->delete();
+            }
+
+            DB::table('personal_access_tokens')
+                ->where('tokenable_type', User::class)
+                ->where('tokenable_id', $user->id_user)
+                ->delete();
+
+            DB::table('users')->where('id_user', $user->id_user)->delete();
+
+            Log::warning('security_event.account_deleted', [
+                'id_user' => $user->id_user,
+                'peran' => $user->peran,
+                'ip' => $request->ip(),
+            ]);
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Akun Anda berhasil dihapus. Terima kasih telah menggunakan LetsOrder.',
+            'data' => null,
+        ], 200);
     }
 
     /**

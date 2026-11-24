@@ -4,6 +4,5 @@ import path from "node:path";
 import crypto from "node:crypto";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
-const googleAuthCodes = new Map();
 const rateLimitBuckets = new Map();
-export { googleAuthCodes, rateLimitBuckets };
+export { rateLimitBuckets };

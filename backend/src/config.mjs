@@ -48,7 +48,6 @@ const ALLOWED_ORIGINS = new Set([
 ]);
 
 // Ephemeral HMAC key fallback when APP_KEY is unset; keeps OAuth state verifiable in-memory
-const STATE_SECRET = process.env.APP_KEY || crypto.randomBytes(32).toString("hex");
 const ALLOW_PAYMENT_SIMULATION =
   process.env.NODE_ENV !== "production" ||
   String(process.env.PAYMENT_SIMULATION_ENABLED || "").toLowerCase() === "true";
@@ -69,4 +68,4 @@ const SERVER_PROMOS = {
   EARLYBIRD: { discount: 0.15, minSpend: 15000, type: "percentage" },
 };
 
-export { ALLOWED_ORIGINS, ALLOW_PAYMENT_SIMULATION, DB_PATH, DEFAULT_FRONTEND_URL, MAX_BODY_BYTES, SERVER_PROMOS, SESSION_INACTIVITY_DAYS, STATE_SECRET, TOKEN_INACTIVITY_TTL_MS, TOKEN_TOUCH_DEBOUNCE_MS, VALID_ORDER_STATUSES, loadEnvFile };
+export { ALLOWED_ORIGINS, ALLOW_PAYMENT_SIMULATION, DB_PATH, DEFAULT_FRONTEND_URL, MAX_BODY_BYTES, SERVER_PROMOS, SESSION_INACTIVITY_DAYS, TOKEN_INACTIVITY_TTL_MS, TOKEN_TOUCH_DEBOUNCE_MS, VALID_ORDER_STATUSES, loadEnvFile };

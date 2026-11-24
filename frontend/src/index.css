@@ -173,6 +173,39 @@ input[type="password"]::-webkit-contacts-auto-fill-button {
   animation: laserScan 2.4s ease-in-out infinite;
 }
 
+/* Dropdown/popover kecil (mis. pilihan bahasa). */
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-dropdown {
+  animation: dropdownIn 0.18s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform-origin: top right;
+}
+
+/* Toast: harus mempertahankan translateX(-50%) agar tetap di tengah. */
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 14px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.animate-toast {
+  animation: toastIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 :root[data-theme="dark"] ::placeholder,
 [data-theme-scope="dark"] ::placeholder {
   color: var(--text-light);
@@ -905,6 +938,8 @@ html[data-theme="dark"] .floating-cart-btn {
   .animate-slide-up,
   .animate-slide-left,
   .animate-modal-zoom,
+  .animate-dropdown,
+  .animate-toast,
   .badge-pop,
   .onboarding-wizard-root .onboarding-body-wrap,
   .onboarding-next-reveal {
@@ -1078,6 +1113,7 @@ html[data-theme="dark"] .floating-cart-btn {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: fadeIn 0.24s ease-out forwards;
 }
 
 .auth-page-scroll {
@@ -1282,6 +1318,114 @@ html[data-theme="dark"] .floating-cart-btn {
   .onboarding-actions > button {
     width: 100%;
     justify-content: center;
+  }
+}
+
+/* ── Stepper checkout (Keranjang → Pembayaran → Disiapkan → Ambil) ─────────
+   Ukuran tadinya ditulis inline semua, sehingga di layar HP empat langkah
+   dengan ikon 38px melebar keluar kartu (label "Pickup" terpotong).
+   Ukuran kini diatur di sini agar bisa menyesuaikan lebar layar. */
+.checkout-stepper {
+  padding: 16px 28px;
+  margin-bottom: 32px;
+  box-shadow: var(--shadow-sm);
+}
+
+.checkout-stepper-track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.checkout-stepper-rail {
+  position: absolute;
+  top: 50%;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  background-color: var(--border-input);
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
+.checkout-stepper-step {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+  background-color: var(--bg-card);
+}
+
+.checkout-stepper-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.checkout-stepper-label {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.checkout-stepper-label.is-active {
+  font-weight: 800;
+}
+
+@media (max-width: 600px) {
+  .checkout-stepper {
+    padding: 14px 6px;
+    margin-bottom: 24px;
+  }
+  /* Ikon di baris atas, label di bawahnya: 4 langkah muat di lebar HP. */
+  .checkout-stepper-track {
+    align-items: flex-start;
+  }
+  .checkout-stepper-rail {
+    top: 15px;
+    left: 12%;
+    right: 12%;
+    transform: none;
+  }
+  .checkout-stepper-step {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-direction: column;
+    gap: 5px;
+    padding: 0;
+    background-color: transparent;
+  }
+  .checkout-stepper-icon {
+    width: 30px;
+    height: 30px;
+  }
+  .checkout-stepper-icon svg {
+    width: 15px;
+    height: 15px;
+  }
+  .checkout-stepper-label {
+    font-size: 10.5px;
+    line-height: 1.15;
+    white-space: normal;
+    text-align: center;
+  }
+}
+
+@media (max-width: 410px) {
+  .checkout-stepper {
+    padding: 12px 2px;
+  }
+  .checkout-stepper-label {
+    font-size: 9.5px;
+    letter-spacing: 0;
   }
 }
 

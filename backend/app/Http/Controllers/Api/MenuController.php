@@ -8,6 +8,7 @@ use App\Models\Tenant;
 use App\Support\ImageValidator;
 use App\Support\PhotoFocus;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class MenuController extends Controller
 {
@@ -260,6 +261,8 @@ class MenuController extends Controller
     private function attachReviewStats($menus, bool $compactMedia = false)
     {
         $statsByMenu = [];
+        // Total unit terjual per menu (pesanan tidak dibatalkan) untuk urutan "paling laris".
+        $soldByMenu = [];
         if ($menus->isNotEmpty()) {
             $rows = \App\Models\Review::whereIn('id_menu', $menus->pluck('id_menu'))
                 ->selectRaw('id_menu, COUNT(*) as cnt, AVG(rating) as avg_rating')
@@ -271,9 +274,20 @@ class MenuController extends Controller
                     'avg' => number_format((float) $row->avg_rating, 1, '.', ''),
                 ];
             }
+
+            $soldRows = DB::table('order_details')
+                ->join('orders', 'orders.id_pesanan', '=', 'order_details.id_pesanan')
+                ->whereIn('order_details.id_menu', $menus->pluck('id_menu'))
+                ->where('orders.status_pesanan', '!=', 'Dibatalkan')
+                ->selectRaw('order_details.id_menu, SUM(order_details.jumlah) as sold')
+                ->groupBy('order_details.id_menu')
+                ->get();
+            foreach ($soldRows as $row) {
+                $soldByMenu[(int) $row->id_menu] = (int) $row->sold;
+            }
         }
 
-        return $menus->map(function (Menu $menu) use ($statsByMenu, $compactMedia) {
+        return $menus->map(function (Menu $menu) use ($statsByMenu, $soldByMenu, $compactMedia) {
             $arr = $menu->toArray();
             if ($compactMedia) {
                 $arr['gambar'] = MediaController::compactMediaValue(
@@ -299,6 +313,7 @@ class MenuController extends Controller
             $arr['rating'] = $st ? $st['avg'] : null;
             $arr['reviews'] = $st ? $st['cnt'] : 0;
             $arr['reviews_count'] = $st ? $st['cnt'] : 0;
+            $arr['sold_total'] = $soldByMenu[(int) $menu->id_menu] ?? 0;
             return $arr;
         })->values();
     }
