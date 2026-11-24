@@ -2223,7 +2223,6 @@ export default function App() {
         }}
         className="btn-interactive"
         style={{
-          position: "relative",
           padding: "7px 12px",
           borderRadius: "var(--radius-pill)",
           border: unread > 0 ? "1px solid var(--orange)" : "1px solid var(--border-input)",
@@ -2235,33 +2234,39 @@ export default function App() {
           ...LAYOUT.inlineRow,
           gap: 5,
           whiteSpace: "nowrap",
+          flexShrink: 0,
         }}
       >
-        <MessageCircle size={13} color={unread > 0 ? "var(--orange)" : "var(--maroon)"} />
+        {/* Angka pesan baru menempel pada ikon, jadi lebarnya tidak pernah
+            mengubah lebar tombol dan baris tetap sejajar. */}
+        <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+          <MessageCircle size={13} color={unread > 0 ? "var(--orange)" : "var(--maroon)"} />
+          {unread > 0 && (
+            <span
+              style={{
+                position: "absolute",
+                top: -5,
+                left: 4,
+                minWidth: 13,
+                height: 13,
+                padding: "0 3px",
+                borderRadius: 999,
+                backgroundColor: "var(--orange)",
+                color: "#FFFFFF",
+                fontSize: 8.5,
+                fontWeight: 800,
+                ...LAYOUT.inlineRow,
+                justifyContent: "center",
+                boxShadow: "0 0 0 1.5px var(--bg-card)",
+                pointerEvents: "none",
+                lineHeight: 1,
+              }}
+            >
+              {unread}
+            </span>
+          )}
+        </span>
         <span>{labelText}</span>
-        {unread > 0 && (
-          <span
-            style={{
-              position: "absolute",
-              top: -7,
-              right: -7,
-              minWidth: 18,
-              height: 18,
-              padding: "0 5px",
-              borderRadius: 999,
-              backgroundColor: "var(--orange)",
-              color: "#FFFFFF",
-              fontSize: 10,
-              fontWeight: 800,
-              ...LAYOUT.inlineRow,
-              justifyContent: "center",
-              boxShadow: "0 0 0 2px var(--bg-card)",
-              pointerEvents: "none",
-            }}
-          >
-            {unread}
-          </span>
-        )}
       </button>
     );
   };
